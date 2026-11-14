@@ -1,0 +1,107 @@
+/*
+ * Design tokens (spec section 13): colours, spacing, radii, type — the only place they are defined.
+ * Components use var(--…) from here; light and dark follow the system setting.
+ */
+:root {
+	/* colours */
+	--bg: #f5f6f8;
+	--surface: #ffffff;
+	--surface-2: #eef0f3;
+	--text: #15171a;
+	--muted: #646a73;
+	--line: #d9dce1;
+	--accent: #1f5fd1;
+	--accent-text: #ffffff;
+	--link: #1f5fd1;
+	/* result: shown with a sign and an arrow too, never by colour alone */
+	--up: #14803c;
+	--down: #c2331f;
+	--warn-bg: #fdf1d6;
+	--warn-text: #6b4a00;
+	--scrim: rgb(0 0 0 / 0.35);
+	--shadow: 0 10px 30px rgb(0 0 0 / 0.18);
+
+	/* spacing */
+	--s1: 4px;
+	--s2: 8px;
+	--s3: 12px;
+	--s4: 16px;
+	--s5: 24px;
+	--s6: 32px;
+
+	/* radii */
+	--r1: 8px;
+	--r2: 12px;
+	--r3: 16px;
+	--r-pill: 999px;
+
+	/* type: inputs at 16px or more, or iOS zooms the page */
+	--font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans Hebrew', sans-serif;
+	--fs-xs: 12px;
+	--fs-s: 14px;
+	--fs-m: 16px;
+	--fs-l: 20px;
+	--fs-xl: 28px;
+
+	/* touch target, bars */
+	--tap: 44px;
+	--tabbar-h: 56px;
+
+	color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #111318;
+		--surface: #1b1e24;
+		--surface-2: #252932;
+		--text: #eef0f3;
+		--muted: #9aa1ac;
+		--line: #343944;
+		--accent: #5b9cff;
+		--accent-text: #0b1220;
+		--link: #7db1ff;
+		--up: #4cc77a;
+		--down: #ff7a66;
+		--warn-bg: #3a2f12;
+		--warn-text: #f4d88a;
+		--scrim: rgb(0 0 0 / 0.55);
+		--shadow: 0 10px 30px rgb(0 0 0 / 0.5);
+		color-scheme: dark;
+	}
+}
+
+html,
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--text);
+	font-family: var(--font);
+	font-size: var(--fs-m);
+	-webkit-text-size-adjust: 100%;
+	-webkit-tap-highlight-color: transparent;
+}
+
+button,
+input,
+select,
+textarea {
+	font: inherit;
+	color: inherit;
+}
+
+input,
+select,
+textarea {
+	font-size: max(16px, var(--fs-m));
+}
+
+a {
+	color: var(--link);
+}
+
+/* Hebrew names inside the Russian interface (spec section 10) */
+.he {
+	direction: rtl;
+	unicode-bidi: isolate;
+}

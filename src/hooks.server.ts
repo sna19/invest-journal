@@ -1,5 +1,5 @@
-import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit';
-import { building } from '$app/environment';
+import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit/hooks';
+import { building } from '$app/env';
 import { isCrossSiteForm } from '#lib/server/csrf.js';
 import { getApp, getMarket } from '#lib/server/db.js';
 import { loadHelp } from '#lib/server/help.js';

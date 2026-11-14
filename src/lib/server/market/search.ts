@@ -66,7 +66,7 @@ export function searchSecurities(
 		  limit ?`
 	);
 	const like = escapeLike(query);
-	const rows = st.all(`%${like}%`, query, `${like}%`, `${like}%`, `${like}%`, `% ${like}%`, opts.limit ?? 20) as (SecurityHit & { active: number })[];
+	const rows = st.all(`%${like}%`, query, `${like}%`, `${like}%`, `${like}%`, `% ${like}%`, opts.limit ?? 20) as (Omit<SecurityHit, 'active'> & { active: number })[];
 	return rows.map((r) => ({ ...r, active: !!r.active }));
 }
 
