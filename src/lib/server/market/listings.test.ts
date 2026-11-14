@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { openMarket } from '../db.js';
 import { providerSymbols, rawFiles, securities, securitySymbols } from '../schema/market.js';
-import { makeFetcher } from './http.js';
+import { httpsGet, makeFetcher, viaFetch } from './http.js';
 import { cleanName, nasdaqTrader } from './nasdaqtrader.js';
 import { checkListings, isSuspicious, runListings } from './pipeline.js';
 import { searchSecurities } from './search.js';
@@ -72,13 +72,26 @@ describe('retries (pipeline step 1)', () => {
 		const pauses: number[] = [];
 		let calls = 0;
 		const get = makeFetcher({
-			fetch: (async () => new Response('x', { status: ++calls < 3 ? 403 : 200 })) as typeof fetch,
+			get: viaFetch((async () => new Response('x', { status: ++calls < 3 ? 403 : 200 })) as typeof fetch),
 			sleep: async (ms) => void pauses.push(ms)
 		});
 		expect((await get('u')).toString()).toBe('x');
 		expect(pauses).toEqual([2000, 4000]);
-		const notFound = makeFetcher({ fetch: (async () => new Response('', { status: 404 })) as typeof fetch, sleep: async () => {} });
+		const notFound = makeFetcher({ get: viaFetch((async () => new Response('', { status: 404 })) as typeof fetch), sleep: async () => {} });
 		await expect(notFound('u')).rejects.toThrow('404');
+	});
+});
+
+describe('httpsGet', () => {
+	it.skipIf(!process.env.NET)('reaches the TASE search index (run with NET=1)', async () => {
+		const r = await httpsGet('https://api.tase.co.il/api/content/searchentities?lang=1', {
+			'User-Agent': 'Mozilla/5.0',
+			Origin: 'https://market.tase.co.il',
+			Referer: 'https://market.tase.co.il/',
+			Accept: 'application/json'
+		});
+		expect(r.status).toBe(200);
+		expect(JSON.parse(r.body.toString()).length).toBeGreaterThan(5000);
 	});
 });
 

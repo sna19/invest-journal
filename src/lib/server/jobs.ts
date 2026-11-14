@@ -33,12 +33,22 @@ export function runListingsJob(): Promise<RunSummary[]> {
 	return listings;
 }
 
-/** When the last listings run that got data finished; null if never. */
+/**
+ * The oldest of the providers' last good listings runs: if any provider has not loaded for a week (or never),
+ * the job is due. null — some provider never loaded.
+ */
 export function lastListings(): Date | null {
-	const r = getMarket()
-		.sqlite.prepare(`select max(finished_at) as at from ops_ingest_runs where job = 'listings' and status in ('ok', 'suspicious')`)
-		.get() as { at: string | null };
-	return r.at ? new Date(r.at) : null;
+	const sqlite = getMarket().sqlite;
+	let oldest: Date | null = new Date(8.64e15);
+	for (const provider of ['nasdaqtrader', 'tase']) {
+		const r = sqlite
+			.prepare(`select max(finished_at) as at from ops_ingest_runs where job = 'listings' and provider_code = ? and status in ('ok', 'suspicious')`)
+			.get(provider) as { at: string | null };
+		if (!r.at) return null;
+		const d = new Date(r.at);
+		if (d < oldest!) oldest = d;
+	}
+	return oldest;
 }
 
 let started = false;
