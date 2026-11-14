@@ -1,0 +1,90 @@
+[
+ {
+  "Id": "1081124",
+  "Name": "אלביט מערכות",
+  "Smb": "אלבמע",
+  "ISIN": "IL0010811243",
+  "Type": 1,
+  "SubType": "1",
+  "SubTypeDesc": "מניות",
+  "SubId": "1040",
+  "ETFType": null
+ },
+ {
+  "Id": "629014",
+  "Name": "טבע",
+  "Smb": "טבע",
+  "ISIN": "IL0006290147",
+  "Type": 1,
+  "SubType": "1",
+  "SubTypeDesc": "מניות",
+  "SubId": "629",
+  "ETFType": null
+ },
+ {
+  "Id": "604611",
+  "Name": "לאומי",
+  "Smb": "לאומי",
+  "ISIN": "IL0006046119",
+  "Type": 1,
+  "SubType": "1",
+  "SubTypeDesc": "מניות",
+  "SubId": "604",
+  "ETFType": null
+ },
+ {
+  "Id": "273011",
+  "Name": "נייס",
+  "Smb": "נייס",
+  "ISIN": "IL0002730112",
+  "Type": 1,
+  "SubType": "1",
+  "SubTypeDesc": "מניות",
+  "SubId": "273",
+  "ETFType": null
+ },
+ {
+  "Id": "1186634",
+  "Name": "קסם ETF י(60) חסר ת\"א נדל\"ן (2649.49)",
+  "Smb": "קסם.ס208",
+  "ISIN": "IL0011866345",
+  "Type": 1,
+  "SubType": "42",
+  "SubTypeDesc": "קרן סל מניות",
+  "SubId": "1733",
+  "ETFType": null
+ },
+ {
+  "Id": "604",
+  "Name": "לאומי",
+  "Smb": null,
+  "ISIN": null,
+  "Type": 5,
+  "SubType": "0",
+  "SubTypeDesc": "חברה",
+  "SubId": "604611",
+  "ETFType": null
+ },
+ {
+  "Id": "3730579",
+  "Name": "אאורה אגח טז",
+  "Smb": "אארה.ק16",
+  "ISIN": "IL0037305799",
+  "Type": 1,
+  "SubType": "5",
+  "SubTypeDesc": "אג\"ח קונצרני",
+  "SubId": "373",
+  "ETFType": null
+ },
+ {
+  "Id": "1225937",
+  "Name": "אב-גד אופ 2",
+  "Smb": "אבגד.א2",
+  "ISIN": "IL0012259375",
+  "Type": 1,
+  "SubType": "2",
+  "SubTypeDesc": "כתבי אופציה",
+  "SubId": "1829",
+  "ETFType": null
+ }
+]

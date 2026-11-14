@@ -1,0 +1,90 @@
+[
+ {
+  "Id": "1081124",
+  "Name": "ELBIT SYSTEMS",
+  "Smb": "ESLT",
+  "ISIN": "IL0010811243",
+  "Type": 1,
+  "SubType": "1",
+  "SubTypeDesc": "Shares",
+  "SubId": "1040",
+  "ETFType": null
+ },
+ {
+  "Id": "604611",
+  "Name": "LEUMI",
+  "Smb": "LUMI",
+  "ISIN": "IL0006046119",
+  "Type": 1,
+  "SubType": "1",
+  "SubTypeDesc": "Shares",
+  "SubId": "604",
+  "ETFType": null
+ },
+ {
+  "Id": "273011",
+  "Name": "NICE",
+  "Smb": "NICE",
+  "ISIN": "IL0002730112",
+  "Type": 1,
+  "SubType": "1",
+  "SubTypeDesc": "Shares",
+  "SubId": "273",
+  "ETFType": null
+ },
+ {
+  "Id": "629014",
+  "Name": "TEVA",
+  "Smb": "TEVA",
+  "ISIN": "IL0006290147",
+  "Type": 1,
+  "SubType": "1",
+  "SubTypeDesc": "Shares",
+  "SubId": "629",
+  "ETFType": null
+ },
+ {
+  "Id": "1186634",
+  "Name": "(2649.49) KSM ETF (60) Short TA-RealEstate IL",
+  "Smb": "KSM.F208",
+  "ISIN": "IL0011866345",
+  "Type": 1,
+  "SubType": "42",
+  "SubTypeDesc": "ETF Fund - Equity",
+  "SubId": "1733",
+  "ETFType": null
+ },
+ {
+  "Id": "604",
+  "Name": "LEUMI BANK",
+  "Smb": null,
+  "ISIN": null,
+  "Type": 5,
+  "SubType": "0",
+  "SubTypeDesc": "Company",
+  "SubId": "604611",
+  "ETFType": null
+ },
+ {
+  "Id": "1231687",
+  "Name": "ABOU RESIDEN B1",
+  "Smb": "ABOU.B1",
+  "ISIN": "IL0012316878",
+  "Type": 1,
+  "SubType": "5",
+  "SubTypeDesc": "Corporate Bonds",
+  "SubId": "1863",
+  "ETFType": null
+ },
+ {
+  "Id": "1234913",
+  "Name": "ABOU RESIDEN W1",
+  "Smb": "ABOU.W1",
+  "ISIN": "IL0012349135",
+  "Type": 1,
+  "SubType": "2",
+  "SubTypeDesc": "Warrants",
+  "SubId": "1863",
+  "ETFType": null
+ }
+]

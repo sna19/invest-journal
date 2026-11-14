@@ -1,0 +1,11 @@
+ACT Symbol|Security Name|Exchange|CQS Symbol|ETF|Round Lot Size|Test Issue|NASDAQ Symbol
+BRK.B|Berkshire Hathaway Inc. New Common Stock|N|BRK.B|N|40|N|BRK.B
+GLD|SPDR Gold Shares|P|GLD|Y|40|N|GLD
+IVV|iShares Core S&P 500 ETF|P|IVV|Y|40|N|IVV
+SPY|State Street SPDR S&P 500 ETF Trust|P|SPY|Y|40|N|SPY
+TEVA|Teva Pharmaceutical Industries Limited Ordinary Shares|N|TEVA|N|100|N|TEVA
+ZEXIT|IEX Test Company Test Symbol Two for IEX|V|ZEXIT|N|100|Y|ZEXIT
+AAAA|Amplius Aggressive Asset Allocation ETF|Z|AAAA|Y|100|N|AAAA
+AAAB|Corgi FTSE Aaa-A Intermediate Corporate Bond ETF|Z|AAAB|Y|100|N|AAAB
+ABR$D|Arbor Realty Trust 6.375% Series D Cumulative Redeemable Preferred Stock, Liquidation Preference $25.00 per Share|N|ABRpD|N|100|N|ABR-D
+File Creation Time: 1113202621:31||||||
