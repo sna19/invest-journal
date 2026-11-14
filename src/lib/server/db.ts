@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import { drizzle, type BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import * as appSchema from './schema/app.js';
 import * as marketSchema from './schema/market.js';
@@ -52,6 +52,33 @@ export function openMarket(path: string) {
 	const m = open(path, marketSchema, join(migrationsDir, 'market')) as { sqlite: Database.Database; db: MarketDb };
 	seedMarket(m.db);
 	return m;
+}
+
+/**
+ * One line per volume: who the process is, who owns the folder, whether it can write there. The usual
+ * failure on the NAS is a volume the container user (1026:100) cannot write to — say so in the log.
+ */
+export function volumeReport(): { ok: boolean; lines: string[] } {
+	const who = `uid ${process.getuid?.()} gid ${process.getgid?.()}`;
+	let ok = true;
+	const lines = [dataDir, backupDir, rawDir].map((dir) => {
+		try {
+			mkdirSync(dir, { recursive: true });
+			const st = statSync(dir);
+			let writable = true;
+			try {
+				accessSync(dir, constants.W_OK);
+			} catch {
+				writable = false;
+				ok = false;
+			}
+			return `${dir}: owner ${st.uid}:${st.gid} mode ${(st.mode & 0o777).toString(8)} — ${writable ? 'writable' : 'NOT writable'} for ${who}`;
+		} catch (e) {
+			ok = false;
+			return `${dir}: ${(e as Error).message} (${who})`;
+		}
+	});
+	return { ok, lines };
 }
 
 let app: ReturnType<typeof openApp> | undefined;
