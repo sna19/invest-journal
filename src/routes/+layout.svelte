@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '#lib/styles/tokens.css';
 	import TabBar from '#lib/TabBar.svelte';
+	import Toast from '#lib/Toast.svelte';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
@@ -8,6 +9,7 @@
 
 <main>{@render children()}</main>
 <TabBar />
+<Toast />
 
 <style>
 	main {

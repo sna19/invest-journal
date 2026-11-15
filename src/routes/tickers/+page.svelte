@@ -90,7 +90,7 @@
 		{#each groups as g (g.title)}
 			<table>
 				<caption>{g.title}</caption>
-				<thead><tr><th>Биржа</th><th>Акции</th><th>ETF</th><th title="Бумаги, исчезнувшие из списков: хранятся, но не предлагаются">Нет в списках</th></tr></thead>
+				<thead><tr><th>Биржа</th><th>Акции</th><th>ETF</th><th title="Исчезли из списков биржи: хранятся для старых гипотез, но не предлагаются">Выбыли</th></tr></thead>
 				<tbody>
 					{#each g.rows as e (e.code)}
 						<tr>

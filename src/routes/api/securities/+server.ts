@@ -9,6 +9,7 @@ export function GET({ url }) {
 	const items = searchSecurities(getMarket().sqlite, url.searchParams.get('q') ?? '', {
 		market: m === 'us' || m === 'il' ? (m as Market) : 'all',
 		includeInactive: url.searchParams.get('inactive') === '1',
+		noIndex: url.searchParams.get('noindex') === '1',
 		limit: Math.min(Number(url.searchParams.get('limit')) || 20, 100)
 	});
 	return json({ items, ms: Math.round((performance.now() - t0) * 10) / 10 });

@@ -14,10 +14,22 @@
 		{ href: '/more', label: 'Ещё', icon: Ellipsis, match: (p: string) => ['/more', '/tickers', '/settings'].some((x) => p.startsWith(x)) }
 	];
 	const path = $derived(page.url.pathname);
+
+	// «+» hides while the page scrolls down and comes back on the way up or at the end: it never covers data for long
+	let hidden = $state(false);
+	let lastY = 0;
+	function onScroll() {
+		const y = window.scrollY;
+		const atEnd = window.innerHeight + y >= document.documentElement.scrollHeight - 8;
+		if (Math.abs(y - lastY) > 6) hidden = y > lastY && y > 40 && !atEnd;
+		lastY = y;
+	}
 </script>
 
+<svelte:window onscroll={onScroll} />
+
 {#if !path.startsWith('/new')}
-	<a class="plus" href="/new" aria-label="Новая гипотеза" title="Новая гипотеза"><Plus size={26} strokeWidth={2.4} /></a>
+	<a class="plus" class:hidden href="/new" aria-label="Новая гипотеза" title="Новая гипотеза"><Plus size={26} strokeWidth={2.4} /></a>
 {/if}
 <nav class="tabbar" aria-label="Разделы">
 	{#each tabs as t (t.href)}
@@ -71,5 +83,11 @@
 		color: var(--accent-text);
 		box-shadow: var(--shadow);
 		flex-direction: row;
+		transition: transform 0.2s, opacity 0.2s;
+	}
+	.plus.hidden {
+		transform: translateY(24px) scale(0.6);
+		opacity: 0;
+		pointer-events: none;
 	}
 </style>

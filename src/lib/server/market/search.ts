@@ -38,7 +38,7 @@ function prepare(sqlite: Database.Database, key: string, sql: string) {
 export function searchSecurities(
 	sqlite: Database.Database,
 	q: string,
-	opts: { market?: Market; includeInactive?: boolean; limit?: number } = {}
+	opts: { market?: Market; includeInactive?: boolean; noIndex?: boolean; limit?: number } = {}
 ): SecurityHit[] {
 	const query = q.trim().toLowerCase();
 	if (query.length < MIN_QUERY) return [];
@@ -46,11 +46,12 @@ export function searchSecurities(
 	const where = [
 		"s.search like ? escape '\\'",
 		opts.includeInactive ? '1 = 1' : 's.active = 1',
-		market === 'us' ? "e.country = 'US'" : market === 'il' ? "e.country = 'IL'" : '1 = 1'
+		market === 'us' ? "e.country = 'US'" : market === 'il' ? "e.country = 'IL'" : '1 = 1',
+		opts.noIndex ? "s.type <> 'index'" : '1 = 1'
 	].join(' and ');
 	const st = prepare(
 		sqlite,
-		`search:${market}:${!!opts.includeInactive}`,
+		`search:${market}:${!!opts.includeInactive}:${!!opts.noIndex}`,
 		`select s.id, s.symbol, s.name_en as nameEn, s.name_he as nameHe, s.exchange_code as exchangeCode,
 		        e.name as exchangeName, s.type, s.currency, s.price_unit as priceUnit, s.active
 		   from ref_securities s join ref_exchanges e on e.code = s.exchange_code
