@@ -76,7 +76,16 @@
 		load();
 	});
 
-	const opened = $derived(items?.find((r) => r.h.id === openId) ?? null);
+	// a link from a source card may point to a hypothesis outside the current filter: fetch it on its own
+	let single = $state<Row | null>(null);
+	$effect(() => {
+		const id = openId;
+		if (id === null || !items || items.some((r) => r.h.id === id) || single?.h.id === id) return;
+		fetch(`/api/hypotheses/${id}`)
+			.then((r) => (r.ok ? r.json() : null))
+			.then((j) => (single = j));
+	});
+	const opened = $derived(items?.find((r) => r.h.id === openId) ?? (single?.h.id === openId ? single : null));
 	const filtered = $derived(status !== 'open' || mode !== 'all' || market !== 'all' || defaultOnly);
 
 	function changed(h: Row['h']) {
