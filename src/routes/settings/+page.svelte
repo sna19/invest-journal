@@ -61,12 +61,18 @@
 		// a hypothesis card links here: #issue-<id>
 		const hash = page.url.hash;
 		if (hash.startsWith('#issue-')) {
+			highlight = Number(hash.slice(7));
 			await tick();
 			document.querySelector(hash)?.scrollIntoView({ block: 'center' });
 		}
 	});
 
 	let deciding = $state<number | null>(null);
+	/** the issue a hypothesis card linked to */
+	let highlight = $state<number | null>(null);
+	/** older issues were written before the details were in Russian and rounded */
+	const clean = (d: string) =>
+		d.replace(/\s*without a corporate action/, '').replace(/\d+\.\d{4,}/g, (x) => String(Number(Number(x).toPrecision(5)))).replace(/(\d)\.(\d)/g, '$1,$2');
 	/** stage 4: a person decides about a jump; a hypothesis waiting for it closes right away */
 	async function decide(id: number, decision: 'valid' | 'invalid') {
 		deciding = id;
@@ -175,10 +181,10 @@
 			</p>
 			<ul class="issues">
 				{#each data.issues.recent as q (q.id)}
-					<li id="issue-{q.id}">
+					<li id="issue-{q.id}" class:hl={highlight === q.id}>
 						<div>
 							<b>{q.symbol ?? '—'}</b>{q.date ? ` ${q.date.split('-').reverse().join('.')}` : ''} — {RULE[q.rule] ?? q.rule}{q.detail
-								? `: ${q.detail}`
+								? `: ${clean(q.detail)}`
 								: ''}
 						</div>
 						{#if q.rule === 'price.jump'}
@@ -322,7 +328,7 @@
 		border-top: 1px solid var(--line);
 		font-size: var(--fs-s);
 	}
-	.issues li:target {
+	.issues li.hl {
 		background: var(--warn-bg);
 		border-radius: var(--r1);
 		padding: var(--s2);
