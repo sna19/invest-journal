@@ -101,11 +101,17 @@ export function updateHypotheses(app: Database.Database, market: Database.Databa
 	const close = app.prepare(
 		`update hypotheses set status = 'closed', exit_date = ?, exit_price = ?, benchmark_exit = ?, return_pct = ?, benchmark_return_pct = ?,
 		        excess_pct = ?, outcome = ?, last_date = ?, last_price = ?, benchmark_last = ?, current_return_pct = ?,
-		        current_benchmark_return_pct = ?, current_excess_pct = ? where id = ? and status = 'open'`
+		        current_benchmark_return_pct = ?, current_excess_pct = ?, wait_reason = null, wait_issue_id = null where id = ? and status = 'open'`
 	);
 
+	// the reason stays in the hypothesis: its card says why it is not closed (stage 4)
+	const setWait = app.prepare('update hypotheses set wait_reason = ?, wait_issue_id = ? where id = ?');
+	const wait = (id: number, why: string, issueId: number | null = null) => {
+		out.waiting.push({ id, why });
+		setWait.run(why, issueId, id);
+	};
 	const openIssue = market.prepare(
-		`select rule, date from ops_quality_issues where status = 'open' and security_id in (?, ?) and date between ? and ?
+		`select id, rule, date from ops_quality_issues where status = 'open' and security_id in (?, ?) and date between ? and ?
 		    and rule in ('price.jump', 'price.unit_glitch', 'price.unit_mismatch') limit 1`
 	);
 	for (const h of open) {
@@ -113,7 +119,7 @@ export function updateHypotheses(app: Database.Database, market: Database.Databa
 		if (h.entry_price === null) {
 			entry = p.firstFrom(h.security_id, h.benchmark_id, h.entry_date);
 			if (!entry || entry.date > today) {
-				out.waiting.push({ id: h.id, why: 'нет цены входа' });
+				wait(h.id, 'нет цены входа: ждёт первого закрытия с даты записи');
 				continue;
 			}
 			setEntry.run(entry.s.close, entry.b.close, entry.date, h.id);
@@ -123,9 +129,12 @@ export function updateHypotheses(app: Database.Database, market: Database.Databa
 
 		const due = h.horizon_date < today;
 		// an unconfirmed jump or a unit problem in the term: the numbers may be wrong — wait (section 5)
-		const doubt = openIssue.get(h.security_id, h.benchmark_id, entry.date, due ? h.horizon_date : today) as { rule: string; date: string } | undefined;
+		const doubt = openIssue.get(h.security_id, h.benchmark_id, entry.date, due ? h.horizon_date : today) as
+			| { id: number; rule: string; date: string }
+			| undefined;
 		if (doubt && due) {
-			out.waiting.push({ id: h.id, why: `проблема качества цен ${doubt.date} (${doubt.rule}) — ждёт проверки` });
+			const what = doubt.rule === 'price.jump' ? 'скачок цены больше 50%' : 'путаница единицы цены';
+			wait(h.id, `${what} ${doubt.date.split('-').reverse().join('.')} ждёт проверки в «Настройках → Данные»`, doubt.id);
 			continue;
 		}
 		const benchLast = p.lastDate(h.benchmark_id);
@@ -155,9 +164,13 @@ export function updateHypotheses(app: Database.Database, market: Database.Databa
 				out.closed++;
 				continue;
 			}
-			out.waiting.push({ id: h.id, why: known ? `нет цены бумаги за ${behind} торг. дн. до срока` : 'нет данных по сроку' });
+			wait(h.id, known ? `нет цены бумаги за ${behind} торговых дня до срока` : 'цены за дату срока ещё не загружены');
+			setCurrent.run(exitDay.date, exitDay.s.close, exitDay.b.close, r.returnPct, r.benchmarkReturnPct, r.excessPct, h.id);
+			out.updated++;
+			continue;
 		}
 		setCurrent.run(exitDay.date, exitDay.s.close, exitDay.b.close, r.returnPct, r.benchmarkReturnPct, r.excessPct, h.id);
+		setWait.run(null, null, h.id);
 		out.updated++;
 	}
 	return out;

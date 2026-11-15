@@ -111,6 +111,9 @@ export const hypotheses = sqliteTable(
 		currentReturnPct: real(),
 		currentBenchmarkReturnPct: real(),
 		currentExcessPct: real(),
+		/** why an open hypothesis whose term has come is not closed yet, and the price problem it waits for */
+		waitReason: text(),
+		waitIssueId: integer(),
 
 		// fixed by the app when closing
 		/** open | closed | closed_early | cancelled */

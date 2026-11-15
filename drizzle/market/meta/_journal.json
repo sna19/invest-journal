@@ -15,6 +15,13 @@
       "when": 1794718265039,
       "tag": "0001_prices",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794747706283,
+      "tag": "0002_issue_payload",
+      "breakpoints": true
     }
   ]
 }
