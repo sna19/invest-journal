@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 /**
  * market.db — market data (spec section 14). Table groups by prefix: ref_* (reference), ops_* (service);
@@ -44,6 +44,8 @@ export const securities = sqliteTable(
 		delistedAt: text(),
 		active: integer({ mode: 'boolean' }).notNull().default(true),
 		isBenchmark: integer({ mode: 'boolean' }).notNull().default(false),
+		/** null — not tried yet; ok — the price provider knows it; none — it does not («нет цен») */
+		priceStatus: text(),
 		/** lower-case «symbol name_en name_he» for the search field */
 		search: text().notNull(),
 		updatedAt: now()
@@ -166,4 +168,59 @@ export const qualityIssues = sqliteTable(
 		createdAt: now()
 	},
 	(t) => [index('ops_quality_issues_status').on(t.status)]
+);
+
+/** Key-value settings of the data subsystem, e.g. ring = 1 | 2 | 3 (spec section 14). */
+export const settings = sqliteTable('ops_settings', {
+	key: text().primaryKey(),
+	value: text().notNull()
+});
+
+// ── market ─────────────────────────────────────────────────────────────────────
+
+/** Daily prices as the provider gave them (Yahoo: already adjusted for splits, not for dividends). */
+export const pricesDaily = sqliteTable(
+	'market_prices_daily',
+	{
+		securityId: integer().notNull(),
+		date: text().notNull(),
+		open: real(),
+		high: real(),
+		low: real(),
+		close: real().notNull(),
+		volume: real(),
+		providerCode: text().notNull(),
+		runId: integer()
+	},
+	(t) => [primaryKey({ columns: [t.securityId, t.date] })]
+);
+
+export const corporateActions = sqliteTable(
+	'market_corporate_actions',
+	{
+		securityId: integer().notNull(),
+		exDate: text().notNull(),
+		/** dividend | split */
+		kind: text().notNull(),
+		/** split: new shares per old one (10 for 10:1) */
+		ratio: real(),
+		/** dividend per share, in the security's price unit */
+		amount: real(),
+		providerCode: text().notNull()
+	},
+	(t) => [primaryKey({ columns: [t.securityId, t.exDate, t.kind] })]
+);
+
+/**
+ * Cumulative dividend factor: prices strictly before `date` are multiplied by `factor`. Recomputed only for a
+ * security that got a new action. Splits need no factor: the provider's prices are split-adjusted already.
+ */
+export const adjustmentFactors = sqliteTable(
+	'market_adjustment_factors',
+	{
+		securityId: integer().notNull(),
+		date: text().notNull(),
+		factor: real().notNull()
+	},
+	(t) => [primaryKey({ columns: [t.securityId, t.date] })]
 );

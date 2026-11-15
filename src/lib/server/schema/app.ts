@@ -101,6 +101,16 @@ export const hypotheses = sqliteTable(
 		benchmarkId: integer().notNull(),
 		benchmarkSymbol: text().notNull(),
 		benchmarkEntry: real(),
+		/** the trading day whose close is the entry: the first one from entry_date (section 6) */
+		entryPriceDate: text(),
+
+		// the current result of an open hypothesis, refreshed by the daily job
+		lastDate: text(),
+		lastPrice: real(),
+		benchmarkLast: real(),
+		currentReturnPct: real(),
+		currentBenchmarkReturnPct: real(),
+		currentExcessPct: real(),
 
 		// fixed by the app when closing
 		/** open | closed | closed_early | cancelled */
