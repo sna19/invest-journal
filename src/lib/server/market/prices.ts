@@ -56,46 +56,136 @@ export function securitiesForPrices(sqlite: Database.Database, ids?: number[]): 
 	return rows.map((r) => ({ ...r, isBenchmark: !!r.isBenchmark }));
 }
 
-/** Step 4. Pure, so the rules are tested on their own. */
+/** The exchange's weekend: US Sat–Sun; TASE Fri–Sat until 2026-01-02, Sat–Sun since (it moved to Mon–Fri). */
+export function isWeekend(calendar: string, date: string) {
+	const d = new Date(date + 'T12:00:00Z').getUTCDay();
+	if (calendar === 'TASE' && date < '2026-01-04') return d === 5 || d === 6;
+	return d === 0 || d === 6;
+}
+
+/**
+ * ×100 with the day's own move on top (AMPA 28→29.04.2026: 16.53 shekels → 1757 agorot, ×106): no real price
+ * moves 30-fold in a day, and splits come already adjusted from the provider.
+ */
+const isHundred = (q: number) => q > 30 && q < 300;
+const isHundredth = (q: number) => q > 1 / 300 && q < 1 / 30;
+
+/**
+ * TASE shares in agorot: Yahoo gives parts of some histories in shekels (AMPA up to 15.05.2026: 16.67, from
+ * 18.05.2026: 1652 — checked against the TASE site 15.11.2026). The latest part of the series is in the unit
+ * the answer declares (ILA), so the series is walked from its end back and a close exactly ×100 or ÷100 off the
+ * next one is brought to the unit of the newer part. Returns the factor applied per date.
+ */
+export function normalizeAgorot(rows: PriceRow[]): Map<string, number> {
+	const scaled = new Map<string, number>();
+	let ref: number | null = null;
+	for (let i = rows.length - 1; i >= 0; i--) {
+		const r = rows[i];
+		if (!(r.close > 0)) continue;
+		if (ref !== null) {
+			const q = r.close / ref;
+			const k = isHundredth(q) ? 100 : isHundred(q) ? 0.01 : 1;
+			if (k !== 1) {
+				for (const f of ['open', 'high', 'low', 'close'] as const) if (r[f] !== null) r[f] = (r[f] as number) * k;
+				scaled.set(r.date, k);
+			}
+		}
+		ref = r.close;
+	}
+	return scaled;
+}
+
+/**
+ * Step 4. Pure, so the rules are tested on their own. Rules of spec section 14, adapted to what the data are
+ * (15.11.2026, stage 3 acceptance on 30 TASE shares over 10 years):
+ * — close > 0; low ≤ close ≤ high; volume ≥ 0;
+ * — an open outside [low, high] (TASE's opening auction often is) drops the open, not the row;
+ * — on TASE a close outside Yahoo's [low, high] keeps the close and drops the range: the official close comes
+ *   from the closing auction, Yahoo's range covers the continuous session only (thin shares often have high = low);
+ * — the exchange's weekend is refused; a weekday the benchmark lacks is kept (the index series has holes);
+ * — the unit: for a share in agorot, days ×100 / ÷100 off are brought to agorot (normalizeAgorot, and against the
+ *   last stored close); for anything else such a day is refused as agorot and shekels mixed up;
+ * — a close more than 50% off the last accepted close without a corporate action waits for confirmation and is
+ *   kept out. Two days in a row at the new level confirm it: the second is accepted, so a real level change
+ *   loses only its first day.
+ */
 export function checkPrices(
-	rows: PriceRow[],
-	opts: { prevClose: number | null; actionDates: Set<string>; calendar: Set<string> | null; calendarMax: string | null }
+	input: PriceRow[],
+	opts: {
+		prevClose: number | null;
+		actionDates: Set<string>;
+		calendar: Set<string> | null;
+		calendarMax: string | null;
+		calendarName?: string;
+		/** the security is quoted in agorot (ILA) */
+		agorot?: boolean;
+	}
 ) {
 	const good: PriceRow[] = [];
 	const issues: { date: string; rule: string; detail: string }[] = [];
-	let prev = opts.prevClose;
+	/** known, not a problem: kept rows whose day range was dropped or whose unit was brought to agorot */
+	const known: { date: string; rule: string; detail: string }[] = [];
+	const rows = input.map((r) => ({ ...r }));
+	const scaled = opts.agorot ? normalizeAgorot(rows) : new Map<string, number>();
+	const far = (a: number, b: number) => Math.abs(a / b - 1) > 0.5;
+	let accepted = opts.prevClose;
+	/** the provider's previous close when that day was refused as a jump */
+	let pending: number | null = null;
 	for (const r of rows) {
 		const bad = (rule: string, detail: string) => issues.push({ date: r.date, rule, detail });
 		if (!(r.close > 0)) {
 			bad('price.not_positive', `close ${r.close}`);
 			continue;
 		}
-		const eps = r.close * 1e-6;
-		if (r.high !== null && r.low !== null) {
-			const lo = Math.min(r.open ?? r.close, r.close);
-			const hi = Math.max(r.open ?? r.close, r.close);
-			if (r.low > lo + eps || hi > r.high + eps || r.low > r.high + eps) {
-				bad('price.ohlc', `o ${r.open} h ${r.high} l ${r.low} c ${r.close}`);
-				continue;
-			}
-		}
 		if (r.volume !== null && r.volume < 0) {
 			bad('price.volume', `volume ${r.volume}`);
 			continue;
 		}
-		if (opts.calendar && opts.calendarMax && r.date <= opts.calendarMax && !opts.calendar.has(r.date)) {
+		if (opts.calendarName && isWeekend(opts.calendarName, r.date)) {
 			bad('price.not_trading_day', r.date);
 			continue;
 		}
-		if (prev !== null && Math.abs(r.close / prev - 1) > 0.5 && !opts.actionDates.has(r.date)) {
-			// waits for a person: kept out of the table until confirmed (spec section 14)
-			bad('price.jump', `${prev} → ${r.close} (${(((r.close / prev) - 1) * 100).toFixed(1)}%) without a corporate action`);
-			continue;
+		// the batch against what is stored: the whole batch may be in the other unit
+		const q = accepted !== null ? r.close / accepted : 1;
+		if (isHundred(q) || isHundredth(q)) {
+			if (!opts.agorot) {
+				bad('price.unit_glitch', `${accepted} → ${r.close}: ×${q >= 1 ? Math.round(q) : '1/' + Math.round(1 / q)} (агороты и шекели перепутаны)`);
+				continue;
+			}
+			const k = isHundredth(q) ? 100 : 0.01;
+			for (const f of ['open', 'high', 'low', 'close'] as const) if (r[f] !== null) r[f] = (r[f] as number) * k;
+			scaled.set(r.date, (scaled.get(r.date) ?? 1) * k);
 		}
+		if (scaled.has(r.date)) known.push({ date: r.date, rule: 'price.unit_converted', detail: `×${scaled.get(r.date) === 100 ? '100 (шекели → агороты)' : '1/100'}` });
+		const eps = r.close * 1e-6;
+		if (r.high !== null && r.low !== null) {
+			const range = `o ${r.open} h ${r.high} l ${r.low} c ${r.close}`;
+			if (r.low > r.high + eps) {
+				bad('price.ohlc', range);
+				continue;
+			}
+			if (r.close < r.low - eps || r.close > r.high + eps) {
+				if (opts.calendarName !== 'TASE') {
+					bad('price.ohlc', range);
+					continue;
+				}
+				known.push({ date: r.date, rule: 'price.ohlc_auction', detail: range });
+				r.open = r.high = r.low = null;
+			} else if (r.open !== null && (r.open < r.low - eps || r.open > r.high + eps)) r.open = null;
+		}
+		if (accepted !== null && far(r.close, accepted) && !opts.actionDates.has(r.date)) {
+			if (pending === null || far(r.close, pending)) {
+				bad('price.jump', `${accepted} → ${r.close} (${((r.close / accepted - 1) * 100).toFixed(1)}%) without a corporate action`);
+				pending = r.close;
+				continue;
+			}
+			// the second day at the new level: the change is real
+		}
+		pending = null;
+		accepted = r.close;
 		good.push(r);
-		prev = r.close;
 	}
-	return { good, issues };
+	return { good, issues, known, scaled };
 }
 
 /**
@@ -186,22 +276,30 @@ export async function loadSecurity(ctx: Ctx, sec: Sec, from: string, to: string)
 				| { close: number }
 				| undefined)?.close ?? null)
 		: null;
-	let calendar: Set<string> | null = null;
-	let calendarMax: string | null = null;
-	if (!sec.isBenchmark && first) {
-		calendar = new Set(
-			(sqlite.prepare('select date from ref_trading_days where exchange_code = ? and date >= ?').all(sec.calendar, first) as { date: string }[]).map(
-				(r) => r.date
-			)
-		);
-		calendarMax = (sqlite.prepare('select max(date) as m from ref_trading_days where exchange_code = ?').get(sec.calendar) as { m: string | null }).m;
+	const { good, issues, known, scaled } = checkPrices(parsed.rows, {
+		prevClose,
+		actionDates: new Set(parsed.actions.map((a) => a.exDate)),
+		calendar: null,
+		calendarMax: null,
+		calendarName: sec.calendar,
+		agorot: sec.priceUnit === 'ILA'
+	});
+	// a dividend paid in the converted part of the history is in the same wrong unit as those closes
+	if (scaled.size) {
+		const dates = parsed.rows.map((r) => r.date);
+		for (const a of parsed.actions) {
+			if (a.kind !== 'dividend' || a.amount === null) continue;
+			const day = dates.find((d) => d >= a.exDate);
+			const k = day ? scaled.get(day) : undefined;
+			if (k) a.amount *= k;
+		}
 	}
-	const { good, issues } = checkPrices(parsed.rows, { prevClose, actionDates: new Set(parsed.actions.map((a) => a.exDate)), calendar, calendarMax });
 	res.issues = issues.length;
 
 	// 5 merge: insert or update by (security, date); a rerun changes nothing
 	sqlite.transaction(() => {
 		for (const i of issues) issue.run(ctx.runId, sec.id, i.date, i.rule, i.detail, 'open');
+		for (const i of known) issue.run(ctx.runId, sec.id, i.date, i.rule, i.detail, 'known');
 		const old = sqlite.prepare('select open, high, low, close, volume from market_prices_daily where security_id = ? and date = ?');
 		const up = sqlite.prepare(
 			`insert into market_prices_daily (security_id, date, open, high, low, close, volume, provider_code, run_id)

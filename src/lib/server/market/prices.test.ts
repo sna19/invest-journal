@@ -6,7 +6,7 @@ import { openApp, openMarket } from '../db.js';
 import { closeEarly, result, updateHypotheses } from '../results.js';
 import { HttpError } from './http.js';
 import { enqueue, enqueueMissingHistory, findGaps, resetRunning, runQueue } from './history.js';
-import { checkPrices, computeFactors, loadSecurity, securitiesForPrices, type Ctx } from './prices.js';
+import { checkPrices, computeFactors, isWeekend, loadSecurity, securitiesForPrices, type Ctx } from './prices.js';
 import { ringSecurities, setSetting } from './rings.js';
 import type { Fetcher } from './types.js';
 import { parseChart } from './yahoo.js';
@@ -103,13 +103,55 @@ describe('parse', () => {
 
 describe('checks (section 14)', () => {
 	const row = (date: string, close: number, o = close, h = close, l = close, v = 1) => ({ date, open: o, high: h, low: l, close, volume: v });
-	it('positive price, low ≤ open/close ≤ high, volume ≥ 0, trading day, no 50% jump without an action', () => {
+	const opts = { prevClose: 100, actionDates: new Set<string>(), calendar: null, calendarMax: null, calendarName: 'US' };
+	it('positive close, volume ≥ 0, no weekend, close inside the day range (US)', () => {
 		const { good, issues } = checkPrices(
-			[row('2026-01-05', 100), row('2026-01-06', 0), row('2026-01-07', 101, 101, 100, 99), row('2026-01-08', 102, 102, 102, 102, -5), row('2026-01-10', 103), row('2026-01-12', 200), row('2026-01-13', 210)],
-			{ prevClose: 99, actionDates: new Set(['2026-01-13']), calendar: new Set(['2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08', '2026-01-12', '2026-01-13']), calendarMax: '2026-01-13' }
+			[row('2026-01-05', 100), row('2026-01-06', 0), row('2026-01-07', 101, 101, 100, 99), row('2026-01-08', 102, 102, 102, 102, -5), row('2026-01-10', 103), row('2026-01-12', 104)],
+			opts
 		);
-		expect(good.map((r) => r.date)).toEqual(['2026-01-05', '2026-01-13']);
-		expect(issues.map((i) => i.rule)).toEqual(['price.not_positive', 'price.ohlc', 'price.volume', 'price.not_trading_day', 'price.jump']);
+		expect(good.map((r) => r.date)).toEqual(['2026-01-05', '2026-01-12']);
+		expect(issues.map((i) => i.rule)).toEqual(['price.not_positive', 'price.ohlc', 'price.volume', 'price.not_trading_day']);
+	});
+	it('agorot: an older part of the history in shekels (AMPA before 18.05.2026) is brought to agorot', () => {
+		const { good, issues, known } = checkPrices(
+			[row('2026-05-14', 16.86), row('2026-05-15', 16.67), row('2026-05-18', 1652), row('2026-05-19', 1614)],
+			{ ...opts, prevClose: null, calendarName: 'TASE', agorot: true }
+		);
+		expect(issues).toEqual([]);
+		expect(good.map((r) => Math.round(r.close * 100) / 100)).toEqual([1686, 1667, 1652, 1614]);
+		expect(known.filter((k) => k.rule === 'price.unit_converted').map((k) => k.date)).toEqual(['2026-05-14', '2026-05-15']);
+	});
+	it('agorot: a unit switch on a day the price also moves (16.53 shekels → 1757 agorot) is still a unit switch', () => {
+		const { good, issues } = checkPrices([row('2026-04-28', 16.53), row('2026-04-29', 1757), row('2026-04-30', 1720)], { ...opts, prevClose: null, calendarName: 'TASE', agorot: true });
+		expect(issues).toEqual([]);
+		expect(good.map((r) => Math.round(r.close))).toEqual([1653, 1757, 1720]);
+	});
+	it('agorot: a daily batch in shekels against stored agorot is converted; for USD the same is refused', () => {
+		const a = checkPrices([row('2026-02-02', 7.9), row('2026-02-03', 7.95)], { ...opts, prevClose: 787, calendarName: 'TASE', agorot: true });
+		expect(a.good.map((r) => Math.round(r.close))).toEqual([790, 795]);
+		const u = checkPrices([row('2026-02-02', 7.9)], { ...opts, prevClose: 787 });
+		expect(u.issues.map((i) => i.rule)).toEqual(['price.unit_glitch']);
+	});
+	it('a real level change: the first day waits, the second confirms it; an action day is not a jump', () => {
+		const { good, issues } = checkPrices([row('2026-03-02', 200), row('2026-03-03', 205), row('2026-03-04', 400)], { ...opts, actionDates: new Set(['2026-03-04']) });
+		expect(good.map((r) => r.date)).toEqual(['2026-03-03', '2026-03-04']);
+		expect(issues.map((i) => i.date)).toEqual(['2026-03-02']);
+	});
+	it('TASE: open outside the range drops the open; close outside it drops the range (closing auction)', () => {
+		const t = { ...opts, prevClose: null, calendarName: 'TASE' };
+		const a = checkPrices([row('2021-07-27', 450.7, 448.1, 454.8, 450)], t);
+		expect(a.good[0]).toMatchObject({ close: 450.7, open: null, high: 454.8 });
+		const b = checkPrices([row('2024-09-03', 937.7, 941.6, 920, 920)], t);
+		expect(b.issues).toEqual([]);
+		expect(b.good[0]).toMatchObject({ close: 937.7, open: null, high: null, low: null });
+		expect(b.known.map((k) => k.rule)).toEqual(['price.ohlc_auction']);
+	});
+	it('TASE weekend: Fri–Sat until 2026, Sat–Sun after', () => {
+		expect(isWeekend('TASE', '2025-12-26')).toBe(true); // Friday
+		expect(isWeekend('TASE', '2025-12-28')).toBe(false); // Sunday
+		expect(isWeekend('TASE', '2026-01-09')).toBe(false); // Friday
+		expect(isWeekend('TASE', '2026-01-11')).toBe(true); // Sunday
+		expect(isWeekend('US', '2026-01-10')).toBe(true);
 	});
 });
 
@@ -234,6 +276,10 @@ describe('history queue', () => {
 		]);
 		enqueue(s.market.sqlite, s.ids.amat, days[4], days[6]);
 		expect((s.market.sqlite.prepare('select count(*) as n from ops_ingest_tasks').get() as { n: number }).n).toBe(1);
+		// the provider has no prices for those days either: they become «price.missing» and are not queued again
+		await runQueue(s.ctx);
+		expect(s.market.sqlite.prepare(`select date, status from ops_quality_issues where rule = 'price.missing' order by date`).all()).toEqual([{ date: days[4], status: 'known' }, { date: days[6], status: 'known' }]);
+		expect(findGaps(s.market.sqlite, [s.ids.amat])).toBe(0);
 	});
 });
 

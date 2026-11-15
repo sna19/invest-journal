@@ -25,6 +25,20 @@
 			entryPrice: number | null;
 			benchmarkSymbol: string;
 			benchmarkEntry: number | null;
+			entryPriceDate: string | null;
+			lastDate: string | null;
+			lastPrice: number | null;
+			benchmarkLast: number | null;
+			currentReturnPct: number | null;
+			currentBenchmarkReturnPct: number | null;
+			currentExcessPct: number | null;
+			exitDate: string | null;
+			exitPrice: number | null;
+			benchmarkExit: number | null;
+			returnPct: number | null;
+			benchmarkReturnPct: number | null;
+			excessPct: number | null;
+			outcome: string | null;
 			status: string;
 			lesson: string | null;
 			closeReason: string | null;
@@ -34,7 +48,17 @@
 		author: string | null;
 		url: string | null;
 		title: string | null;
+		spark?: [number, number][] | null;
 	}
+
+	/** The result to show: final when closed, current when open. */
+	export const shown = (h: Row['h']) =>
+		h.status === 'open'
+			? { r: h.currentReturnPct, rb: h.currentBenchmarkReturnPct, x: h.currentExcessPct, date: h.lastDate, price: h.lastPrice, bench: h.benchmarkLast }
+			: { r: h.returnPct, rb: h.benchmarkReturnPct, x: h.excessPct, date: h.exitDate, price: h.exitPrice, bench: h.benchmarkExit };
+	export const num = (v: number | null, d = 2) => (v === null ? '—' : v.toLocaleString('ru-RU', { maximumFractionDigits: d }));
+	export const short = (d: string | null, year = false) =>
+		d ? new Date(d + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', ...(year ? { year: 'numeric' } : {}) }) : '';
 
 	export const SIGNAL: Record<string, string> = { recommendation: 'Рекомендация', target: 'Целевая цена', opinion: 'Мнение', news: 'Новость' };
 	export const unitOf = (h: Row['h']) => (h.priceUnit === 'ILA' ? 'агорот' : h.currency);
@@ -47,6 +71,7 @@
 	import Lock from '@lucide/svelte/icons/lock';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import HelpIcon from './HelpIcon.svelte';
+	import Pct from './Pct.svelte';
 	import { showToast } from './toast.svelte.js';
 
 	/** Spec section 9 — the hypothesis card: every field, the article, the benchmark; notes and tags stay editable. */
@@ -85,34 +110,67 @@
 		return j;
 	}
 
+	let reason = $state('');
+	let closing = $state(false);
+	async function closeNow() {
+		closing = true;
+		error = null;
+		const r = await fetch(`/api/hypotheses/${h.id}/close`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason }) });
+		const j = await r.json().catch(() => ({}));
+		closing = false;
+		if (!r.ok) return (error = j.message ?? 'Не закрылась');
+		const fresh = await fetch(`/api/hypotheses/${h.id}`).then((x) => x.json());
+		onchange(fresh.h);
+		showToast(`${h.symbol} закрыта досрочно: превышение ${j.excessPct > 0 ? '+' : ''}${j.excessPct.toFixed(1)}%`);
+	}
+	let lesson = $state(untrack(() => row.h.lesson ?? ''));
+
 	async function cancel() {
 		if (!(await post('cancel'))) return;
 		onclose();
 		showToast(`Запись ${h.symbol} отменена`, () => void post('restore'));
 	}
 
+	const res = $derived(shown(row.h));
 	const days = $derived(Math.round((Date.parse(h.horizonDate + 'T12:00:00') - Date.now()) / 86400000));
 </script>
 
 <div class="card">
 	<p class="name">{h.securityName} · {h.exchangeCode === 'TASE' ? 'TASE' : h.exchangeCode.replace('_', ' ')}</p>
 
-	<div class="price">
-		<div>
-			<span class="k">Вход</span>
-			{#if h.entryPrice === null}
+	{#if h.entryPrice === null}
+		<div class="price">
+			<div>
+				<span class="k">Вход</span>
 				<span class="wait">ожидает цену</span>
 				<span class="sub">закрытие {fmtDate(h.entryDate)} или ближайшего торгового дня</span>
-			{:else}
-				<b>{h.entryPrice} {unitOf(h)}</b>
-			{/if}
+			</div>
+			<div>
+				<span class="k">Бенчмарк</span>
+				<b>{h.benchmarkSymbol === 'SPX' ? 'S&P 500' : h.benchmarkSymbol}</b>
+			</div>
 		</div>
-		<div>
-			<span class="k">Бенчмарк</span>
-			<b>{h.benchmarkSymbol === 'SPX' ? 'S&P 500' : h.benchmarkSymbol}</b>
-			{#if h.benchmarkEntry !== null}<span class="sub">{h.benchmarkEntry}</span>{/if}
+	{:else}
+		<div class="result">
+			<div class="excess">
+				<span class="k">Превышение над бенчмарком <HelpIcon topicKey="result.excess" label="превышение" /></span>
+				<span class="big"><Pct value={res.x} /></span>
+				{#if h.status !== 'open'}
+					<span class="outcome {h.outcome}">{h.outcome === 'hit' ? 'Сработала' : 'Не сработала'}{h.status === 'closed_early' ? ' · досрочно' : ''}</span>
+				{:else if res.date}
+					<span class="sub">на {short(res.date)}</span>
+				{/if}
+			</div>
+			<table>
+				<thead><tr><th></th><th>Вход {short(h.entryPriceDate)}</th><th>{h.status === 'open' ? 'Сейчас' : 'Выход'} {short(res.date)}</th><th>Итог</th></tr></thead>
+				<tbody>
+					<tr><td>{h.symbol}, {unitOf(h)}</td><td>{num(h.entryPrice)}</td><td>{num(res.price)}</td><td><Pct value={res.r} plain /></td></tr>
+					<tr><td>{h.benchmarkSymbol === 'SPX' ? 'S&P 500' : h.benchmarkSymbol}</td><td>{num(h.benchmarkEntry)}</td><td>{num(res.bench)}</td><td><Pct value={res.rb} plain /></td></tr>
+				</tbody>
+			</table>
+			<p class="sub">Доходность — с поправкой на дивиденды{h.direction === 'short' ? '; для «падения» знак обеих доходностей изменён' : ''}.</p>
 		</div>
-	</div>
+	{/if}
 
 	<div class="locked-head">
 		<Lock size={16} /> <span>Зафиксировано при записи</span>
@@ -156,13 +214,23 @@
 	<input id="tags-{h.id}" placeholder="через запятую" bind:value={tags} onblur={() => tags !== (h.tags ?? '') && patch({ tags })} />
 	<p class="status">{#if error}<span class="err">{error}</span>{:else if saved}{saved}{/if}</p>
 
-	<div class="buttons">
-		<button class="ghost" disabled title="Появится вместе с ценами">Закрыть досрочно — с ценами (этап 3)</button>
-		{#if canCancel(h)}
-			<button class="danger" onclick={cancel}>Отменить запись — ошибка ввода</button>
-			<p class="sub">Отменить можно в первые 24 часа после записи; потом гипотеза остаётся в статистике.</p>
-		{/if}
-	</div>
+	{#if h.status === 'open'}
+		<div class="buttons">
+			{#if h.entryPrice !== null}
+				<label class="lbl" for="reason-{h.id}">Закрыть досрочно — причина</label>
+				<input id="reason-{h.id}" placeholder="Например, тезис больше не актуален" bind:value={reason} />
+				<button class="ghost" disabled={!reason.trim() || closing} onclick={closeNow}>{closing ? 'Закрываю…' : 'Закрыть досрочно на последнюю цену'}</button>
+			{/if}
+			{#if canCancel(h)}
+				<button class="danger" onclick={cancel}>Отменить запись — ошибка ввода</button>
+				<p class="sub">Отменить можно в первые 24 часа после записи; потом гипотеза остаётся в статистике.</p>
+			{/if}
+		</div>
+	{:else}
+		{#if h.closeReason}<p class="sub">Причина досрочного закрытия: {h.closeReason}</p>{/if}
+		<label class="lbl" for="lesson-{h.id}">Вывод</label>
+		<textarea id="lesson-{h.id}" rows="3" placeholder="Что показала эта гипотеза" bind:value={lesson} onblur={() => lesson !== (h.lesson ?? '') && patch({ lesson })}></textarea>
+	{/if}
 </div>
 
 <style>
@@ -262,9 +330,59 @@
 		cursor: pointer;
 	}
 	.ghost {
-		border: 1px dashed var(--line);
-		background: none;
+		border: 1px solid var(--line);
+		background: var(--surface);
+	}
+	.ghost:disabled {
 		color: var(--muted);
+	}
+	.result {
+		margin-bottom: var(--s4);
+		padding: var(--s3);
+		border-radius: var(--r2);
+		background: var(--bg);
+	}
+	.excess {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		margin-bottom: var(--s2);
+	}
+	.big {
+		font-size: var(--fs-xl);
+		font-weight: 700;
+	}
+	.outcome {
+		font-weight: 600;
+	}
+	.outcome.hit {
+		color: var(--up);
+	}
+	.outcome.miss {
+		color: var(--down);
+	}
+	table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: var(--fs-s);
+		font-variant-numeric: tabular-nums;
+	}
+	th {
+		font-size: var(--fs-xs);
+		font-weight: 600;
+		color: var(--muted);
+		text-align: right;
+		padding: 4px 0 4px var(--s2);
+	}
+	td {
+		text-align: right;
+		padding: 4px 0 4px var(--s2);
+		border-top: 1px solid var(--line);
+	}
+	th:first-child,
+	td:first-child {
+		text-align: left;
+		padding-left: 0;
 	}
 	.danger {
 		border: 1px solid var(--down);

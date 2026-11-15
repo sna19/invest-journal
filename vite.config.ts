@@ -21,6 +21,8 @@ export default defineConfig({
 		})
 	],
 	test: {
-		include: ['src/**/*.test.ts']
+		include: ['src/**/*.test.ts'],
+		// the NAS can be busy (a history load, a build): the first test of a file opens databases
+		testTimeout: 15000
 	}
 });

@@ -100,6 +100,7 @@ export async function runQueue(ctx: Ctx, opts: { parallel?: number; stopAfter?: 
 			if (r.status === 'none') sum.none++;
 			else {
 				sum.done++;
+				markUnfillable(sqlite, t.securityId, t.periodFrom, t.periodTo, ctx.runId);
 				// a reload settles the jumps it covered
 				sqlite
 					.prepare(
@@ -128,7 +129,8 @@ export function findGaps(market: Database.Database, ids: number[]) {
 		`select min(t.date) as a, max(t.date) as b, count(*) as n from ref_trading_days t
 		  where t.exchange_code = ? and t.date between ? and ?
 		    and not exists (select 1 from market_prices_daily p where p.security_id = ? and p.date = t.date)
-		    and not exists (select 1 from ops_quality_issues q where q.security_id = ? and q.date = t.date and q.status = 'open')`
+		    and not exists (select 1 from ops_quality_issues q where q.security_id = ? and q.date = t.date
+		                     and (q.status = 'open' or q.rule = 'price.missing'))`
 	);
 	for (const id of ids) {
 		const r = range.get(id) as { a: string | null; b: string | null };
@@ -138,4 +140,27 @@ export function findGaps(market: Database.Database, ids: number[]) {
 		if (m.n > 0 && m.a && m.b && enqueue(market, id, m.a, m.b)) queued++;
 	}
 	return queued;
+}
+
+/**
+ * Trading days inside the loaded period (and inside the security's own price range) that still have no price
+ * after the provider was asked: the provider does not have them (a thin TASE share often has days without
+ * trades; LUMI 2019-08-23 is a Friday the index has and the share has not). Written with status «known» — not
+ * a problem to look at — so that the gap control does not queue them again every week.
+ */
+export function markUnfillable(sqlite: Database.Database, securityId: number, from: string, to: string, runId: number) {
+	return sqlite
+		.prepare(
+			`insert into ops_quality_issues (run_id, security_id, date, rule, detail, status)
+			 select ?, ?, t.date, 'price.missing', 'нет у поставщика цен за этот торговый день', 'known'
+			   from ref_trading_days t
+			   join ref_securities s on s.id = ?
+			   join ref_exchanges e on e.code = s.exchange_code
+			  where t.exchange_code = case e.country when 'IL' then 'TASE' else 'US' end
+			    and t.date between max(?, (select min(date) from market_prices_daily where security_id = ?))
+			                   and min(?, (select max(date) from market_prices_daily where security_id = ?))
+			    and not exists (select 1 from market_prices_daily p where p.security_id = ? and p.date = t.date)
+			    and not exists (select 1 from ops_quality_issues q where q.security_id = ? and q.date = t.date and q.rule = 'price.missing')`
+		)
+		.run(runId, securityId, securityId, from, securityId, to, securityId, securityId, securityId).changes;
 }
