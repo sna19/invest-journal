@@ -122,10 +122,13 @@ export function checkPrices(
 		calendarName?: string;
 		/** the security is quoted in agorot (ILA) */
 		agorot?: boolean;
+		/** jump days a person looked at: «Цена верна» — accepted as is; «Цена ошибочна» — left out quietly */
+		confirmed?: Set<string>;
+		rejected?: Set<string>;
 	}
 ) {
 	const good: PriceRow[] = [];
-	const issues: { date: string; rule: string; detail: string }[] = [];
+	const issues: { date: string; rule: string; detail: string; row?: PriceRow }[] = [];
 	/** known, not a problem: kept rows whose day range was dropped or whose unit was brought to agorot */
 	const known: { date: string; rule: string; detail: string }[] = [];
 	const rows = input.map((r) => ({ ...r }));
@@ -176,9 +179,16 @@ export function checkPrices(
 				r.open = r.high = r.low = null;
 			} else if (r.open !== null && (r.open < r.low - eps || r.open > r.high + eps)) r.open = null;
 		}
-		if (accepted !== null && far(r.close, accepted) && !opts.actionDates.has(r.date)) {
+		if (opts.rejected?.has(r.date)) continue;
+		if (opts.confirmed?.has(r.date) && accepted !== null && far(r.close, accepted)) {
+			// confirmed by a person: kept, but not a reference for the next days (a one-day spike would raise another)
+			good.push(r);
+			continue;
+		}
+		if (accepted !== null && far(r.close, accepted) && !opts.actionDates.has(r.date) && !opts.confirmed?.has(r.date)) {
 			if (pending === null || far(r.close, pending)) {
-				bad('price.jump', `${n(accepted)} → ${n(r.close)} (${r.close > accepted ? '+' : ''}${((r.close / accepted - 1) * 100).toFixed(1).replace('.', ',')}%)`);
+				issues.push({ date: r.date, rule: 'price.jump', row: { ...r }, detail: '' });
+				issues.at(-1)!.detail = ( `${n(accepted)} → ${n(r.close)} (${r.close > accepted ? '+' : ''}${((r.close / accepted - 1) * 100).toFixed(1).replace('.', ',')}%)`);
 				pending = r.close;
 				continue;
 			}
@@ -230,9 +240,22 @@ function addTradingDays(sqlite: Database.Database, calendar: string, dates: stri
 export async function loadSecurity(ctx: Ctx, sec: Sec, from: string, to: string): Promise<LoadResult> {
 	const { sqlite } = ctx;
 	const res: LoadResult = { status: 'ok', received: 0, added: 0, updated: 0, issues: 0, newSplit: false };
-	const issue = sqlite.prepare(
-		`insert into ops_quality_issues (run_id, security_id, date, rule, detail, status) values (?, ?, ?, ?, ?, ?)`
+	// one issue per security, day and rule: a reload does not repeat it, and a person's decision stays
+	const issueInsert = sqlite.prepare(
+		`insert into ops_quality_issues (run_id, security_id, date, rule, detail, status, payload)
+		 select ?, ?, ?, ?, ?, ?, ? where not exists (
+		   select 1 from ops_quality_issues where security_id = ? and date is ? and rule = ?)`
 	);
+	const issue = {
+		run: (runId: number, securityId: number, date: string | null, rule: string, detail: string, status: string, payload: string | null = null) =>
+			issueInsert.run(runId, securityId, date, rule, detail, status, payload, securityId, date, rule)
+	};
+	const decided = (status: string) =>
+		new Set(
+			(sqlite.prepare(`select date from ops_quality_issues where security_id = ? and rule = 'price.jump' and status = ?`).all(sec.id, status) as {
+				date: string;
+			}[]).map((r) => r.date)
+		);
 
 	// 1 get
 	let raw;
@@ -285,7 +308,9 @@ export async function loadSecurity(ctx: Ctx, sec: Sec, from: string, to: string)
 		calendar: null,
 		calendarMax: null,
 		calendarName: sec.calendar,
-		agorot: sec.priceUnit === 'ILA'
+		agorot: sec.priceUnit === 'ILA',
+		confirmed: decided('confirmed'),
+		rejected: decided('rejected')
 	});
 	// a dividend paid in the converted part of the history is in the same wrong unit as those closes
 	if (scaled.size) {
@@ -301,7 +326,7 @@ export async function loadSecurity(ctx: Ctx, sec: Sec, from: string, to: string)
 
 	// 5 merge: insert or update by (security, date); a rerun changes nothing
 	sqlite.transaction(() => {
-		for (const i of issues) issue.run(ctx.runId, sec.id, i.date, i.rule, i.detail, 'open');
+		for (const i of issues) issue.run(ctx.runId, sec.id, i.date, i.rule, i.detail, 'open', i.row ? JSON.stringify(i.row) : null);
 		for (const i of known) issue.run(ctx.runId, sec.id, i.date, i.rule, i.detail, 'known');
 		const old = sqlite.prepare('select open, high, low, close, volume from market_prices_daily where security_id = ? and date = ?');
 		const up = sqlite.prepare(

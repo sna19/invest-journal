@@ -130,7 +130,7 @@ export function findGaps(market: Database.Database, ids: number[]) {
 		  where t.exchange_code = ? and t.date between ? and ?
 		    and not exists (select 1 from market_prices_daily p where p.security_id = ? and p.date = t.date)
 		    and not exists (select 1 from ops_quality_issues q where q.security_id = ? and q.date = t.date
-		                     and (q.status = 'open' or q.rule = 'price.missing'))`
+		                     and (q.status in ('open', 'rejected') or q.rule = 'price.missing'))`
 	);
 	for (const id of ids) {
 		const r = range.get(id) as { a: string | null; b: string | null };

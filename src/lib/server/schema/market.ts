@@ -163,7 +163,9 @@ export const qualityIssues = sqliteTable(
 		date: text(),
 		rule: text().notNull(),
 		detail: text(),
-		/** open | resolved */
+		/** the refused price row (JSON), so that «Цена верна» can put it back */
+		payload: text(),
+		/** open | known | resolved | confirmed (a person said the price is right) | rejected (a person said it is wrong) */
 		status: text().notNull().default('open'),
 		createdAt: now()
 	},

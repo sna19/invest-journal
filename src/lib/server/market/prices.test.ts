@@ -8,6 +8,7 @@ import { HttpError } from './http.js';
 import { enqueue, enqueueMissingHistory, findGaps, resetRunning, runQueue } from './history.js';
 import { checkPrices, computeFactors, isWeekend, loadSecurity, securitiesForPrices, type Ctx } from './prices.js';
 import { ringSecurities, setSetting } from './rings.js';
+import { decideIssue } from './decide.js';
 import type { Fetcher } from './types.js';
 import { parseChart } from './yahoo.js';
 
@@ -343,8 +344,42 @@ describe('hypotheses (section 6)', () => {
 			.run(s.ids.amat, days[30], s.ids.spx);
 		const r = updateHypotheses(s.app.sqlite, s.market.sqlite, new Date('2026-07-01T10:00:00Z'));
 		expect(r.closed).toBe(0);
-		expect(r.waiting[0].why).toMatch(/проблема качества/);
+		expect(r.waiting[0].why).toMatch(/скачок цены/);
+		return s;
 	});
+
+	for (const decision of ['valid', 'invalid'] as const)
+		it(`after «${decision === 'valid' ? 'Цена верна' : 'Цена ошибочна'}» the waiting hypothesis closes; a reload keeps the decision`, async () => {
+			const s = setup();
+			const days = weekdays('2026-04-01', 40);
+			s.answers.set('^GSPC', chart('^GSPC', 'USD', 'America/New_York', days.map((d) => [d, 5000])));
+			s.answers.set('AMAT', chart('AMAT', 'USD', 'America/New_York', days.map((d, i) => [d, i === 10 ? 300 : 100])));
+			await loadSecurity(s.ctx, s.sec(s.ids.spx), days[0], days.at(-1)!);
+			await loadSecurity(s.ctx, s.sec(s.ids.amat), days[0], days.at(-1)!);
+			s.app.sqlite.exec(`insert into articles (id, source_id, read_at) values (1, 1, '2026-04-01')`);
+			const id = (s.app.sqlite
+				.prepare(
+					`insert into hypotheses (article_id, security_id, symbol, security_name, exchange_code, currency, price_unit, signal_type, direction,
+					   direction_source, thesis, invalidation, horizon_date, horizon_source, entry_date, benchmark_id, benchmark_symbol)
+					 values (1, ?, 'AMAT', 'AMAT', 'NASDAQ', 'USD', 'USD', 'recommendation', 'long', 'article', 't', 'i', ?, 'article', '2026-04-01', ?, 'SPX') returning id`
+				)
+				.get(s.ids.amat, days[30], s.ids.spx) as { id: number }).id;
+			const now = new Date('2026-07-01T10:00:00Z');
+			updateHypotheses(s.app.sqlite, s.market.sqlite, now);
+			const h = () => s.app.sqlite.prepare('select status, wait_reason, wait_issue_id from hypotheses where id = ?').get(id) as Record<string, unknown>;
+			const issue = h().wait_issue_id as number;
+			expect(h()).toMatchObject({ status: 'open', wait_reason: expect.stringMatching(/скачок/) });
+			expect(decideIssue(s.market.sqlite, issue, decision)).toMatchObject({ ok: true });
+			expect(decideIssue(s.market.sqlite, issue, decision)).toMatchObject({ error: expect.any(String) });
+			const price = s.market.sqlite.prepare('select close from market_prices_daily where security_id = ? and date = ?');
+			expect((price.get(s.ids.amat, days[10]) as { close: number } | undefined)?.close).toBe(decision === 'valid' ? 300 : undefined);
+			expect(updateHypotheses(s.app.sqlite, s.market.sqlite, now).closed).toBe(1);
+			expect(h()).toMatchObject({ status: 'closed', wait_reason: null, wait_issue_id: null });
+			// the same days loaded again: no new issue, the decision holds
+			await loadSecurity(s.ctx, s.sec(s.ids.amat), days[0], days.at(-1)!);
+			expect((s.market.sqlite.prepare(`select count(*) as n from ops_quality_issues where rule = 'price.jump'`).get() as { n: number }).n).toBe(1);
+			expect((price.get(s.ids.amat, days[10]) as { close: number } | undefined)?.close).toBe(decision === 'valid' ? 300 : undefined);
+		});
 
 	it('does not close on incomplete data: the security misses the last days before the horizon', async () => {
 		const s = setup();

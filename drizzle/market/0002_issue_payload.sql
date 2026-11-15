@@ -1,0 +1,1 @@
+ALTER TABLE `ops_quality_issues` ADD `payload` text;
