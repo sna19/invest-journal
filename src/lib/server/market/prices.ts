@@ -246,9 +246,15 @@ export async function loadSecurity(ctx: Ctx, sec: Sec, from: string, to: string)
 		 select ?, ?, ?, ?, ?, ?, ? where not exists (
 		   select 1 from ops_quality_issues where security_id = ? and date is ? and rule = ?)`
 	);
+	// an open issue raised before the row was kept (older loads) gets it now, so «Цена верна» can work
+	const issuePayload = sqlite.prepare(
+		`update ops_quality_issues set payload = ? where security_id = ? and date is ? and rule = ? and status = 'open' and payload is null`
+	);
 	const issue = {
-		run: (runId: number, securityId: number, date: string | null, rule: string, detail: string, status: string, payload: string | null = null) =>
-			issueInsert.run(runId, securityId, date, rule, detail, status, payload, securityId, date, rule)
+		run: (runId: number, securityId: number, date: string | null, rule: string, detail: string, status: string, payload: string | null = null) => {
+			issueInsert.run(runId, securityId, date, rule, detail, status, payload, securityId, date, rule);
+			if (payload) issuePayload.run(payload, securityId, date, rule);
+		}
 	};
 	const decided = (status: string) =>
 		new Set(

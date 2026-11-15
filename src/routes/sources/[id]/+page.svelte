@@ -129,7 +129,12 @@
 								{#if h.status === 'open'}
 									{#if h.entryPrice === null}<span class="muted">ожидает цену</span>{:else}<Pct value={h.currentExcessPct} />{/if}
 								{:else}
-									<Pct value={h.excessPct} /><span class="muted">{h.status === 'closed_early' ? 'досрочно' : h.outcome === 'hit' ? 'сработала' : 'нет'}</span>
+									<Pct value={h.excessPct} /><span
+										class="mark {h.outcome}"
+										title={h.status === 'closed_early' ? 'закрыта досрочно' : h.outcome === 'hit' ? 'сработала' : 'не сработала'}
+										aria-label={h.status === 'closed_early' ? 'закрыта досрочно' : h.outcome === 'hit' ? 'сработала' : 'не сработала'}
+										>{h.status === 'closed_early' ? '⏹' : h.outcome === 'hit' ? '✓' : '✗'}</span
+									>
 								{/if}
 							</a>
 						</li>
@@ -259,6 +264,17 @@
 	.muted {
 		color: var(--muted);
 		font-size: var(--fs-s);
+	}
+	.mark {
+		width: 1.2em;
+		text-align: center;
+		font-weight: 700;
+	}
+	.mark.hit {
+		color: var(--up);
+	}
+	.mark.miss {
+		color: var(--down);
 	}
 	.dir.long {
 		color: var(--up);
