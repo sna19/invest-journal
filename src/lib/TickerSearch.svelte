@@ -49,10 +49,12 @@
 		onselect?: (s: Security) => void;
 		/** also show securities gone from the lists (the «Тикеры» screen) */
 		includeInactive?: boolean;
+		/** hide indices (benchmarks): a hypothesis is about a stock or an ETF */
+		noIndex?: boolean;
 		label?: string;
 		autofocus?: boolean;
 	}
-	let { onselect, includeInactive = false, label = 'Тикер', autofocus = false }: Props = $props();
+	let { onselect, includeInactive = false, noIndex = false, label = 'Тикер', autofocus = false }: Props = $props();
 
 	let q = $state('');
 	let market = $state<Market>('all');
@@ -89,6 +91,7 @@
 		try {
 			const p = new URLSearchParams({ q: query, market });
 			if (includeInactive) p.set('inactive', '1');
+			if (noIndex) p.set('noindex', '1');
 			const r = await fetch(`/api/securities?${p}`);
 			if (!r.ok) throw new Error();
 			const j = await r.json();
