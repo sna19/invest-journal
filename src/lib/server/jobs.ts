@@ -268,12 +268,18 @@ export function lastListings(): Date | null {
 }
 
 let started = false;
+const tasks: { stop: () => unknown }[] = [];
+
+/** Stops the schedule: cron timers keep the process alive, and the container must stop on SIGTERM at once. */
+export function stopScheduler() {
+	for (const t of tasks.splice(0)) t.stop();
+}
 
 export function startScheduler() {
 	if (started) return;
 	started = true;
 	const at = (expr: string, name: string, f: () => unknown) =>
-		cron.schedule(expr, () => void Promise.resolve(f()).catch((e) => console.error(`${name}: ${e}`)), { timezone: TZ, name });
+		tasks.push(cron.schedule(expr, () => void Promise.resolve(f()).catch((e) => console.error(`${name}: ${e}`)), { timezone: TZ, name }));
 	// both exchanges are closed by the Israeli morning
 	at('15 7 * * *', 'prices', runPricesJob);
 	at('30 6 * * 0', 'listings', runListingsJob);

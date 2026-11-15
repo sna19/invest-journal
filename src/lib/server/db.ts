@@ -106,5 +106,11 @@ export function getMarket() {
 	return market;
 }
 
+/** On shutdown: close both files cleanly (the WAL is checkpointed). */
+export function closeAll() {
+	for (const d of [app, market]) d?.sqlite.close();
+	app = market = undefined;
+}
+
 export const getAppDb = (): AppDb => getApp().db;
 export const getMarketDb = (): MarketDb => getMarket().db;

@@ -1,14 +1,22 @@
 import type { Handle, HandleServerError, ServerInit } from '@sveltejs/kit/hooks';
 import { building } from '$app/env';
 import { isCrossSiteForm } from '#lib/server/csrf.js';
-import { getApp, getMarket, volumeReport } from '#lib/server/db.js';
+import { closeAll, getApp, getMarket, volumeReport } from '#lib/server/db.js';
 import { loadHelp } from '#lib/server/help.js';
-import { startScheduler } from '#lib/server/jobs.js';
+import { startScheduler, stopScheduler } from '#lib/server/jobs.js';
 import { setStartError } from '#lib/server/start.js';
 
 /** Start: open both databases, load help texts, start the jobs (JOBS=off turns them off, e.g. in tests). */
 export const init: ServerInit = () => {
 	if (building) return;
+	// SIGTERM (docker stop, a deploy): adapter-node closes the HTTP server, then this. A history load cut here
+	// goes on at the next start (the task queue), so stopping at once is safe.
+	process.once('sveltekit:shutdown', (reason) => {
+		stopScheduler();
+		closeAll();
+		console.log(`stopped (${reason})`);
+		process.exit(0);
+	});
 	const vol = volumeReport();
 	for (const l of vol.lines) console.log(`volume ${l}`);
 	try {

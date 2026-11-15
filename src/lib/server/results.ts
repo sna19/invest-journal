@@ -104,6 +104,10 @@ export function updateHypotheses(app: Database.Database, market: Database.Databa
 		        current_benchmark_return_pct = ?, current_excess_pct = ? where id = ? and status = 'open'`
 	);
 
+	const openIssue = market.prepare(
+		`select rule, date from ops_quality_issues where status = 'open' and security_id in (?, ?) and date between ? and ?
+		    and rule in ('price.jump', 'price.unit_glitch', 'price.unit_mismatch') limit 1`
+	);
 	for (const h of open) {
 		let entry = h.entry_price_date ? p.firstFrom(h.security_id, h.benchmark_id, h.entry_price_date) : null;
 		if (h.entry_price === null) {
@@ -118,6 +122,12 @@ export function updateHypotheses(app: Database.Database, market: Database.Databa
 		if (!entry) continue;
 
 		const due = h.horizon_date < today;
+		// an unconfirmed jump or a unit problem in the term: the numbers may be wrong — wait (section 5)
+		const doubt = openIssue.get(h.security_id, h.benchmark_id, entry.date, due ? h.horizon_date : today) as { rule: string; date: string } | undefined;
+		if (doubt && due) {
+			out.waiting.push({ id: h.id, why: `проблема качества цен ${doubt.date} (${doubt.rule}) — ждёт проверки` });
+			continue;
+		}
 		const benchLast = p.lastDate(h.benchmark_id);
 		const exitDay = p.lastUpTo(h.security_id, h.benchmark_id, due ? h.horizon_date : today);
 		if (!exitDay || exitDay.date < entry.date) continue;
