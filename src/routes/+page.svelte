@@ -254,13 +254,14 @@
 						</span>
 						<span class="mid">{h.securityName}</span>
 						<span class="bottom">
-							{r.sourceName} · {SIGNAL[h.signalType]}{#if h.mode === 'real'}{' · '}<b>реальные</b>{/if}
-							<span class="grow"></span>
-							{#if h.status === 'open'}
-								{days(h.horizonDate) > 0 ? `${days(h.horizonDate)} дн.` : 'сегодня'}{#if h.horizonSource === 'default'}&nbsp;·&nbsp;по умолч.{/if}
-							{:else}
-								{h.outcome === 'hit' ? 'сработала' : 'не сработала'}{h.status === 'closed_early' ? ', досрочно' : ''} · {short(h.exitDate ?? h.horizonDate)}
-							{/if}
+							<span class="src">{r.sourceName} · {SIGNAL[h.signalType]}{#if h.mode === 'real'}{' · '}<b>реальные</b>{/if}</span>
+							<span class="when">
+								{#if h.status === 'open'}
+									{days(h.horizonDate) > 0 ? `${days(h.horizonDate)} дн.` : 'сегодня'}{#if h.horizonSource === 'default'}&nbsp;·&nbsp;по умолч.{/if}
+								{:else}
+									{h.outcome === 'hit' ? 'сработала' : 'не сработала'}{h.status === 'closed_early' ? ', досрочно' : ''} · {short(h.exitDate ?? h.horizonDate)}
+								{/if}
+							</span>
 						</span>
 					</button>
 				</li>
@@ -422,11 +423,17 @@
 		white-space: nowrap;
 		font-size: var(--fs-s);
 	}
-	.bottom > :last-child,
-	.bottom {
+	/* the source gives way; the term or the outcome always shows in full */
+	.src {
+		flex: 1;
+		min-width: 0;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+	}
+	.when {
+		flex: none;
+		white-space: nowrap;
 	}
 	.dir.long {
 		color: var(--up);

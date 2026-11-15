@@ -67,6 +67,9 @@ export function isWeekend(calendar: string, date: string) {
  * ×100 with the day's own move on top (AMPA 28→29.04.2026: 16.53 shekels → 1757 agorot, ×106): no real price
  * moves 30-fold in a day, and splits come already adjusted from the provider.
  */
+/** A price for a message: 4 significant digits, no float tails (240.60000610351562 → 240.6). */
+const n = (v: number | null) => (v === null ? '—' : String(Number(v.toPrecision(Math.max(4, Math.ceil(Math.log10(Math.abs(v) + 1)))))));
+
 const isHundred = (q: number) => q > 30 && q < 300;
 const isHundredth = (q: number) => q > 1 / 300 && q < 1 / 30;
 
@@ -149,7 +152,7 @@ export function checkPrices(
 		const q = accepted !== null ? r.close / accepted : 1;
 		if (isHundred(q) || isHundredth(q)) {
 			if (!opts.agorot) {
-				bad('price.unit_glitch', `${accepted} → ${r.close}: ×${q >= 1 ? Math.round(q) : '1/' + Math.round(1 / q)} (агороты и шекели перепутаны)`);
+				bad('price.unit_glitch', `${n(accepted)} → ${n(r.close)}, ×${q >= 1 ? Math.round(q) : '1/' + Math.round(1 / q)}`);
 				continue;
 			}
 			const k = isHundredth(q) ? 100 : 0.01;
@@ -175,7 +178,7 @@ export function checkPrices(
 		}
 		if (accepted !== null && far(r.close, accepted) && !opts.actionDates.has(r.date)) {
 			if (pending === null || far(r.close, pending)) {
-				bad('price.jump', `${accepted} → ${r.close} (${((r.close / accepted - 1) * 100).toFixed(1)}%) without a corporate action`);
+				bad('price.jump', `${n(accepted)} → ${n(r.close)} (${r.close > accepted ? '+' : ''}${((r.close / accepted - 1) * 100).toFixed(1).replace('.', ',')}%)`);
 				pending = r.close;
 				continue;
 			}

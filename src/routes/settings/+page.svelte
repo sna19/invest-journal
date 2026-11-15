@@ -69,7 +69,8 @@
 	};
 	const STATUS: Record<string, string> = { ok: 'ок', suspicious: 'подозрительно', error: 'ошибка', running: 'идёт' };
 	const RULE: Record<string, string> = {
-		'price.jump': 'скачок > 50% без корпоративного действия',
+		'price.jump': 'скачок больше 50% без корпоративного действия, ждёт проверки',
+		'price.unit_glitch': 'агороты и шекели перепутаны',
 		'price.unit_mismatch': 'единица цены не совпадает',
 		'price.ohlc': 'цены дня не сходятся',
 		'price.not_trading_day': 'не торговый день',
