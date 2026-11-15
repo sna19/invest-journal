@@ -326,6 +326,26 @@ describe('hypotheses (section 6)', () => {
 		expect(h(b)).toMatchObject({ status: 'closed_early', close_reason: 'Тезис больше не актуален', outcome: 'miss' });
 	});
 
+	it('does not close while an unconfirmed jump of the security lies in the term', async () => {
+		const s = setup();
+		const days = weekdays('2026-04-01', 40);
+		s.answers.set('^GSPC', chart('^GSPC', 'USD', 'America/New_York', days.map((d) => [d, 5000])));
+		s.answers.set('AMAT', chart('AMAT', 'USD', 'America/New_York', days.map((d, i) => [d, i === 10 ? 300 : 100])));
+		await loadSecurity(s.ctx, s.sec(s.ids.spx), days[0], days.at(-1)!);
+		await loadSecurity(s.ctx, s.sec(s.ids.amat), days[0], days.at(-1)!);
+		s.app.sqlite.exec(`insert into articles (id, source_id, read_at) values (1, 1, '2026-04-01')`);
+		s.app.sqlite
+			.prepare(
+				`insert into hypotheses (article_id, security_id, symbol, security_name, exchange_code, currency, price_unit, signal_type, direction,
+				   direction_source, thesis, invalidation, horizon_date, horizon_source, entry_date, benchmark_id, benchmark_symbol)
+				 values (1, ?, 'AMAT', 'AMAT', 'NASDAQ', 'USD', 'USD', 'recommendation', 'long', 'article', 't', 'i', ?, 'article', '2026-04-01', ?, 'SPX')`
+			)
+			.run(s.ids.amat, days[30], s.ids.spx);
+		const r = updateHypotheses(s.app.sqlite, s.market.sqlite, new Date('2026-07-01T10:00:00Z'));
+		expect(r.closed).toBe(0);
+		expect(r.waiting[0].why).toMatch(/проблема качества/);
+	});
+
 	it('does not close on incomplete data: the security misses the last days before the horizon', async () => {
 		const s = setup();
 		const days = weekdays('2026-04-01', 30);
