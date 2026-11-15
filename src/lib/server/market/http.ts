@@ -14,23 +14,36 @@ export class HttpError extends Error {
 }
 
 /** One GET through node:https: only the headers we pass. */
-type Get = (url: string, headers: Record<string, string>) => Promise<{ status: number; body: Buffer }>;
+type Get = (url: string, headers: Record<string, string>) => Promise<{ status: number; body: Buffer; location?: string }>;
 
 /**
  * Plain node:https rather than fetch: the TASE site's protection (Incapsula) answers 403 to Node's fetch
  * whatever the headers — it recognises the extra headers undici adds — and 200 to a bare request with
  * Origin and Referer (checked 15.11.2026).
  */
-export const httpsGet: Get = (url, headers) =>
+export const httpsGet = (url: string, headers: Record<string, string>, small = false): ReturnType<Get> =>
 	new Promise((resolve, reject) => {
-		const req = request(url, { headers: { 'Accept-Encoding': 'gzip', ...headers }, timeout: 60_000 }, (res) => {
+		const req = request(url, { headers: { 'Accept-Encoding': 'gzip', ...headers }, timeout: small ? 5_000 : 60_000 }, (res) => {
+			const location = res.headers.location;
+			let size = 0;
 			const chunks: Buffer[] = [];
-			res.on('data', (c: Buffer) => chunks.push(c));
-			res.on('end', () => {
-				let body = Buffer.concat(chunks);
-				if (res.headers['content-encoding'] === 'gzip') body = gunzipSync(body);
-				resolve({ status: res.statusCode ?? 0, body });
+			res.on('data', (c: Buffer) => {
+				size += c.length;
+				// a page only needs its <head>: stop reading big pages early
+				if (small && size > 2_000_000) return res.destroy();
+				chunks.push(c);
 			});
+			const done = () => {
+				let body = Buffer.concat(chunks);
+				try {
+					if (res.headers['content-encoding'] === 'gzip') body = gunzipSync(body);
+				} catch {
+					body = Buffer.alloc(0);
+				}
+				resolve({ status: res.statusCode ?? 0, body, location });
+			};
+			res.on('end', done);
+			res.on('close', done);
 			res.on('error', reject);
 		});
 		req.on('timeout', () => req.destroy(Object.assign(new Error('timeout'), { name: 'TimeoutError' })));

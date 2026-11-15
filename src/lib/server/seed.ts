@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
-import type { MarketDb } from './db.js';
+import type { AppDb, MarketDb } from './db.js';
+import { sources } from './schema/app.js';
 import { exchanges, providers, providerSymbols, securities, securitySymbols } from './schema/market.js';
 
 /** Exchanges of the journal (spec section 4 and decision of 15.11.2026: five US venues + TASE). */
@@ -56,5 +57,20 @@ export function seedMarket(db: MarketDb) {
 			tx.insert(providerSymbols).values({ securityId: id, providerCode: 'yahoo', providerSymbol: b.yahoo }).run();
 			tx.insert(securitySymbols).values({ securityId: id, symbol: b.symbol, validFrom: '1900-01-01' }).run();
 		}
+	});
+}
+
+/** Spec section 17 — sources set up in advance; a link from the domain picks the source by itself. */
+export const SOURCES = [
+	{ name: 'Globes', domain: 'globes.co.il', kind: 'publication', market: 'IL' },
+	{ name: 'TheMarker', domain: 'themarker.com', kind: 'publication', market: 'IL' },
+	{ name: "Barron's", domain: 'barrons.com', kind: 'publication', market: 'US' },
+	{ name: 'WSJ', domain: 'wsj.com', kind: 'publication', market: 'US' },
+	{ name: 'Собственная идея', domain: null, kind: 'own', market: 'any' }
+];
+
+export function seedApp(db: AppDb) {
+	db.transaction((tx) => {
+		for (const s of SOURCES) tx.insert(sources).values(s).onConflictDoNothing().run();
 	});
 }

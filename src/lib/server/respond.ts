@@ -1,0 +1,17 @@
+import { json } from '@sveltejs/kit';
+import { InputError, LockedError } from './journal.js';
+
+/** Errors of the journal as HTTP answers: 400 with field errors, 409 when a rule forbids the change. */
+export function fail(e: unknown) {
+	if (e instanceof InputError) return json({ message: e.message, errors: e.errors }, { status: 400 });
+	if (e instanceof LockedError) return json({ message: e.message }, { status: 409 });
+	// the database's own guard (triggers in drizzle/app/0002_lock_hypotheses.sql)
+	if (e instanceof Error && e.name === 'SqliteError' && /locked|cancelled|never deleted/.test(e.message))
+		return json({ message: e.message }, { status: 409 });
+	throw e;
+}
+
+export async function body(request: Request): Promise<Record<string, unknown>> {
+	const b = await request.json().catch(() => null);
+	return b && typeof b === 'object' && !Array.isArray(b) ? b : {};
+}
