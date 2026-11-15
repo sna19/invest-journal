@@ -39,6 +39,8 @@
 			benchmarkReturnPct: number | null;
 			excessPct: number | null;
 			outcome: string | null;
+			waitReason: string | null;
+			waitIssueId: number | null;
 			status: string;
 			lesson: string | null;
 			closeReason: string | null;
@@ -172,6 +174,12 @@
 		</div>
 	{/if}
 
+	{#if h.status === 'open' && h.waitReason && (h.waitIssueId || h.horizonDate < new Date().toISOString().slice(0, 10))}
+		<p class="waiting" role="status">
+			<b>Не закрыта:</b> {h.waitReason}{#if h.waitIssueId}{' '}<a href="/settings#issue-{h.waitIssueId}">Открыть проблему</a>{/if}
+		</p>
+	{/if}
+
 	<div class="locked-head">
 		<Lock size={16} /> <span>Зафиксировано при записи</span>
 		<HelpIcon topicKey="result.locked" label="почему нельзя менять" />
@@ -266,6 +274,18 @@
 		display: block;
 		font-size: var(--fs-xs);
 		color: var(--muted);
+	}
+	.waiting {
+		margin: 0 0 var(--s3);
+		padding: var(--s3);
+		border-radius: var(--r2);
+		background: var(--warn-bg);
+		color: var(--warn-text);
+		font-size: var(--fs-s);
+	}
+	.waiting a {
+		color: inherit;
+		font-weight: 600;
 	}
 	.locked-head {
 		display: flex;

@@ -53,10 +53,12 @@ export function dataStatus(market: Database.Database, app: Database.Database, no
 		},
 		issues: {
 			open: one(`select count(*) as n from ops_quality_issues where status = 'open'`),
+			// jumps first: they wait for a person and may hold a hypothesis
 			recent: market
 				.prepare(
-					`select q.rule, q.detail, q.date, s.symbol from ops_quality_issues q left join ref_securities s on s.id = q.security_id
-					  where q.status = 'open' order by q.id desc limit 10`
+					`select q.id, q.rule, q.detail, q.date, s.symbol, s.exchange_code as exchange from ops_quality_issues q
+					   left join ref_securities s on s.id = q.security_id
+					  where q.status = 'open' order by q.rule = 'price.jump' desc, q.date desc limit 50`
 				)
 				.all()
 		},

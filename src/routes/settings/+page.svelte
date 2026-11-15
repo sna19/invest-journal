@@ -2,6 +2,9 @@
 	import { onDestroy, onMount } from 'svelte';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import TopBar from '#lib/TopBar.svelte';
+	import { page } from '$app/state';
+	import { tick } from 'svelte';
+	import { showToast } from '#lib/toast.svelte.js';
 
 	/** Spec sections 9 and 14 — Settings: benchmarks, thresholds and the «Данные» block. */
 	interface Job {
@@ -22,7 +25,7 @@
 		withPrices: number;
 		priceRows: number;
 		queue: { queued: number; failed: number };
-		issues: { open: number; recent: { rule: string; detail: string | null; date: string | null; symbol: string | null }[] };
+		issues: { open: number; recent: { id: number; rule: string; detail: string | null; date: string | null; symbol: string | null; exchange: string | null }[] };
 		noData: { id: number; symbol: string; exchange: string; lastDate: string | null; why: string }[];
 		late: boolean;
 		running: string[];
@@ -53,7 +56,33 @@
 		clearInterval(poll);
 		poll = setInterval(load, 3000);
 	}
-	onMount(load);
+	onMount(async () => {
+		await load();
+		// a hypothesis card links here: #issue-<id>
+		const hash = page.url.hash;
+		if (hash.startsWith('#issue-')) {
+			await tick();
+			document.querySelector(hash)?.scrollIntoView({ block: 'center' });
+		}
+	});
+
+	let deciding = $state<number | null>(null);
+	/** stage 4: a person decides about a jump; a hypothesis waiting for it closes right away */
+	async function decide(id: number, decision: 'valid' | 'invalid') {
+		deciding = id;
+		const r = await fetch(`/api/data/issues/${id}`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ decision })
+		});
+		const j = await r.json().catch(() => ({}));
+		deciding = null;
+		if (!r.ok) return showToast(j.message ?? 'Не получилось');
+		showToast(
+			(decision === 'valid' ? 'Цена принята' : 'День исключён из расчёта') + (j.closed ? ` · закрыто гипотез: ${j.closed}` : '')
+		);
+		load();
+	}
 	onDestroy(() => clearInterval(poll));
 
 	const fmt = new Intl.NumberFormat('ru-RU');
@@ -140,9 +169,25 @@
 
 		{#if data.issues.recent.length}
 			<h3>Проблемы качества</h3>
-			<ul class="plain">
-				{#each data.issues.recent as q, i (i)}
-					<li><b>{q.symbol ?? '—'}</b>{q.date ? ` ${q.date}` : ''} — {RULE[q.rule] ?? q.rule}{q.detail ? `: ${q.detail}` : ''}</li>
+			<p class="muted small-top">
+				Скачок больше 50% за день без корпоративного действия не входит в расчёт, пока вы не решите: «Цена верна» — день
+				возвращается в расчёт; «Цена ошибочна» — исключается навсегда. Сверить цену можно на сайте биржи.
+			</p>
+			<ul class="issues">
+				{#each data.issues.recent as q (q.id)}
+					<li id="issue-{q.id}">
+						<div>
+							<b>{q.symbol ?? '—'}</b>{q.date ? ` ${q.date.split('-').reverse().join('.')}` : ''} — {RULE[q.rule] ?? q.rule}{q.detail
+								? `: ${q.detail}`
+								: ''}
+						</div>
+						{#if q.rule === 'price.jump'}
+							<div class="decide">
+								<button disabled={deciding === q.id} onclick={() => decide(q.id, 'valid')}>Цена верна</button>
+								<button disabled={deciding === q.id} onclick={() => decide(q.id, 'invalid')}>Цена ошибочна</button>
+							</div>
+						{/if}
+					</li>
 				{/each}
 			</ul>
 		{/if}
@@ -263,6 +308,37 @@
 		color: var(--down);
 		font-size: var(--fs-s);
 		overflow-wrap: anywhere;
+	}
+	.small-top {
+		margin: 0 0 var(--s2);
+	}
+	.issues {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.issues li {
+		padding: var(--s2) 0;
+		border-top: 1px solid var(--line);
+		font-size: var(--fs-s);
+	}
+	.issues li:target {
+		background: var(--warn-bg);
+		border-radius: var(--r1);
+		padding: var(--s2);
+	}
+	.decide {
+		display: flex;
+		gap: var(--s2);
+		margin-top: var(--s2);
+	}
+	.decide button {
+		flex: 1;
+		min-height: var(--tap);
+		border: 1px solid var(--line);
+		border-radius: var(--r2);
+		background: var(--surface);
+		cursor: pointer;
 	}
 	.plain li {
 		padding: 4px 0;
