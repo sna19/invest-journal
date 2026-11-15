@@ -8,7 +8,11 @@
 	import TopBar from '#lib/TopBar.svelte';
 	import Empty from '#lib/Empty.svelte';
 	import Sheet from '#lib/Sheet.svelte';
-	import HypothesisCard, { SIGNAL, fmtDate, type Row } from '#lib/HypothesisCard.svelte';
+	import HypothesisCard, { SIGNAL, shown, short, type Row } from '#lib/HypothesisCard.svelte';
+	import Pct from '#lib/Pct.svelte';
+	import Spark from '#lib/Spark.svelte';
+	import HelpIcon from '#lib/HelpIcon.svelte';
+	import { showToast } from '#lib/toast.svelte.js';
 
 	/** Spec section 9 — the list of hypotheses with filters; gestures of section 13. */
 	type Status = 'open' | 'closed' | 'all';
@@ -26,6 +30,10 @@
 	let noteFor = $state<Row | null>(null);
 	let closeFor = $state<Row | null>(null);
 	let noteText = $state('');
+	let late = $state(false);
+	let lastPricesAt = $state<string | null>(null);
+	let reason = $state('');
+	let closeError = $state<string | null>(null);
 
 	async function load() {
 		const p = new URLSearchParams({ status, mode, market });
@@ -33,7 +41,10 @@
 		try {
 			const r = await fetch(`/api/hypotheses?${p}`);
 			if (!r.ok) throw new Error();
-			items = (await r.json()).items;
+			const j = await r.json();
+			items = j.items;
+			late = j.late;
+			lastPricesAt = j.lastPricesAt;
 			problem = undefined;
 		} catch {
 			problem = 'Нет связи с сервером.';
@@ -75,6 +86,22 @@
 		else load();
 	}
 
+	async function closeEarlyNow() {
+		if (!closeFor) return;
+		closeError = null;
+		const r = await fetch(`/api/hypotheses/${closeFor.h.id}/close`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ reason })
+		});
+		const j = await r.json().catch(() => ({}));
+		if (!r.ok) return (closeError = j.message ?? 'Не закрылась');
+		showToast(`${closeFor.h.symbol} закрыта досрочно: превышение ${j.excessPct > 0 ? '+' : ''}${j.excessPct.toFixed(1)}%`);
+		closeFor = null;
+		reason = '';
+		load();
+	}
+
 	async function saveNote() {
 		if (!noteFor) return;
 		const r = await fetch(`/api/hypotheses/${noteFor.h.id}`, {
@@ -113,7 +140,11 @@
 		if (s.dx > THRESHOLD) {
 			noteFor = row;
 			noteText = row.h.note ?? '';
-		} else if (s.dx < -THRESHOLD) closeFor = row;
+		} else if (s.dx < -THRESHOLD && row.h.status === 'open') {
+			closeFor = row;
+			reason = '';
+			closeError = null;
+		}
 	}
 	function tap(id: number) {
 		// a tap, not the end of a swipe
@@ -173,6 +204,11 @@
 	</div>
 
 	{#if problem}<p class="warn" role="alert">{problem}</p>{/if}
+	{#if late}
+		<a class="warn late" href="/settings">
+			Цены не обновлялись больше двух дней{lastPricesAt ? ` (последний раз ${new Date(lastPricesAt).toLocaleDateString('ru-RU')})` : ''} — результаты устарели. Подробности в «Настройках».
+		</a>
+	{/if}
 
 	{#if items === null}
 		{#each [1, 2, 3] as i (i)}<div class="skeleton"></div>{/each}
@@ -187,7 +223,10 @@
 	{:else if items.length === 0}
 		<p class="muted center">Под эти фильтры гипотез нет.</p>
 	{:else}
-		<p class="muted small">Смахните строку вправо — заметка, влево — досрочное закрытие. Потяните список вниз — обновить.</p>
+		<p class="muted small hint-row">
+			<span>Справа — превышение над бенчмарком. Смахните строку вправо — заметка, влево — досрочное закрытие.</span>
+			<HelpIcon topicKey="result.excess" label="превышение" />
+		</p>
 		<ul class="list">
 			{#each items as r (r.h.id)}
 				{@const h = r.h}
@@ -206,10 +245,11 @@
 							<b class="sym">{h.symbol}</b>
 							<span class="dir {h.direction}">{h.direction === 'long' ? '▲ рост' : '▼ падение'}</span>
 							<span class="grow"></span>
-							{#if h.status === 'open'}
+							{#if h.entryPrice === null}
 								<span class="wait">ожидает цену</span>
 							{:else}
-								<span class="muted">{h.status === 'closed_early' ? 'закрыта досрочно' : 'закрыта'}</span>
+								<Spark points={r.spark ?? null} />
+								<b class="res"><Pct value={shown(h).x} /></b>
 							{/if}
 						</span>
 						<span class="mid">{h.securityName}</span>
@@ -219,7 +259,7 @@
 							{#if h.status === 'open'}
 								{days(h.horizonDate) > 0 ? `${days(h.horizonDate)} дн.` : 'сегодня'}{#if h.horizonSource === 'default'}&nbsp;·&nbsp;по умолч.{/if}
 							{:else}
-								{fmtDate(h.horizonDate)}
+								{h.outcome === 'hit' ? 'сработала' : 'не сработала'}{h.status === 'closed_early' ? ', досрочно' : ''} · {short(h.exitDate ?? h.horizonDate)}
 							{/if}
 						</span>
 					</button>
@@ -245,11 +285,15 @@
 
 {#if closeFor}
 	<Sheet title="Досрочно закрыть · {closeFor.h.symbol}" onclose={() => (closeFor = null)}>
-		<p>
-			Досрочное закрытие фиксирует результат на сегодняшнюю цену, с вашей причиной; в статистике такие гипотезы идут
-			отдельной строкой. Оно заработает вместе с ценами — на этапе 3.
-		</p>
-		<button class="primary" disabled>Закрыть — с ценами (этап 3)</button>
+		{#if closeFor.h.entryPrice === null}
+			<p>Цены входа ещё нет — закрыть можно после первой цены.</p>
+		{:else}
+			<p class="muted">Результат зафиксируется на последнюю цену; в статистике досрочные закрытия идут отдельной строкой.</p>
+			<!-- svelte-ignore a11y_autofocus -->
+			<input class="note" aria-label="Причина" placeholder="Причина, например: тезис больше не актуален" bind:value={reason} autofocus />
+			{#if closeError}<p class="err">{closeError}</p>{/if}
+			<button class="primary" disabled={!reason.trim()} onclick={closeEarlyNow}>Закрыть досрочно</button>
+		{/if}
 	</Sheet>
 {/if}
 
@@ -374,6 +418,16 @@
 	.sym {
 		font-size: var(--fs-l);
 	}
+	.dir {
+		white-space: nowrap;
+		font-size: var(--fs-s);
+	}
+	.bottom > :last-child,
+	.bottom {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
 	.dir.long {
 		color: var(--up);
 	}
@@ -389,6 +443,24 @@
 	.bottom {
 		font-size: var(--fs-s);
 		color: var(--muted);
+	}
+	.res {
+		font-size: var(--fs-m);
+	}
+	.late {
+		display: block;
+		text-decoration: none;
+		margin-bottom: var(--s3);
+	}
+	.hint-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--s2);
+	}
+	.err {
+		color: var(--down);
+		font-size: var(--fs-s);
 	}
 	.wait {
 		font-size: var(--fs-s);

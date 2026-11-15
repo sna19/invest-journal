@@ -46,6 +46,15 @@
 	let amount = $state('');
 	let tags = $state('');
 	let more = $state(false);
+	/** spec section 14 question: a security the price provider does not know — warn when it is chosen */
+	let noPrices = $state(false);
+
+	async function choose(s: Security) {
+		security = s;
+		noPrices = false;
+		const r = await fetch(`/api/securities/${s.id}`).then((r) => r.json()).catch(() => null);
+		if (security?.id === s.id) noPrices = r?.priceStatus === 'none';
+	}
 
 	let newSource = $state<string | null>(null);
 	let metaLoading = $state(false);
@@ -182,6 +191,7 @@
 				// same article: keep the link, source, author and title; the next ticker
 				articleId = j.articleId;
 				security = null;
+				noPrices = false;
 				signalType = null;
 				direction = null;
 				directionSource = 'article';
@@ -273,9 +283,14 @@
 				<button type="button" class="icon" aria-label="Выбрать другую бумагу" onclick={() => (security = null)}><X size={20} /></button>
 			</div>
 		{:else}
-			<TickerSearch label="Бумага" noIndex onselect={(s) => (security = s)} />
+			<TickerSearch label="Бумага" noIndex onselect={choose} />
 		{/if}
 		{#if errors.securityId}<p class="err">{errors.securityId}</p>{/if}
+		{#if security && noPrices}
+			<p class="warn-box" role="alert">
+				У поставщика цен нет этой бумаги: гипотеза запишется, но цена входа и результат не появятся. Если есть такая же бумага на другой бирже — лучше выбрать её.
+			</p>
+		{/if}
 	</section>
 
 	<!-- 3. what the source says -->
@@ -531,6 +546,14 @@
 		background: none;
 		color: var(--link);
 		cursor: pointer;
+	}
+	.warn-box {
+		margin: 0;
+		padding: var(--s3);
+		border-radius: var(--r2);
+		background: var(--warn-bg);
+		color: var(--warn-text);
+		font-size: var(--fs-s);
 	}
 	.err {
 		margin: 0;
