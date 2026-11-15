@@ -33,7 +33,7 @@ function prepare(sqlite: Database.Database, key: string, sql: string) {
 
 /**
  * Order: exact symbol, symbol start, the name starts with the query, a word of the name does, anywhere.
- * Inside a rank: shorter symbols first (TEVA before TEVA.F1), then by symbol.
+ * Inside a rank: stocks before ETFs (T-004), shorter symbols first (TEVA before TEVA.F1), then by symbol.
  */
 export function searchSecurities(
 	sqlite: Database.Database,
@@ -62,7 +62,7 @@ export function searchSecurities(
 		             when s.search like ? escape '\\' then 3
 		             else 4
 		           end,
-		           s.active desc, length(s.symbol), s.symbol
+		           s.active desc, case s.type when 'stock' then 0 when 'etf' then 1 else 2 end, length(s.symbol), s.symbol
 		  limit ?`
 	);
 	const like = escapeLike(query);

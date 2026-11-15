@@ -5,7 +5,7 @@ import { accessSync, constants, existsSync, mkdirSync, readFileSync, statSync } 
 import { join, resolve } from 'node:path';
 import * as appSchema from './schema/app.js';
 import * as marketSchema from './schema/market.js';
-import { seedMarket } from './seed.js';
+import { seedApp, seedMarket } from './seed.js';
 
 /** Volumes (spec section 10): databases in /data, backups in /backups, raw provider answers in /raw. */
 export const dataDir = resolve(process.env.DATA_DIR ?? 'data');
@@ -45,7 +45,9 @@ function backupBeforeMigrations(sqlite: Database.Database, journal: string, path
 }
 
 export function openApp(path: string) {
-	return open(path, appSchema, join(migrationsDir, 'app')) as { sqlite: Database.Database; db: AppDb };
+	const a = open(path, appSchema, join(migrationsDir, 'app')) as { sqlite: Database.Database; db: AppDb };
+	seedApp(a.db);
+	return a;
 }
 
 export function openMarket(path: string) {
