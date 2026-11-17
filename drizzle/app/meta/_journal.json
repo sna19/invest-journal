@@ -36,6 +36,13 @@
       "when": 1794747707930,
       "tag": "0004_wait_reason",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794929118183,
+      "tag": "0005_portfolios",
+      "breakpoints": true
     }
   ]
 }

@@ -134,3 +134,106 @@ export const hypotheses = sqliteTable(
 	},
 	(t) => [index('hypotheses_status').on(t.status, t.horizonDate), index('hypotheses_article').on(t.articleId)]
 );
+
+// ── Spec section 18 — portfolios: a history of events, positions and returns are computed from it ─────────
+
+export const portfolios = sqliteTable('portfolios', {
+	id: integer().primaryKey({ autoIncrement: true }),
+	name: text().notNull().unique(),
+	/** real | virtual */
+	kind: text().notNull().default('real'),
+	/** the source whose hypotheses this virtual portfolio buys by itself (section 18) */
+	autoSourceId: integer()
+		.unique()
+		.references(() => sources.id),
+	/** the sum an automatic portfolio puts into each hypothesis, in shekels */
+	autoAmountIls: real().notNull().default(10000),
+	sortOrder: integer().notNull().default(0),
+	createdAt: now(),
+	archivedAt: text()
+});
+
+export const positions = sqliteTable(
+	'positions',
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		portfolioId: integer()
+			.notNull()
+			.references(() => portfolios.id),
+		// the security — its number in market.db and a copy of what it was called (as in hypotheses)
+		securityId: integer().notNull(),
+		symbol: text().notNull(),
+		securityName: text().notNull(),
+		exchangeCode: text().notNull(),
+		/** USD | ILS */
+		currency: text().notNull(),
+		/** USD | ILS | ILA — the unit of prices in the events */
+		priceUnit: text().notNull(),
+		/** watch | plan_buy | holding | plan_sell | closed — computed from the events, kept for lists */
+		stage: text().notNull().default('watch'),
+		openedAt: text().notNull(),
+		closedAt: text(),
+		createdAt: now()
+	},
+	(t) => [index('positions_portfolio').on(t.portfolioId, t.stage)]
+);
+
+export const positionEvents = sqliteTable(
+	'position_events',
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		positionId: integer()
+			.notNull()
+			.references(() => positions.id),
+		/** watch | plan_buy | buy | plan_sell | sell | drop | note | reverse */
+		kind: text().notNull(),
+		date: text().notNull(),
+		/** buy, sell */
+		qty: real(),
+		/** buy, sell: the price paid; plan_buy, plan_sell: the wanted price — in the position's price unit */
+		price: real(),
+		/** USD | ILS — of price, fee and amount */
+		currency: text().notNull(),
+		fee: real(),
+		/** ILS per one unit of `currency` on `date` (1 for ILS) */
+		fxRate: real(),
+		/** plan_buy: the sum to put in */
+		amount: real(),
+		note: text(),
+		hypothesisId: integer().references(() => hypotheses.id),
+		/** reverse: the event it cancels (storno); both stay in the history */
+		reversesEventId: integer(),
+		/** written by the app (an automatic portfolio), not by a person */
+		auto: integer({ mode: 'boolean' }).notNull().default(false),
+		/** an input error undone within 24 hours */
+		cancelledAt: text(),
+		createdAt: now()
+	},
+	(t) => [index('position_events_position').on(t.positionId, t.date), index('position_events_hypothesis').on(t.hypothesisId)]
+);
+
+export const cashEvents = sqliteTable(
+	'cash_events',
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		portfolioId: integer()
+			.notNull()
+			.references(() => portfolios.id),
+		/** deposit | withdraw | dividend | fee | tax | reverse */
+		kind: text().notNull(),
+		date: text().notNull(),
+		/** always positive; the kind gives the sign */
+		amount: real().notNull(),
+		/** USD | ILS */
+		currency: text().notNull(),
+		fxRate: real(),
+		note: text(),
+		/** a dividend or a fee of a position */
+		positionId: integer().references(() => positions.id),
+		reversesEventId: integer(),
+		auto: integer({ mode: 'boolean' }).notNull().default(false),
+		cancelledAt: text(),
+		createdAt: now()
+	},
+	(t) => [index('cash_events_portfolio').on(t.portfolioId, t.date)]
+);
