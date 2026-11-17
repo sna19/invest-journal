@@ -216,7 +216,8 @@ export function stageOf(events: (Ev & { kind: string })[], qty: number): Stage {
 		else if (e.kind === 'sell' || e.kind === 'drop') s = 'closed';
 		else if (e.kind === 'buy') s = 'holding';
 	}
-	return s === 'holding' || s === 'plan_sell' ? 'closed' : s;
+	// bought and sold out, nothing planned after: closed
+	return s === 'holding' ? 'closed' : s;
 }
 
 // ── the whole portfolio: cash, value, time-weighted return ───────────────────────────────────────────────
