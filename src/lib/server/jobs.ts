@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { israelDate } from '../hypothesis.js';
+import { israelDate, PRICES_AT } from '../hypothesis.js';
 import { backupDir, getApp, getMarket, rawDir } from './db.js';
 import { findGaps, enqueueMissingHistory, resetRunning, runQueue, type QueueSummary } from './market/history.js';
 import { makeFetcher } from './market/http.js';
@@ -281,7 +281,7 @@ export function startScheduler() {
 	const at = (expr: string, name: string, f: () => unknown) =>
 		tasks.push(cron.schedule(expr, () => void Promise.resolve(f()).catch((e) => console.error(`${name}: ${e}`)), { timezone: TZ, name }));
 	// both exchanges are closed by the Israeli morning
-	at('15 7 * * *', 'prices', runPricesJob);
+	at(`${PRICES_AT.m} ${PRICES_AT.h} * * *`, 'prices', runPricesJob);
 	at('30 6 * * 0', 'listings', runListingsJob);
 	at('0 9 * * 6', 'gaps', runGapsJob);
 	at('40 3 * * *', 'backup-app', () => runBackupJob('app'));

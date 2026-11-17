@@ -99,3 +99,81 @@ export const BUCKETS = { short: 'до 3 месяцев', mid: '3–6 месяц�
 export function byLowerBound<T extends { score: Score }>(a: T, b: T) {
 	return b.score.lower - a.score.lower || b.score.n - a.score.n;
 }
+
+// ── Spec sections 7 and 9 — the «Статистика» screen ──────────────────────────────────────────────────────
+
+export interface CalRow {
+	status: string;
+	outcome: string | null;
+	confidencePct: number | null;
+}
+
+export interface CalBucket {
+	/** confidence range, both ends included: 50–59, …, 90–99; «до 49» for the rest */
+	from: number;
+	to: number;
+	label: string;
+	n: number;
+	hits: number;
+	/** the mean confidence put down in this bucket, percent */
+	meanConf: number;
+	/** the share that worked, fraction, and its interval; null when there are none */
+	rate: number | null;
+	ci: [number, number] | null;
+	level: Level;
+}
+
+export const CAL_BUCKETS: [number, number][] = [
+	[1, 49],
+	[50, 59],
+	[60, 69],
+	[70, 79],
+	[80, 89],
+	[90, 99]
+];
+
+/**
+ * Calibration: hypotheses closed in their term (any type — the confidence is the user's own) that have the
+ * confidence filled in, grouped by the stated confidence; next to it the actual share that worked.
+ * Early closes and cancelled ones do not count: their outcome was not decided by the term.
+ */
+export function calibration(rows: CalRow[]) {
+	const used = rows.filter((r) => r.status === 'closed' && r.confidencePct !== null && (r.outcome === 'hit' || r.outcome === 'miss'));
+	const buckets: CalBucket[] = CAL_BUCKETS.map(([from, to]) => {
+		const rs = used.filter((r) => r.confidencePct! >= from && r.confidencePct! <= to);
+		const n = rs.length;
+		const hits = rs.filter((r) => r.outcome === 'hit').length;
+		return {
+			from,
+			to,
+			label: from === 1 ? 'до 49%' : `${from}–${to}%`,
+			n,
+			hits,
+			meanConf: n ? rs.reduce((a, r) => a + r.confidencePct!, 0) / n : 0,
+			rate: n ? hits / n : null,
+			ci: n ? wilson(hits, n) : null,
+			level: level(n)
+		};
+	}).filter((b) => b.n);
+	const n = used.length;
+	const hits = used.filter((r) => r.outcome === 'hit').length;
+	return {
+		buckets,
+		n,
+		hits,
+		meanConf: n ? used.reduce((a, r) => a + r.confidencePct!, 0) / n : null,
+		rate: n ? hits / n : null,
+		/** Brier score: the mean of (confidence − outcome)², 0 is perfect, 0.25 is «always 50%» */
+		brier: n ? used.reduce((a, r) => a + (r.confidencePct! / 100 - (r.outcome === 'hit' ? 1 : 0)) ** 2, 0) / n : null,
+		/** closed hypotheses without a confidence: they stay out of the calibration */
+		without: rows.filter((r) => r.status === 'closed' && r.confidencePct === null).length
+	};
+}
+
+/** «Hedge, Fund» → the tags of a hypothesis, compared without case. */
+export function tagsOf(s: string | null | undefined): string[] {
+	return [...new Set((s ?? '').split(',').map((t) => t.trim()).filter(Boolean))];
+}
+
+/** A tag is shown once it has 10 closed hypotheses in the rating (section 7). */
+export const TAG_MIN = FEW;

@@ -16,7 +16,8 @@
 		"test": "vitest run",
 		"start": "node build",
 		"db:generate": "drizzle-kit generate --config drizzle.app.config.ts && drizzle-kit generate --config drizzle.market.config.ts",
-		"listings": "node scripts/run-job.mjs listings"
+		"listings": "node scripts/run-job.mjs listings",
+		"help:doc": "node scripts/help-doc.mjs"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-node": "^6.0.2",

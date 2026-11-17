@@ -13,6 +13,7 @@
 	import Spark from '#lib/Spark.svelte';
 	import HelpIcon from '#lib/HelpIcon.svelte';
 	import { showToast } from '#lib/toast.svelte.js';
+	import { nextPricesRun, noResultYet } from '#lib/hypothesis.js';
 
 	/** Spec section 9 — the list of hypotheses with filters; gestures of section 13. */
 	type Status = 'open' | 'closed' | 'all';
@@ -180,6 +181,14 @@
 		pullStart = null;
 	}
 
+	// T-007: the results are on a date, the next prices come on schedule
+	const pricesAsOf = $derived(
+		(items ?? [])
+			.filter((r) => r.h.status === 'open' && r.h.lastDate)
+			.map((r) => r.h.lastDate!)
+			.sort()
+			.at(-1) ?? null
+	);
 	const days = (d: string) => Math.round((Date.parse(d + 'T12:00:00') - Date.now()) / 86400000);
 </script>
 
@@ -232,6 +241,12 @@
 	{:else if items.length === 0}
 		<p class="muted center">Под эти фильтры гипотез нет.</p>
 	{:else}
+		{#if pricesAsOf}
+			<p class="muted small hint-row prices">
+				<span>Цены на {short(pricesAsOf)} · следующее обновление — {nextPricesRun()}</span>
+				<HelpIcon topicKey="result.prices" label="когда обновляются цены" />
+			</p>
+		{/if}
 		<p class="muted small hint-row">
 			<span>Справа — превышение над бенчмарком. Смахните строку вправо — заметка, влево — досрочное закрытие.</span>
 			<HelpIcon topicKey="result.excess" label="превышение" />
@@ -256,6 +271,8 @@
 							<span class="grow"></span>
 							{#if h.entryPrice === null}
 								<span class="wait">ожидает цену</span>
+							{:else if noResultYet(h)}
+								<span class="wait">результат {nextPricesRun().startsWith('сегодня') ? 'сегодня' : 'завтра'}</span>
 							{:else}
 								<Spark points={r.spark ?? null} />
 								<b class="res"><Pct value={shown(h).x} /></b>

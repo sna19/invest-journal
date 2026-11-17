@@ -64,6 +64,8 @@
 	let formError = $state<string | undefined>();
 
 	const today = israelDate();
+	// T-007: an own idea has no article — no «из статьи» for the direction and the term
+	const own = $derived(sources.find((x) => x.id === sourceId)?.kind === 'own');
 	const input = $derived<HypothesisInput>({
 		url,
 		sourceId,
@@ -73,7 +75,7 @@
 		securityId: security?.id ?? null,
 		signalType,
 		direction,
-		directionSource: signalType === 'news' ? 'mine' : directionSource,
+		directionSource: signalType === 'news' || own ? 'mine' : directionSource,
 		thesis,
 		confidencePct,
 		invalidation,
@@ -158,10 +160,11 @@
 		pickSource(s.id);
 	}
 
+	// T-007: for a recommendation, a target or an opinion from an outside source the direction is «из статьи»
+	// by default; «моё толкование» stays a deliberate choice
 	function setSignal(t: string) {
 		signalType = t;
-		if (t === 'news') directionSource = 'mine';
-		else if (directionSource === 'mine' && signalType !== 'news') directionSource = 'article';
+		directionSource = t === 'news' ? 'mine' : 'article';
 	}
 
 	async function save(again: boolean) {
@@ -317,7 +320,9 @@
 			>
 		</div>
 		{#if errors.direction}<p class="err">{errors.direction}</p>{/if}
-		{#if signalType === 'news'}
+		{#if own}
+			<p class="hint">Собственная идея — направление ваше.</p>
+		{:else if signalType === 'news'}
 			<p class="hint">Для новости направление — ваше толкование.</p>
 		{:else}
 			<div class="seg small-seg" role="radiogroup" aria-label="Откуда направление">
@@ -327,16 +332,18 @@
 		{/if}
 
 		<div class="lbl-row">
-			<span class="lbl">Срок из статьи</span>
+			<span class="lbl">{own ? 'Срок' : 'Срок из статьи'}</span>
 			<HelpIcon topicKey="hypothesis.horizon" label="срок" />
 		</div>
 		<div class="chips" role="radiogroup" aria-label="Срок">
 			{#each HORIZONS as h (h.id)}
-				<button type="button" role="radio" aria-checked={horizon === h.id} class:on={horizon === h.id} onclick={() => (horizon = h.id)}>{h.label}</button>
+				<button type="button" role="radio" aria-checked={horizon === h.id} class:on={horizon === h.id} onclick={() => (horizon = h.id)}
+					>{own && h.id === 'none' ? 'По умолчанию' : h.label}</button
+				>
 			{/each}
 		</div>
 		{#if horizon === 'none'}
-			<p class="hint">Статья не называет срок — 3 месяца по умолчанию. <HelpIcon topicKey="hypothesis.default_horizon" label="срок по умолчанию" /></p>
+			<p class="hint">{own ? 'Срок не выбран' : 'Статья не называет срок'} — 3 месяца по умолчанию. <HelpIcon topicKey="hypothesis.default_horizon" label="срок по умолчанию" /></p>
 		{:else if horizon === 'date'}
 			<input type="date" aria-label="Дата горизонта" min={today} bind:value={horizonDate} />
 			{#if errors.horizonDate}<p class="err">{errors.horizonDate}</p>{/if}
