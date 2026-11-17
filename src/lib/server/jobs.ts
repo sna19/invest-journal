@@ -334,6 +334,8 @@ export function startScheduler() {
 		const prices = lastRun('prices');
 		if (!prices || israelDate(prices) < israelDate()) await runPricesJob();
 		else await runHistoryJob();
+		// the dollar rate (section 18): portfolios need it before the next morning's run
+		if (!lastRun('fx')) await runFxJob().catch((e) => console.error(`fx: ${e}`));
 		const bApp = lastRun('backup-app');
 		if (!bApp || Date.now() - bApp.getTime() > 26 * 3600 * 1000) await runBackupJob('app');
 		const bMarket = lastRun('backup-market');
