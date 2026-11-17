@@ -14,6 +14,7 @@ export function GET({ params, url }) {
 	return json({
 		securityId: s.id,
 		symbol: s.symbol,
+		name: s.name_en,
 		currency: s.price_unit === 'USD' ? 'USD' : 'ILS',
 		priceUnit: s.price_unit,
 		close: day?.close ?? null,

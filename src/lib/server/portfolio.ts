@@ -229,7 +229,7 @@ function book(app: Database.Database, m: ReturnType<typeof marketView>, portfoli
 			currency: p.currency,
 			trades: trades(evs.get(p.id)!, m.splits(p.security_id))
 		})),
-		cash: liveCash(cash).map((c) => ({ id: c.id, date: c.date, kind: c.kind, amount: c.amount, fx: c.fxRate ?? 1 }))
+		cash: liveCash(cash).map((c) => ({ id: c.id, date: c.date, kind: c.kind, amount: c.amount, fx: c.fxRate ?? 1, at: c.createdAt }))
 	};
 	return { rows, evs, cash, book: b };
 }

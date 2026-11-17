@@ -2,6 +2,7 @@
 	export interface Row {
 		h: {
 			id: number;
+			securityId: number;
 			symbol: string;
 			securityName: string;
 			exchangeCode: string;
@@ -222,6 +223,14 @@
 		<dd>{new Date(h.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</dd>
 	</dl>
 
+	{#if h.status !== 'cancelled'}
+		<!-- section 18: from the idea to the portfolio, linked to this hypothesis -->
+		<div class="to-portfolio">
+			<a href="/portfolio?add={h.securityId}&hyp={h.id}&kind=plan_buy">Хочу купить</a>
+			<a href="/portfolio?add={h.securityId}&hyp={h.id}&kind=buy">Купил</a>
+		</div>
+	{/if}
+
 	<label class="lbl" for="note-{h.id}">Заметка</label>
 	<textarea id="note-{h.id}" rows="3" placeholder="Что заметили по ходу" bind:value={note} onblur={() => note !== (h.note ?? '') && patch({ note })}></textarea>
 	<label class="lbl" for="tags-{h.id}">Теги</label>
@@ -248,6 +257,24 @@
 </div>
 
 <style>
+	.to-portfolio {
+		display: flex;
+		gap: var(--s2);
+		margin-bottom: var(--s3);
+	}
+	.to-portfolio a {
+		flex: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-height: var(--tap);
+		border: 1px solid var(--line);
+		border-radius: var(--r2);
+		background: var(--surface);
+		color: var(--text);
+		font-weight: 600;
+		text-decoration: none;
+	}
 	.name {
 		margin: 0 0 var(--s3);
 		color: var(--muted);

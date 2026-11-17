@@ -52,7 +52,12 @@ const REQUIRED = [
 	'stats.mode',
 	'stats.tags',
 	'ticker.search',
-	'ticker.db'
+	'ticker.db',
+	'portfolio.kinds',
+	'portfolio.stages',
+	'portfolio.twr',
+	'portfolio.fx',
+	'portfolio.source_auto'
 ];
 
 describe('help (spec section 8)', () => {

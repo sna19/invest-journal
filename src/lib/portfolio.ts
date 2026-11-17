@@ -86,6 +86,8 @@ export interface Trade {
 	fee: number;
 	/** shekels per one unit of the currency on the date */
 	fx: number;
+	/** when it was entered: orders events of the same day */
+	at?: string;
 }
 
 export function trades(events: Ev[], splits: Split[] = []): Trade[] {
@@ -93,7 +95,7 @@ export function trades(events: Ev[], splits: Split[] = []): Trade[] {
 		.filter((e) => e.kind === 'buy' || e.kind === 'sell')
 		.map((e) => {
 			const k = splitFactor(e.date, splits);
-			return { id: e.id, date: e.date, kind: e.kind as 'buy' | 'sell', qty: (e.qty ?? 0) * k, price: (e.price ?? 0) / k, fee: e.fee ?? 0, fx: e.fxRate ?? 1 };
+			return { id: e.id, date: e.date, kind: e.kind as 'buy' | 'sell', qty: (e.qty ?? 0) * k, price: (e.price ?? 0) / k, fee: e.fee ?? 0, fx: e.fxRate ?? 1, at: e.createdAt };
 		});
 }
 
@@ -229,7 +231,7 @@ export interface CashEv extends Ev {
 
 export interface Book {
 	positions: { id: number; securityId: number; f: number; currency: string; trades: Trade[] }[];
-	cash: { date: string; kind: string; amount: number; fx: number; id: number }[];
+	cash: { date: string; kind: string; amount: number; fx: number; id: number; at?: string }[];
 }
 
 export interface Market {
@@ -249,25 +251,32 @@ interface Flow {
  * The cash of the portfolio in shekels, day by day, and the money that came from outside. Deposits and
  * withdrawals are the outside money. A buy the cash cannot cover is paid with an implied deposit of the
  * missing sum — so a portfolio kept without recording deposits still has a correct return.
- * Within a day: money in (deposits, sells, dividends) before money out (buys, fees, taxes, withdrawals).
+ * Within a day: deposits first, then the events in the order they were entered (a sale entered after a buy
+ * does not pay for it); events without an entry time — money in before money out.
  */
 export function cashFlow(book: Book) {
-	type Item = { date: string; order: number; ils: number; outside: boolean };
+	type Item = { date: string; order: number; ils: number; outside: boolean; at?: string };
 	const items: Item[] = [];
 	for (const c of book.cash) {
 		const ils = c.amount * c.fx;
 		if (c.kind === 'deposit') items.push({ date: c.date, order: 0, ils, outside: true });
-		else if (c.kind === 'dividend') items.push({ date: c.date, order: 1, ils, outside: false });
-		else if (c.kind === 'withdraw') items.push({ date: c.date, order: 4, ils: -ils, outside: true });
-		else items.push({ date: c.date, order: 3, ils: -ils, outside: false });
+		else if (c.kind === 'dividend') items.push({ date: c.date, order: 1, ils, outside: false, at: c.at });
+		else if (c.kind === 'withdraw') items.push({ date: c.date, order: 4, ils: -ils, outside: true, at: c.at });
+		else items.push({ date: c.date, order: 3, ils: -ils, outside: false, at: c.at });
 	}
 	for (const p of book.positions)
 		for (const t of p.trades) {
 			const money = t.qty * t.price * p.f;
-			if (t.kind === 'sell') items.push({ date: t.date, order: 1, ils: (money - t.fee) * t.fx, outside: false });
-			else items.push({ date: t.date, order: 2, ils: -(money + t.fee) * t.fx, outside: false });
+			if (t.kind === 'sell') items.push({ date: t.date, order: 1, ils: (money - t.fee) * t.fx, outside: false, at: t.at });
+			else items.push({ date: t.date, order: 2, ils: -(money + t.fee) * t.fx, outside: false, at: t.at });
 		}
-	items.sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order);
+	items.sort(
+		(a, b) =>
+			a.date.localeCompare(b.date) ||
+			Number(b.order === 0) - Number(a.order === 0) ||
+			(a.at && b.at ? a.at.localeCompare(b.at) : 0) ||
+			a.order - b.order
+	);
 	let cash = 0;
 	const flows: Flow[] = [];
 	const balance: { date: string; cash: number }[] = [];
@@ -343,3 +352,23 @@ export function twr(book: Book, m: Market, end: string): Twr {
 	}
 	return { twr: growth - 1, from: flows[0].date, series, invested: flows.reduce((n, f) => n + f.ils, 0) };
 }
+
+// ── how money and prices read on the screen ─────────────────────────────────────────────────────────────
+
+export const curSign = (c: string) => (c === 'USD' ? '$' : '₪');
+
+/** 12 201 ₪, 4 180,5 $ — whole units from a thousand up. */
+export function money(x: number | null | undefined, currency = 'ILS', signed = false) {
+	if (x === null || x === undefined || !Number.isFinite(x)) return '—';
+	const s = Math.abs(x).toLocaleString('ru-RU', { maximumFractionDigits: Math.abs(x) >= 1000 ? 0 : 2 });
+	return `${signed ? (x > 0 ? '+' : x < 0 ? '−' : '') : x < 0 ? '−' : ''}${s} ${curSign(currency)}`;
+}
+
+/** A price in the position's unit: 6 500 аг., 110,25 $. */
+export function priceText(p: number | null | undefined, priceUnit: string) {
+	if (p === null || p === undefined) return '—';
+	const s = p.toLocaleString('ru-RU', { maximumFractionDigits: priceUnit === 'ILA' ? 1 : 2 });
+	return `${s} ${priceUnit === 'ILA' ? 'аг.' : curSign(priceUnit)}`;
+}
+
+export const qtyText = (q: number) => q.toLocaleString('ru-RU', { maximumFractionDigits: 4 });
