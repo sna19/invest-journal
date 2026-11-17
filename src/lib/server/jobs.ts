@@ -12,6 +12,7 @@ import { ringSecurities } from './market/rings.js';
 import { tase } from './market/tase.js';
 import { loadFx, USD_ILS, type FxSummary } from './market/boi.js';
 import { updateHypotheses, type Summary } from './results.js';
+import { syncAuto } from './portfolio.js';
 
 /**
  * Background jobs (spec sections 10 and 14): node-cron inside the app, Israel time, each run written to
@@ -222,6 +223,14 @@ export function runHypothesesStep(): Summary {
 	try {
 		const r = updateHypotheses(getApp().sqlite, getMarket().sqlite);
 		finishRun(id, { status: 'ok', received: r.entries + r.updated + r.closed, added: r.closed, updated: r.entries + r.updated });
+		// section 18: automatic portfolios follow their sources' hypotheses (entries, closes, dividends)
+		try {
+			const a = getApp().sqlite;
+			const auto = a.transaction(() => syncAuto(a, getMarket().sqlite))();
+			if (auto.bought || auto.sold || auto.dividends || auto.reversed) console.log(`auto portfolios: ${JSON.stringify(auto)}`);
+		} catch (e) {
+			console.error(`auto portfolios: ${e}`);
+		}
 		return r;
 	} catch (e) {
 		finishRun(id, { status: 'error', error: String(e) });
