@@ -13,14 +13,47 @@ function sources(dir: string): string[] {
 	});
 }
 
-/** Every topic key the interface uses: <HelpIcon topicKey="…"> and <TopBar help="…">. */
+const AREAS = 'hypothesis|result|source|stats|ticker|portfolio|consensus';
+
+/**
+ * Every topic key the interface uses: <HelpIcon topicKey="…">, <TopBar help="…"> and keys chosen in an
+ * expression (topicKey={x ? 'stats.own' : 'stats.mode'}) — any quoted «area.name» in a .svelte file.
+ */
 function usedKeys() {
 	const keys = new Set<string>();
+	const attr = /(?:topicKey|help)="([a-z]+\.[a-z_.]+)"/g;
+	const quoted = new RegExp(`['"]((?:${AREAS})\\.[a-z_]+(?:\\.[a-z_]+)*)['"]`, 'g');
 	for (const f of sources(join(root, 'src'))) {
-		for (const m of readFileSync(f, 'utf8').matchAll(/(?:topicKey|help)="([a-z]+\.[a-z.]+)"/g)) keys.add(m[1]);
+		const text = readFileSync(f, 'utf8');
+		for (const m of text.matchAll(attr)) keys.add(m[1]);
+		if (f.endsWith('.svelte')) for (const m of text.matchAll(quoted)) keys.add(m[1]);
 	}
 	return keys;
 }
+
+/** Spec section 8, the starting set, and the topics added by sections 17 and stage 6: each one has a place. */
+const REQUIRED = [
+	'hypothesis.list',
+	'hypothesis.confidence',
+	'hypothesis.invalidation',
+	'hypothesis.horizon',
+	'hypothesis.mode',
+	'hypothesis.signal_type',
+	'hypothesis.default_horizon',
+	'result.excess',
+	'result.locked',
+	'result.prices',
+	'source.stats',
+	'source.threshold',
+	'source.usefulness',
+	'stats.screen',
+	'stats.calibration',
+	'stats.own',
+	'stats.mode',
+	'stats.tags',
+	'ticker.search',
+	'ticker.db'
+];
 
 describe('help (spec section 8)', () => {
 	const files = readHelpFiles(join(root, 'help'));
@@ -30,6 +63,24 @@ describe('help (spec section 8)', () => {
 		const used = usedKeys();
 		expect(used.size).toBeGreaterThan(0);
 		expect([...used].filter((k) => !have.has(k))).toEqual([]);
+	});
+
+	it('every topic of section 8 (and later sections) stands in the interface and has its text', () => {
+		const used = usedKeys();
+		const have = new Set(files.map((f) => f.key));
+		expect(REQUIRED.filter((k) => !used.has(k))).toEqual([]);
+		expect(REQUIRED.filter((k) => !have.has(k))).toEqual([]);
+	});
+
+	it('no help file is left without a place in the interface', () => {
+		const used = usedKeys();
+		expect(files.map((f) => f.key).filter((k) => !used.has(k))).toEqual([]);
+	});
+
+	it('docs/HELP.md is the current collection of the texts (npm run help:doc)', async () => {
+		const { helpDoc, WHERE } = await import('../../../scripts/help-doc.mjs');
+		expect(readFileSync(join(root, 'docs', 'HELP.md'), 'utf8')).toBe(helpDoc());
+		expect(files.map((f) => f.key).filter((k) => !(k in WHERE))).toEqual([]);
 	});
 
 	it('each file has a title on its first line and a body', () => {

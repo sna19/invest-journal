@@ -55,6 +55,27 @@ export function israelDate(d = new Date()): string {
 	return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(d);
 }
 
+/** The daily prices job (spec section 14): every morning at 07:15 Israel time — jobs.ts schedules the same. */
+export const PRICES_AT = { h: 7, m: 15 };
+
+/** «сегодня в 07:15» before the run, «завтра в 07:15» after it — Israel time, whatever the device's zone. */
+export function nextPricesRun(now = new Date()): string {
+	const [h, m] = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+		.format(now)
+		.split(':')
+		.map(Number);
+	const at = `${String(PRICES_AT.h).padStart(2, '0')}:${String(PRICES_AT.m).padStart(2, '0')}`;
+	return h * 60 + m < PRICES_AT.h * 60 + PRICES_AT.m ? `сегодня в ${at}` : `завтра в ${at}`;
+}
+
+/**
+ * An open hypothesis whose last price is its entry price: the result is zero by definition, not a result yet
+ * («первый результат — завтра»; the owner took the zeros for an error).
+ */
+export function noResultYet(h: { status: string; entryPrice: number | null; entryPriceDate: string | null; lastDate: string | null }): boolean {
+	return h.status === 'open' && h.entryPrice !== null && (h.lastDate === null || h.lastDate === h.entryPriceDate);
+}
+
 /** 2026-11-30 + 3 months = 2027-02-28: the end of a shorter month is clamped. */
 export function addMonths(date: string, months: number): string {
 	const [y, m, d] = date.split('-').map(Number);

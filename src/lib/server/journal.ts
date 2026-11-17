@@ -146,7 +146,8 @@ export function createHypothesis(db: AppDb, market: Database.Database, input: Hy
 				priceUnit: s.price_unit,
 				signalType: input.signalType!,
 				direction: input.direction!,
-				directionSource: directionSourceFor(input.signalType, input.directionSource),
+				// T-007: an own idea has no article to take the direction from
+				directionSource: source!.kind === 'own' ? 'mine' : directionSourceFor(input.signalType, input.directionSource),
 				thesis: input.thesis!.trim(),
 				confidencePct: toNumber(input.confidencePct),
 				invalidation: input.invalidation!.trim(),

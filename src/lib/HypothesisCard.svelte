@@ -75,6 +75,7 @@
 	import HelpIcon from './HelpIcon.svelte';
 	import Pct from './Pct.svelte';
 	import { showToast } from './toast.svelte.js';
+	import { nextPricesRun, noResultYet } from './hypothesis.js';
 
 	/** Spec section 9 — the hypothesis card: every field, the article, the benchmark; notes and tags stay editable. */
 	interface Props {
@@ -156,18 +157,23 @@
 		<div class="result">
 			<div class="excess">
 				<span class="k">Превышение над бенчмарком <HelpIcon topicKey="result.excess" label="превышение" /></span>
-				<span class="big"><Pct value={res.x} /></span>
-				{#if h.status !== 'open'}
-					<span class="outcome {h.outcome}">{h.outcome === 'hit' ? 'Сработала' : 'Не сработала'}{h.status === 'closed_early' ? ' · досрочно' : ''}</span>
-				{:else if res.date}
-					<span class="sub">на {short(res.date)}</span>
+				{#if noResultYet(h)}
+					<span class="first">Первый результат — {nextPricesRun().startsWith('сегодня') ? 'сегодня' : 'завтра'}</span>
+					<span class="sub">цена входа — закрытие {short(h.entryPriceDate)}; следующее обновление цен — {nextPricesRun()}</span>
+				{:else}
+					<span class="big"><Pct value={res.x} /></span>
+					{#if h.status !== 'open'}
+						<span class="outcome {h.outcome}">{h.outcome === 'hit' ? 'Сработала' : 'Не сработала'}{h.status === 'closed_early' ? ' · досрочно' : ''}</span>
+					{:else if res.date}
+						<span class="sub">цены на {short(res.date)} · следующее обновление — {nextPricesRun()} <HelpIcon topicKey="result.prices" label="когда обновляются цены" /></span>
+					{/if}
 				{/if}
 			</div>
 			<table>
 				<thead><tr><th></th><th>Вход {short(h.entryPriceDate)}</th><th>{h.status === 'open' ? 'Сейчас' : 'Выход'} {short(res.date)}</th><th>Итог</th></tr></thead>
 				<tbody>
-					<tr><td>{h.symbol}, {unitOf(h)}</td><td>{num(h.entryPrice)}</td><td>{num(res.price)}</td><td><Pct value={res.r} plain /></td></tr>
-					<tr><td>{h.benchmarkSymbol === 'SPX' ? 'S&P 500' : h.benchmarkSymbol}</td><td>{num(h.benchmarkEntry)}</td><td>{num(res.bench)}</td><td><Pct value={res.rb} plain /></td></tr>
+					<tr><td>{h.symbol}, {unitOf(h)}</td><td>{num(h.entryPrice)}</td><td>{num(res.price)}</td><td><Pct value={noResultYet(h) ? null : res.r} plain /></td></tr>
+					<tr><td>{h.benchmarkSymbol === 'SPX' ? 'S&P 500' : h.benchmarkSymbol}</td><td>{num(h.benchmarkEntry)}</td><td>{num(res.bench)}</td><td><Pct value={noResultYet(h) ? null : res.rb} plain /></td></tr>
 				</tbody>
 			</table>
 			<p class="sub">Доходность — с поправкой на дивиденды{h.direction === 'short' ? '; для «падения» знак обеих доходностей изменён' : ''}.</p>
@@ -371,6 +377,10 @@
 	.big {
 		font-size: var(--fs-xl);
 		font-weight: 700;
+	}
+	.first {
+		font-size: var(--fs-l);
+		font-weight: 600;
 	}
 	.outcome {
 		font-weight: 600;

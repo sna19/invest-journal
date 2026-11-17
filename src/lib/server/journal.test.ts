@@ -103,6 +103,12 @@ describe('createHypothesis', () => {
 		expect(op.directionSource).toBe('mine');
 	});
 
+	it('an own idea always gets direction_source «mine», whatever the form sent (T-007)', () => {
+		const s = setup();
+		const h = createHypothesis(s.app.db, s.market.sqlite, base(s, { sourceId: s.src('Собственная идея'), url: null, directionSource: 'article' }), NOW);
+		expect(h.directionSource).toBe('mine');
+	});
+
 	it('one article, several hypotheses; the author is remembered for autocomplete', () => {
 		const s = setup();
 		const a = createHypothesis(s.app.db, s.market.sqlite, base(s), NOW);
