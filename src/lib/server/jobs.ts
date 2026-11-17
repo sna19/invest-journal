@@ -10,6 +10,7 @@ import { runListings, type RunSummary } from './market/pipeline.js';
 import { loadSecurity, securitiesForPrices, type Ctx } from './market/prices.js';
 import { ringSecurities } from './market/rings.js';
 import { tase } from './market/tase.js';
+import { loadFx, USD_ILS, type FxSummary } from './market/boi.js';
 import { updateHypotheses, type Summary } from './results.js';
 
 /**
@@ -133,6 +134,7 @@ export interface DailySummary {
 	errors: string[];
 	splits: number;
 	history?: QueueSummary;
+	fx?: FxSummary;
 	hypotheses?: Summary;
 }
 
@@ -182,9 +184,35 @@ export function runPricesJob(): Promise<DailySummary> {
 			throw e;
 		}
 		s.history = await runHistoryJob();
+		s.fx = await runFxJob().catch((e) => (console.error(`fx: ${e}`), undefined));
 		s.hypotheses = runHypothesesStep();
 		console.log(`prices: ${s.securities} securities, +${s.added} rows, ${s.errors.length} errors; hypotheses ${JSON.stringify({ ...s.hypotheses, waiting: s.hypotheses.waiting.length })}`);
 		return s;
+	});
+}
+
+/**
+ * Spec section 18 — the USD/ILS rate: ten years at the first run, then from a week before the last loaded day
+ * (the bank sometimes publishes late). Written as an «fx» run.
+ */
+export function runFxJob(): Promise<FxSummary> {
+	return single('fx', async () => {
+		const m = getMarket().sqlite;
+		const day = israelDate();
+		const last = (m.prepare('select max(date) as d from market_fx_daily where pair = ?').get(USD_ILS) as { d: string | null }).d;
+		const from = last
+			? new Date(Date.parse(last + 'T12:00:00Z') - 7 * 86400000).toISOString().slice(0, 10)
+			: `${Number(day.slice(0, 4)) - 10}${day.slice(4)}`;
+		const id = startRun('fx', 'boi');
+		try {
+			const s = await loadFx(ctx(id), from, day);
+			finishRun(id, { status: s.issues ? 'suspicious' : 'ok', ...s });
+			console.log(`fx: ${from}…${day} received ${s.received}, +${s.added}, ~${s.updated}, issues ${s.issues}`);
+			return s;
+		} catch (e) {
+			finishRun(id, { status: 'error', error: String(e) });
+			throw e;
+		}
 	});
 }
 

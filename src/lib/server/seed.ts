@@ -17,7 +17,8 @@ export const EXCHANGES = [
 export const PROVIDERS = [
 	{ code: 'nasdaqtrader', name: 'Nasdaq Trader Symbol Directory', dataKind: 'listings', rateLimit: null, priority: 1 },
 	{ code: 'tase', name: 'TASE site search index', dataKind: 'listings', rateLimit: null, priority: 1 },
-	{ code: 'yahoo', name: 'Yahoo Finance chart API', dataKind: 'prices,actions', rateLimit: 6, priority: 1 }
+	{ code: 'yahoo', name: 'Yahoo Finance chart API', dataKind: 'prices,actions', rateLimit: 6, priority: 1 },
+	{ code: 'boi', name: 'Bank of Israel representative rates (SDMX)', dataKind: 'fx', rateLimit: null, priority: 1 }
 ];
 
 /** Benchmarks (spec section 5): S&P 500 for US securities, TA-125 for TASE. Prices load by the same mechanism. */

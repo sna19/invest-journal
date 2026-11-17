@@ -226,3 +226,20 @@ export const adjustmentFactors = sqliteTable(
 	},
 	(t) => [primaryKey({ columns: [t.securityId, t.date] })]
 );
+
+/**
+ * Spec section 18 — daily exchange rate for portfolios: ILS per one unit of the base currency.
+ * USD/ILS — the Bank of Israel representative rate (published on Israeli business days).
+ */
+export const fxDaily = sqliteTable(
+	'market_fx_daily',
+	{
+		/** USD/ILS */
+		pair: text().notNull(),
+		date: text().notNull(),
+		rate: real().notNull(),
+		providerCode: text().notNull(),
+		runId: integer()
+	},
+	(t) => [primaryKey({ columns: [t.pair, t.date] })]
+);
