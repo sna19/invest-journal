@@ -140,7 +140,10 @@
 </script>
 
 <div class="card">
-	<p class="name">{h.securityName} · {h.exchangeCode === 'TASE' ? 'TASE' : h.exchangeCode.replace('_', ' ')}</p>
+	<p class="name">
+		{h.securityName} · {h.exchangeCode === 'TASE' ? 'TASE' : h.exchangeCode.replace('_', ' ')} ·
+		<a href="/security/{h.securityId}">график</a>
+	</p>
 
 	{#if h.entryPrice === null}
 		<div class="price">

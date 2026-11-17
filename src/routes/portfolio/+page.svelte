@@ -16,6 +16,7 @@
 	import { israelDate } from '#lib/hypothesis.js';
 	import { CASH_LABEL, money, priceText, qtyText, STAGE_LABEL, STAGES, type Stage } from '#lib/portfolio.js';
 	import { showToast } from '#lib/toast.svelte.js';
+	import LineChart, { colorOf, type Line } from '#lib/charts/LineChart.svelte';
 
 	/**
 	 * Spec section 18 — «Портфель»: the switcher of portfolios, the value in shekels and the return against the
@@ -100,7 +101,79 @@
 		if (!r?.ok) return (problem = 'Нет связи с сервером.');
 		v = await r.json();
 		problem = null;
+		loadChart();
 	}
+
+	// section 19 «Портфель»: the return against the chosen virtual portfolios and the benchmarks
+	interface Series {
+		key: string;
+		label: string;
+		kind: string;
+		points: { date: string; value: number }[];
+	}
+	let chart = $state<Series[] | null>(null);
+	let compare = $state<number[]>([]);
+	let hidden = $state<string[]>(['benchmark:SPX']);
+	async function loadChart() {
+		const r = await fetch(`/api/portfolios/${current}/chart?compare=${compare.join(',')}`).catch(() => null);
+		chart = r?.ok ? (await r.json()).series : null;
+	}
+	function toggleCompare(id: number) {
+		compare = compare.includes(id) ? compare.filter((x) => x !== id) : [...compare, id];
+		loadChart();
+	}
+	const toggleLine = (k: string) => (hidden = hidden.includes(k) ? hidden.filter((x) => x !== k) : [...hidden, k]);
+	const css = (n: string) => (typeof document === 'undefined' ? '' : getComputedStyle(document.documentElement).getPropertyValue(n).trim());
+	const lineColor = (sr: Series, i: number) =>
+		sr.kind === 'portfolio' ? (i === 0 ? css('--accent') : colorOf(i + 2)) : sr.key.startsWith('benchmark:TA125') ? '#9a8a26' : sr.key.endsWith(':ils') ? '#c94040' : '#d9822b';
+	const lines = $derived<Line[]>(
+		(chart ?? [])
+			.map((sr, i) => ({ key: sr.key, label: sr.label, points: sr.points, color: lineColor(sr, i), main: i === 0, dashed: sr.kind === 'benchmark' }))
+			.filter((l) => l.main || !hidden.includes(l.key))
+	);
+
+	// section 19 «Распределение»: shares by security, market and currency — bars, not a pie
+	const alloc = $derived.by(() => {
+		if (!v) return null;
+		const held = v.positions.filter((p) => p.valueIls > 0);
+		const total = held.reduce((n, p) => n + p.valueIls, 0) + Math.max(0, v.summary.cash);
+		if (total <= 0) return null;
+		const share = (x: number) => (x / total) * 100;
+		const top = [...held].sort((a, b) => b.valueIls - a.valueIls);
+		const bySec = top.slice(0, 8).map((p) => ({ label: p.symbol, value: p.valueIls }));
+		const rest = top.slice(8).reduce((n, p) => n + p.valueIls, 0);
+		if (rest > 0) bySec.push({ label: 'остальные', value: rest });
+		if (v.summary.cash > 0) bySec.push({ label: 'деньги', value: v.summary.cash });
+		const sum = (f: (p: Pos) => boolean) => held.filter(f).reduce((n, p) => n + p.valueIls, 0);
+		const us = sum((p) => p.currency === 'USD');
+		const il = sum((p) => p.currency !== 'USD');
+		const cash = Math.max(0, v.summary.cash);
+		return {
+			total,
+			groups: [
+				{ title: 'По бумагам', rows: bySec.map((r) => ({ ...r, pct: share(r.value) })) },
+				{
+					title: 'По рынкам',
+					rows: [
+						{ label: 'США', value: us },
+						{ label: 'Израиль', value: il },
+						{ label: 'деньги', value: cash }
+					]
+						.filter((r) => r.value > 0)
+						.map((r) => ({ ...r, pct: share(r.value) }))
+				},
+				{
+					title: 'По валютам',
+					rows: [
+						{ label: '$ доллар', value: us },
+						{ label: '₪ шекель', value: il + cash }
+					]
+						.filter((r) => r.value > 0)
+						.map((r) => ({ ...r, pct: share(r.value) }))
+				}
+			]
+		};
+	});
 	function choose(id: number) {
 		current = id;
 		try {
@@ -118,9 +191,11 @@
 			/* ignore */
 		}
 		const want = Number(page.url.searchParams.get('p'));
+		const pos = Number(page.url.searchParams.get('position'));
 		if (want) current = want;
 		await loadList();
-		if (want) replaceState('/portfolio', {});
+		if (pos) opened = pos;
+		if (want || pos) replaceState('/portfolio', {});
 		// from a hypothesis card: «Хочу купить» / «Купил» with the link to it (a real portfolio first)
 		const add = Number(page.url.searchParams.get('add'));
 		if (add) {
@@ -288,6 +363,41 @@
 		{/if}
 	{/each}
 
+	{#if chart && chart[0]?.points.length > 1}
+		<section class="card">
+			<div class="ch-head"><h2>Доходность</h2><HelpIcon topicKey="portfolio.chart" label="график доходности" /></div>
+			<LineChart {lines} percent height={220} />
+			<div class="toggles">
+				{#each chart.slice(1).filter((sr) => sr.kind === 'benchmark') as sr (sr.key)}
+					<button class:on={!hidden.includes(sr.key)} aria-pressed={!hidden.includes(sr.key)} onclick={() => toggleLine(sr.key)}>{sr.label}</button>
+				{/each}
+				{#each (list ?? []).filter((p) => p.id !== current) as p (p.id)}
+					<button class:on={compare.includes(p.id)} aria-pressed={compare.includes(p.id)} onclick={() => toggleCompare(p.id)}>{p.name}</button>
+				{/each}
+			</div>
+		</section>
+	{/if}
+
+	{#if alloc}
+		<section class="card">
+			<div class="ch-head"><h2>Распределение</h2><HelpIcon topicKey="portfolio.allocation" label="распределение" /></div>
+			{#each alloc.groups as g (g.title)}
+				{#if g.rows.length}
+					<h3>{g.title}</h3>
+					<ul class="bars">
+						{#each g.rows as r (r.label)}
+							<li>
+								<span class="bl">{r.label}</span>
+								<span class="bar"><span style:width="{Math.max(1, r.pct)}%"></span></span>
+								<span class="bp">{Math.round(r.pct)}%</span>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			{/each}
+		</section>
+	{/if}
+
 	{#if v.cash.length}
 		<details class="stage">
 			<summary><h2>Деньги <span class="n">{v.cash.filter((c) => !c.cancelledAt && c.kind !== 'reverse').length}</span></h2></summary>
@@ -405,6 +515,75 @@
 		min-width: 36px;
 		justify-content: center;
 		padding: 0;
+	}
+	.ch-head {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		margin-bottom: var(--s2);
+	}
+	h3 {
+		margin: var(--s3) 0 var(--s1);
+		font-size: var(--fs-s);
+		color: var(--muted);
+		font-weight: 600;
+	}
+	.toggles {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--s2);
+		margin-top: var(--s2);
+	}
+	.toggles button {
+		min-height: 32px;
+		padding: 0 var(--s3);
+		border: 1px solid var(--line);
+		border-radius: var(--r-pill);
+		background: none;
+		font-size: var(--fs-s);
+		color: var(--muted);
+		cursor: pointer;
+	}
+	.toggles button.on {
+		color: var(--text);
+		border-color: var(--text);
+	}
+	.bars {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+	.bars li {
+		display: grid;
+		grid-template-columns: 84px 1fr 40px;
+		align-items: center;
+		gap: var(--s2);
+		font-size: var(--fs-s);
+	}
+	.bl {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.bar {
+		height: 10px;
+		border-radius: 5px;
+		background: var(--surface-2);
+		overflow: hidden;
+	}
+	.bar span {
+		display: block;
+		height: 100%;
+		border-radius: 5px;
+		background: var(--accent);
+	}
+	.bp {
+		text-align: right;
+		font-variant-numeric: tabular-nums;
+		color: var(--muted);
 	}
 	.auto {
 		display: flex;

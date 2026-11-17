@@ -100,7 +100,7 @@ export function marketView(market: Database.Database): Market & {
 	};
 }
 
-function benchmarkId(market: Database.Database, key: 'benchmark:SPX' | 'benchmark:TA125') {
+export function benchmarkId(market: Database.Database, key: 'benchmark:SPX' | 'benchmark:TA125') {
 	return (
 		market.prepare(`select security_id as id from ref_provider_symbols where provider_code = 'seed' and provider_symbol = ?`).get(key) as
 			| { id: number }
@@ -217,7 +217,7 @@ export function updatePortfolio(app: Database.Database, id: number, input: { nam
 }
 
 /** The whole history of a portfolio as the arithmetic wants it. */
-function book(app: Database.Database, m: ReturnType<typeof marketView>, portfolioId: number) {
+export function book(app: Database.Database, m: ReturnType<typeof marketView>, portfolioId: number) {
 	const rows = app.prepare('select * from positions where portfolio_id = ? order by id').all(portfolioId) as PositionRow[];
 	const evs = new Map(rows.map((p) => [p.id, eventsOf(app, p.id)]));
 	const cash = cashOf(app, portfolioId);
