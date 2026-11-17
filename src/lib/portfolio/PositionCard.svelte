@@ -107,7 +107,7 @@
 	<div class="skeleton"></div>
 {:else}
 	{@const p = v.position}
-	<p class="name">{p.name} · {p.exchange.replace('_', ' ')} · <b>{STAGE_LABEL[p.stage]}</b><HelpIcon topicKey="portfolio.stages" label="этапы позиции" /></p>
+	<p class="name">{p.name} · {p.exchange.replace('_', ' ')} · <a href="/security/{p.securityId}">график</a> · <b>{STAGE_LABEL[p.stage]}</b><HelpIcon topicKey="portfolio.stages" label="этапы позиции" /></p>
 
 	{#if p.qty > 0}
 		<div class="nums">

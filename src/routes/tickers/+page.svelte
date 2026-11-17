@@ -136,10 +136,23 @@
 			<dt>В списках биржи</dt>
 			<dd>{s.active ? 'да' : 'нет — бумага сохранена для старых гипотез'}</dd>
 		</dl>
+		<a class="tocard" href="/security/{s.id}">Карточка бумаги и график</a>
 	</Sheet>
 {/if}
 
 <style>
+	.tocard {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-height: var(--tap);
+		margin-top: var(--s3);
+		border-radius: var(--r2);
+		background: var(--accent);
+		color: var(--accent-text);
+		font-weight: 600;
+		text-decoration: none;
+	}
 	.refresh {
 		display: inline-flex;
 		align-items: center;

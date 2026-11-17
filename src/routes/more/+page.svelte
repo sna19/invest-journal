@@ -13,6 +13,13 @@
 	<li><a href="/settings"><Settings size={20} /><span>Настройки</span><ChevronRight size={18} /></a></li>
 </ul>
 
+<!-- the licence of Lightweight Charts (Apache-2.0) asks for this notice and a link to TradingView -->
+<p class="credits">
+	Графики — TradingView Lightweight Charts™, Copyright © 2025 TradingView, Inc.
+	<a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">tradingview.com</a> · лицензия Apache 2.0.
+	Курс доллара — Банк Израиля. Цены — Yahoo Finance; списки бумаг — Nasdaq Trader и TASE.
+</p>
+
 <style>
 	.menu {
 		list-style: none;
@@ -36,5 +43,11 @@
 	}
 	span {
 		flex: 1;
+	}
+	.credits {
+		margin: var(--s5) var(--s2) 0;
+		font-size: var(--fs-xs);
+		color: var(--muted);
+		line-height: 1.5;
 	}
 </style>

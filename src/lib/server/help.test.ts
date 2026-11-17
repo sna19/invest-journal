@@ -13,7 +13,7 @@ function sources(dir: string): string[] {
 	});
 }
 
-const AREAS = 'hypothesis|result|source|stats|ticker|portfolio|consensus';
+const AREAS = 'hypothesis|result|source|stats|ticker|portfolio|consensus|security';
 
 /**
  * Every topic key the interface uses: <HelpIcon topicKey="…">, <TopBar help="…"> and keys chosen in an
@@ -57,7 +57,10 @@ const REQUIRED = [
 	'portfolio.stages',
 	'portfolio.twr',
 	'portfolio.fx',
-	'portfolio.source_auto'
+	'portfolio.source_auto',
+	'portfolio.chart',
+	'portfolio.allocation',
+	'security.chart'
 ];
 
 describe('help (spec section 8)', () => {
