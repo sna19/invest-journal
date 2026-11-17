@@ -40,6 +40,7 @@
 		byAuthor: Part[];
 		byHorizon: Part[];
 		byMode: Part[];
+		auto: { id: number; name: string; archivedAt: string | null; amount: number } | null;
 		articles: { article: { id: number; url: string | null; title: string | null; author: string | null; readAt: string }; hypotheses: Hyp[] }[];
 	}
 	const SIGNAL: Record<string, string> = { recommendation: 'Рекомендация', target: 'Целевая цена', opinion: 'Мнение', news: 'Новость' };
@@ -59,6 +60,18 @@
 		}
 	}
 	onMount(load);
+
+	// section 18: the source's automatic virtual portfolio — each of its rise hypotheses bought for a fixed sum
+	let autoBusy = $state(false);
+	async function toggleAuto() {
+		if (!card) return;
+		autoBusy = true;
+		const on = !card.auto || !!card.auto.archivedAt;
+		const r = await fetch(`/api/sources/${card.source.id}/auto`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on }) });
+		autoBusy = false;
+		if (!r.ok) return (problem = (await r.json().catch(() => ({}))).message ?? 'Не получилось');
+		await load();
+	}
 	const date = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
 </script>
 
@@ -69,6 +82,21 @@
 {#if problem}<p class="warn" role="alert">{problem}</p>{/if}
 
 {#if card}
+	<section class="card autoport">
+		<label class="toggle">
+			<input type="checkbox" checked={!!card.auto && !card.auto.archivedAt} disabled={autoBusy} onchange={toggleAuto} />
+			<span>Автоматический портфель</span>
+			<HelpIcon topicKey="portfolio.source_auto" label="автоматический портфель" />
+		</label>
+		<p class="muted small">
+			{#if card.auto && !card.auto.archivedAt}
+				Каждая гипотеза на рост (рекомендация, целевая цена, мнение) покупается на {card.auto.amount.toLocaleString('ru-RU')} ₪ по цене входа и продаётся при
+				закрытии. <a href="/portfolio?p={card.auto.id}">Открыть «{card.auto.name}»</a>
+			{:else}
+				Включите, чтобы сравнивать источник в деньгах — рядом с вашим реальным портфелем.
+			{/if}
+		</p>
+	</section>
 	<section class="card summary">
 		<div class="head">
 			<span class="k">Доля сработавших <HelpIcon topicKey="source.stats" label="доля и интервал" /></span>
@@ -148,6 +176,21 @@
 {/if}
 
 <style>
+	.autoport .toggle {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		min-height: var(--tap);
+		font-weight: 600;
+	}
+	.autoport .toggle input {
+		width: 22px;
+		height: 22px;
+		margin: 0;
+	}
+	.autoport p {
+		margin: 0;
+	}
 	.card {
 		margin-bottom: var(--s4);
 		padding: var(--s4);

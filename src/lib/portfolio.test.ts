@@ -105,6 +105,21 @@ describe('portfolio arithmetic (stage 7 criterion)', () => {
 		expect(t.invested).toBeCloseTo(6523.5, 6);
 	});
 
+	it('within a day the order of entry counts: a sale entered after a buy does not pay for it', () => {
+		const at = (e: Ev, t: string) => ({ ...e, createdAt: t });
+		const b: Book = {
+			positions: [
+				{ id: 1, securityId: 101, f: 0.01, currency: 'ILS', trades: trades([at(ev(1, 'buy', '2026-01-05', 100, 5000, 0), '10:00'), at(ev(2, 'sell', '2026-01-05', 40, 5000, 0), '10:05')]) },
+				{ id: 2, securityId: 102, f: 1, currency: 'ILS', trades: trades([at(ev(3, 'buy', '2026-01-05', 10, 100, 0), '10:01')]) }
+			],
+			cash: []
+		};
+		const c = cashFlow(b);
+		// buy 5 000 (implied), buy 1 000 (implied), then the sale brings 2 000 in: cash 2 000, outside money 6 000
+		expect(c.flows).toEqual([{ date: '2026-01-05', ils: 6000 }]);
+		expect(c.cash).toBeCloseTo(2000, 6);
+	});
+
 	it('selling more than is held is refused', () => {
 		expect(() => fifo(trades([...U, ev(9, 'sell', '2026-04-02', 7, 120, 0, 3.7)]), 1)).toThrow(OversellError);
 	});

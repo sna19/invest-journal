@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import Briefcase from '@lucide/svelte/icons/briefcase';
 	import NotebookPen from '@lucide/svelte/icons/notebook-pen';
 	import Newspaper from '@lucide/svelte/icons/newspaper';
 	import ChartColumn from '@lucide/svelte/icons/chart-column';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Plus from '@lucide/svelte/icons/plus';
 
-	/** Spec section 13 — four tabs at the bottom and «+» (new hypothesis) above them, on every screen. */
+	/** Spec sections 13 and 18 — five tabs at the bottom («Портфель» first) and «+» (new hypothesis) above them. */
 	const tabs = [
+		{ href: '/portfolio', label: 'Портфель', icon: Briefcase, match: (p: string) => p.startsWith('/portfolio') },
 		{ href: '/', label: 'Гипотезы', icon: NotebookPen, match: (p: string) => p === '/' || p.startsWith('/hypotheses') },
 		{ href: '/sources', label: 'Источники', icon: Newspaper, match: (p: string) => p.startsWith('/sources') },
 		{ href: '/stats', label: 'Статистика', icon: ChartColumn, match: (p: string) => p.startsWith('/stats') },
@@ -49,7 +51,7 @@
 		bottom: 0;
 		z-index: 10;
 		display: grid;
-		grid-template-columns: repeat(4, 1fr);
+		grid-template-columns: repeat(5, 1fr);
 		padding: var(--s1) var(--s2) env(safe-area-inset-bottom);
 		background: color-mix(in oklab, var(--surface) 88%, transparent);
 		-webkit-backdrop-filter: blur(14px);
