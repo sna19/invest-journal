@@ -208,6 +208,7 @@ export async function previewTransfer(
 			const day = m.day(r.securityId, date);
 			r.close = day ? { date: day.date, price: day.close } : null;
 			if (day && day.date !== date) r.warnings.push(`Цена закрытия на ${date} ещё нет — взята за ${day.date}`);
+			if (!day) r.warnings.push('Цен этой бумаги в базе ещё нет — сверить цену нельзя; история загрузится сама');
 		}
 		const unit = r.found!.priceUnit;
 		const f = unitFactor(unit);

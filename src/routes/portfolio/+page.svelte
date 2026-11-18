@@ -560,7 +560,7 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45</pre>
 							<span class="tw">
 								{#if r.kind === 'position'}
 									<b>{r.found?.symbol ?? r.text.split(/\s/)[0]}</b>{#if r.found} {r.found.name} · {r.found.exchange}{/if}
-									{#if r.qty !== undefined && r.price !== undefined} · {qtyText(r.qty)} × {priceText(r.price, r.found?.priceUnit ?? 'USD')} = {money(r.valuePc ?? 0, tp.currency)}{/if}
+									{#if r.found && r.qty !== undefined && r.price !== undefined} · {qtyText(r.qty)} × {priceText(r.price, r.found?.priceUnit ?? 'USD')} = {money(r.valuePc ?? 0, tp.currency)}{/if}
 								{:else if r.kind === 'cash'}
 									деньги {money(r.amount ?? 0, r.currency ?? 'ILS')}
 								{:else if r.kind === 'tax'}
