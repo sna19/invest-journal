@@ -925,3 +925,27 @@ export function setAuto(app: Database.Database, market: Database.Database, sourc
 	})();
 	return app.prepare('select * from portfolios where auto_source_id = ? order by currency desc').all(sourceId) as PortfolioRow[];
 }
+
+// ── deleting a portfolio whole ────────────────────────────────────────────────────────────────────────
+
+/**
+ * Deletes a portfolio with all its positions, events and money — at the owner's request, for portfolios made by
+ * mistake. The name must be typed back; a copy of the journal is made first (`backup` — VACUUM INTO). Events
+ * still cannot be deleted one by one: the database lets them go only together with their portfolio.
+ */
+export function deletePortfolio(app: Database.Database, id: number, confirmName: unknown, backup?: (tag: string) => string) {
+	const p = app.prepare('select id, name from portfolios where id = ?').get(id) as { id: number; name: string } | undefined;
+	if (!p) throw bad({ id: 'Портфеля нет' });
+	if (String(confirmName ?? '').trim() !== p.name) throw bad({ confirmName: `Наберите название портфеля «${p.name}»` });
+	const file = backup?.(`before-delete-portfolio-${id}`) ?? null;
+	const counts = app.transaction(() => {
+		app.prepare('insert or replace into portfolio_purge (portfolio_id) values (?)').run(id);
+		const ev = app.prepare('delete from position_events where position_id in (select id from positions where portfolio_id = ?)').run(id).changes;
+		const cash = app.prepare('delete from cash_events where portfolio_id = ?').run(id).changes;
+		const pos = app.prepare('delete from positions where portfolio_id = ?').run(id).changes;
+		app.prepare('delete from portfolios where id = ?').run(id);
+		app.prepare('delete from portfolio_purge where portfolio_id = ?').run(id);
+		return { positions: pos, events: ev, cash };
+	})();
+	return { name: p.name, ...counts, backup: file };
+}

@@ -122,6 +122,22 @@
 	let adding = $state<{ kind: string; securityId: number | null; hypothesisId: number | null } | null>(null);
 	let opened = $state<number | null>(null);
 	let cashing = $state(false);
+	// deleting a portfolio whole (owner's request): the name is typed back, the app copies the journal first
+	let deleting = $state(false);
+	let deleteName = $state('');
+	let deleteError = $state<string | null>(null);
+	async function removePortfolio() {
+		deleteError = null;
+		const r = await fetch(`/api/portfolios/${current}`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirmName: deleteName }) });
+		const j = await r.json().catch(() => ({}));
+		if (!r.ok) return (deleteError = j.message ?? 'Не удалилось');
+		showToast(`Портфель «${j.name}» удалён: позиций ${j.positions}, событий ${j.events}`);
+		deleting = false;
+		deleteName = '';
+		current = null;
+		await loadList();
+		await load();
+	}
 	let cashKind = $state('deposit');
 	let cashTo = $state('');
 	let cashAmount = $state('');
@@ -481,6 +497,7 @@
 			</ul>
 		</details>
 	{/if}
+	<button class="delete" onclick={() => ((deleting = true), (deleteName = ''), (deleteError = null))}>Удалить портфель «{v.portfolio.name}»</button>
 	<p class="muted small">Остаток денег — как у брокера; покупка без остатка только предупреждает. Для доходности недостающее считается взносом, так что она не искажается.</p>
 {/if}
 
@@ -581,6 +598,21 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45</pre>
 			{:else}
 				<button class="primary" disabled={transferBusy || !transferText.trim()} onclick={() => transfer(false)}>{transferBusy ? 'Проверяю…' : 'Проверить'}</button>
 			{/if}
+		</div>
+	</Sheet>
+{/if}
+
+{#if deleting && v}
+	<Sheet title="Удалить портфель" onclose={() => (deleting = false)}>
+		<div class="form">
+			<p>
+				Портфель «<b>{v.portfolio.name}</b>» удалится целиком: позиций {v.positions.length}, записей денег {v.cash.length} и вся их история. Вернуть его из приложения
+				нельзя; перед удалением приложение сохранит копию журнала в резервных копиях.
+			</p>
+			{#if v.portfolio.auto_source_id}<p class="muted small">Это автоматический портфель источника; если источник останется включённым, приложение заведёт его заново.</p>{/if}
+			<label>Чтобы подтвердить, наберите название <input bind:value={deleteName} placeholder={v.portfolio.name} autocomplete="off" /></label>
+			{#if deleteError}<p class="err">{deleteError}</p>{/if}
+			<button class="danger" disabled={deleteName.trim() !== v.portfolio.name} onclick={removePortfolio}>Удалить навсегда</button>
 		</div>
 	</Sheet>
 {/if}
@@ -721,6 +753,29 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45</pre>
 		text-align: right;
 		font-variant-numeric: tabular-nums;
 		color: var(--muted);
+	}
+	.delete {
+		display: block;
+		margin: var(--s5) auto var(--s2);
+		min-height: var(--tap);
+		padding: 0 var(--s4);
+		border: none;
+		background: none;
+		color: var(--down);
+		font-size: var(--fs-s);
+		cursor: pointer;
+	}
+	.danger {
+		min-height: var(--tap);
+		border: none;
+		border-radius: var(--r2);
+		background: var(--down);
+		color: #fff;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.danger:disabled {
+		opacity: 0.4;
 	}
 	.neg {
 		color: var(--down);
