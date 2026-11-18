@@ -6,6 +6,7 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Wallet from '@lucide/svelte/icons/wallet';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
+	import Pencil from '@lucide/svelte/icons/pencil';
 	import TopBar from '#lib/TopBar.svelte';
 	import Empty from '#lib/Empty.svelte';
 	import Sheet from '#lib/Sheet.svelte';
@@ -308,6 +309,48 @@
 		cashNote = '';
 		load();
 	}
+	/** «Изменить» (owner's request, 18.11.2026): the portfolio's name and currency, a money record's date and sums */
+	let renaming = $state(false);
+	let editName = $state('');
+	let editCurrency = $state('ILS');
+	let editError = $state<string | null>(null);
+	function startRename() {
+		if (!v) return;
+		editName = v.portfolio.name;
+		editCurrency = v.portfolio.currency;
+		editError = null;
+		renaming = true;
+	}
+	async function savePortfolio() {
+		editError = null;
+		const r = await fetch(`/api/portfolios/${current}`, {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ name: editName, currency: editCurrency })
+		});
+		const j = await r.json().catch(() => ({}));
+		if (!r.ok) return (editError = Object.values(j.errors ?? {})[0] as string ?? j.message ?? 'Не сохранилось');
+		renaming = false;
+		showToast('Портфель изменён');
+		await loadList();
+		load();
+	}
+	let cashEdit = $state<{ id: number; kind: string; currency: string; toCurrency: string | null; date: string; amount: string; toAmount: string; note: string } | null>(null);
+	let cashEditError = $state<string | null>(null);
+	async function saveCashEdit() {
+		if (!cashEdit) return;
+		cashEditError = null;
+		const r = await fetch(`/api/cash/${cashEdit.id}`, {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ date: cashEdit.date, amount: cashEdit.amount, note: cashEdit.note, ...(cashEdit.kind === 'convert' ? { toAmount: cashEdit.toAmount } : {}) })
+		});
+		const j = await r.json().catch(() => ({}));
+		if (!r.ok) return (cashEditError = Object.values(j.errors ?? {})[0] as string ?? j.message ?? 'Не сохранилось');
+		cashEdit = null;
+		showToast('Запись изменена');
+		load();
+	}
 	async function undoCash(id: number, how: 'cancel' | 'reverse') {
 		const r = await fetch(`/api/cash/${id}/${how}`, { method: 'POST' });
 		if (!r.ok) return (problem = (await r.json().catch(() => ({}))).message ?? 'Не получилось');
@@ -487,6 +530,17 @@
 						<span class="what"
 							><b>{CASH_LABEL[c.kind]}</b> {money(c.amount, c.currency)}{#if c.kind === 'convert' && c.toAmount} → {money(c.toAmount, c.toCurrency ?? 'USD')} · курс {(c.amount / c.toAmount).toFixed(4)}{/if}{#if c.note} · {c.note}{/if}{#if c.auto} · авто{/if}</span
 						>
+						{#if !c.auto && !v.portfolio.auto_source_id && !c.cancelledAt && !c.reversedBy && c.kind !== 'reverse'}
+							<button
+								class="undo"
+								aria-label="Изменить запись"
+								title="Изменить"
+								onclick={() =>
+									((cashEditError = null),
+									(cashEdit = { id: c.id, kind: c.kind, currency: c.currency, toCurrency: c.toCurrency, date: c.date, amount: String(c.amount), toAmount: c.toAmount === null ? '' : String(c.toAmount), note: c.note ?? '' }))}
+								><Pencil size={16} /></button
+							>
+						{/if}
 						{#if !c.auto && c.canCancel}
 							<button class="undo" aria-label="Отменить запись" onclick={() => undoCash(c.id, 'cancel')}><Undo2 size={16} /></button>
 						{:else if !c.auto && c.canReverse}
@@ -497,6 +551,7 @@
 			</ul>
 		</details>
 	{/if}
+	<button class="delete edit" onclick={startRename}><Pencil size={16} /> Название и валюта портфеля</button>
 	<button class="delete" onclick={() => ((deleting = true), (deleteName = ''), (deleteError = null))}>Удалить портфель «{v.portfolio.name}»</button>
 	<p class="muted small">Остаток денег — как у брокера; покупка без остатка только предупреждает. Для доходности недостающее считается взносом, так что она не искажается.</p>
 {/if}
@@ -509,7 +564,7 @@
 				<button role="radio" aria-checked={newKind === 'real'} class:on={newKind === 'real'} onclick={() => (newKind = 'real')}>Реальный</button>
 				<button role="radio" aria-checked={newKind === 'virtual'} class:on={newKind === 'virtual'} onclick={() => (newKind = 'virtual')}>Виртуальный</button>
 			</div>
-			<span class="muted small">Валюта — в ней брокер показывает итог; потом не меняется</span>
+			<span class="muted small">Валюта — в ней брокер показывает итог; сменить можно и потом</span>
 			<div class="seg" role="radiogroup" aria-label="Валюта">
 				<button role="radio" aria-checked={newCurrency === 'USD'} class:on={newCurrency === 'USD'} onclick={() => (newCurrency = 'USD')}>$ доллары</button>
 				<button role="radio" aria-checked={newCurrency === 'ILS'} class:on={newCurrency === 'ILS'} onclick={() => (newCurrency = 'ILS')}>₪ шекели</button>
@@ -598,6 +653,43 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45</pre>
 			{:else}
 				<button class="primary" disabled={transferBusy || !transferText.trim()} onclick={() => transfer(false)}>{transferBusy ? 'Проверяю…' : 'Проверить'}</button>
 			{/if}
+		</div>
+	</Sheet>
+{/if}
+
+{#if renaming && v}
+	<Sheet title="Портфель" onclose={() => (renaming = false)}>
+		<div class="form">
+			<label>Название <input bind:value={editName} maxlength="60" /></label>
+			{#if !v.portfolio.auto_source_id}
+				<span class="muted small">Валюта портфеля</span>
+				<div class="seg" role="radiogroup" aria-label="Валюта">
+					<button role="radio" aria-checked={editCurrency === 'USD'} class:on={editCurrency === 'USD'} onclick={() => (editCurrency = 'USD')}>$ доллары</button>
+					<button role="radio" aria-checked={editCurrency === 'ILS'} class:on={editCurrency === 'ILS'} onclick={() => (editCurrency = 'ILS')}>₪ шекели</button>
+				</div>
+				<p class="muted small">
+					Сделки и деньги остаются в своих валютах; стоимость, доходность и итоги пересчитаются в новой валюте с самого начала, по курсу каждого дня. В
+					долларовый портфель — только бумаги в долларах.
+				</p>
+			{/if}
+			{#if editError}<p class="err">{editError}</p>{/if}
+			<button class="primary" onclick={savePortfolio}>Сохранить</button>
+		</div>
+	</Sheet>
+{/if}
+
+{#if cashEdit}
+	<Sheet title="Изменить: {CASH_LABEL[cashEdit.kind].toLowerCase()}" onclose={() => (cashEdit = null)}>
+		<div class="form">
+			<label>Дата <input type="date" bind:value={cashEdit.date} /></label>
+			<label>{cashEdit.kind === 'convert' ? 'Отдал' : 'Сумма'}, {cashEdit.currency === 'USD' ? '$' : '₪'} <input inputmode="decimal" bind:value={cashEdit.amount} /></label>
+			{#if cashEdit.kind === 'convert'}
+				<label>Получил, {cashEdit.toCurrency === 'USD' ? '$' : '₪'} <input inputmode="decimal" bind:value={cashEdit.toAmount} /></label>
+			{/if}
+			<label>Заметка <input bind:value={cashEdit.note} /></label>
+			<p class="muted small">Прежние значения сохранятся в журнале правок. Вид записи и валюта не меняются — для этого сторно и новая запись.</p>
+			{#if cashEditError}<p class="err">{cashEditError}</p>{/if}
+			<button class="primary" onclick={saveCashEdit}>Сохранить</button>
 		</div>
 	</Sheet>
 {/if}
@@ -764,6 +856,13 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45</pre>
 		color: var(--down);
 		font-size: var(--fs-s);
 		cursor: pointer;
+	}
+	.delete.edit {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		margin-bottom: 0;
+		color: var(--link);
 	}
 	.danger {
 		min-height: var(--tap);

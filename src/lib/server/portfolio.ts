@@ -219,7 +219,8 @@ export function createPortfolio(app: Database.Database, input: { name?: unknown;
 export function updatePortfolio(
 	app: Database.Database,
 	id: number,
-	input: { name?: unknown; archived?: unknown; autoAmountIls?: unknown; taxAccrued?: unknown }
+	input: { name?: unknown; archived?: unknown; autoAmountIls?: unknown; taxAccrued?: unknown; currency?: unknown },
+	market?: Database.Database
 ) {
 	const p = app.prepare('select * from portfolios where id = ?').get(id) as PortfolioRow | undefined;
 	if (!p) throw bad({ id: 'Портфеля нет' });
@@ -227,8 +228,10 @@ export function updatePortfolio(
 		const name = String(input.name).trim();
 		if (!name) throw bad({ name: 'Название портфеля' });
 		if (app.prepare('select 1 from portfolios where name = ? and id <> ?').get(name, id)) throw bad({ name: 'Такое название уже есть' });
+		if (name.length > 60) throw bad({ name: 'До 60 знаков' });
 		app.prepare('update portfolios set name = ? where id = ?').run(name, id);
 	}
+	if (input.currency !== undefined && input.currency !== p.currency) setCurrency(app, market, p, input.currency);
 	if (input.archived !== undefined)
 		app.prepare('update portfolios set archived_at = ? where id = ?').run(input.archived ? new Date().toISOString() : null, id);
 	if (input.autoAmountIls !== undefined) {
@@ -242,6 +245,34 @@ export function updatePortfolio(
 		app.prepare('update portfolios set tax_accrued = ? where id = ?').run(t, id);
 	}
 	return app.prepare('select * from portfolios where id = ?').get(id) as PortfolioRow;
+}
+
+/**
+ * The portfolio's currency changed (owner's request, 18.11.2026): a shekel portfolio holds TASE and dollar
+ * securities, a dollar one — dollar ones only. Every event keeps its own currency; its rate to the portfolio's
+ * currency is taken again for its date, so values and returns are counted in the new currency from the start.
+ */
+function setCurrency(app: Database.Database, market: Database.Database | undefined, p: PortfolioRow, currency: unknown) {
+	if (!CURRENCIES.includes(currency as never)) throw bad({ currency: 'Валюта портфеля — доллары или шекели' });
+	if (!market) throw bad({ currency: 'Валюту сейчас не сменить' });
+	if (p.auto_source_id) throw bad({ currency: 'У автоматического портфеля валюта задана источником' });
+	const pc = currency as string;
+	if (pc === 'USD') {
+		const ils = app.prepare(`select distinct symbol from positions where portfolio_id = ? and currency <> 'USD'`).all(p.id) as { symbol: string }[];
+		if (ils.length) throw bad({ currency: `В долларовом портфеле — только бумаги в долларах; здесь есть шекелевые: ${ils.map((x) => x.symbol).join(', ')}` });
+	}
+	const m = marketView(market);
+	app.transaction(() => {
+		app.prepare('update portfolios set currency = ? where id = ?').run(pc, p.id);
+		const evs = app
+			.prepare(`select e.id, e.date, e.currency from position_events e join positions s on s.id = e.position_id where s.portfolio_id = ?`)
+			.all(p.id) as { id: number; date: string; currency: string }[];
+		const upE = app.prepare('update position_events set fx_rate = ? where id = ?');
+		for (const e of evs) upE.run(m.conv(e.currency, pc, e.date), e.id);
+		const cs = app.prepare('select id, date, currency from cash_events where portfolio_id = ?').all(p.id) as { id: number; date: string; currency: string }[];
+		const upC = app.prepare('update cash_events set fx_rate = ? where id = ?');
+		for (const c of cs) upC.run(m.conv(c.currency, pc, c.date), c.id);
+	})();
 }
 
 /** The whole history of a portfolio as the arithmetic wants it. */
@@ -577,19 +608,8 @@ export function addEvent(app: Database.Database, market: Database.Database, inpu
 
 	// a price far from the day's range: a typo or agorot for shekels — ask before saving
 	if (trade && !auto && !input.confirm) {
-		const day = m.day(pos.security_id, date);
-		if (day) {
-			const k = splitFactor(day.date, m.splits(pos.security_id)) / splitFactor(date, m.splits(pos.security_id));
-			const lo = (day.low ?? day.close) * k;
-			const hi = (day.high ?? day.close) * k;
-			if (price! < lo * (1 - PRICE_SLACK) || price! > hi * (1 + PRICE_SLACK)) {
-				const unit = pos.price_unit === 'ILA' ? 'агорот' : pos.currency === 'USD' ? '$' : '₪';
-				const hint = pos.price_unit === 'ILA' && price! * 100 >= lo * 0.9 && price! * 100 <= hi * 1.1 ? ' Похоже, цена в шекелях — здесь нужны агороты.' : '';
-				throw new ConfirmError(
-					`Цена ${price} ${unit} далеко от диапазона дня ${day.date}: ${fmt(lo)}–${fmt(hi)} ${unit}.${hint} Сохранить всё равно?`
-				);
-			}
-		}
+		const far = farPrice(m, pos, price!, date);
+		if (far) throw new ConfirmError(far);
 	}
 	if (pos.currency !== pc && !fxOn(market, date) && !fxOn(market, '9999-12-31')) throw bad({ date: 'Курса доллара ещё нет — он загрузится утром' });
 	const fxRate = m.conv(pos.currency, pc, date);
@@ -641,6 +661,122 @@ export function addEvent(app: Database.Database, market: Database.Database, inpu
 }
 
 const fmt = (x: number) => x.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+
+/** A price further than 10% from the day's range: a typo or agorot for shekels — the question to ask, or null. */
+function farPrice(m: ReturnType<typeof marketView>, pos: PositionRow, price: number, date: string): string | null {
+	const day = m.day(pos.security_id, date);
+	if (!day) return null;
+	const k = splitFactor(day.date, m.splits(pos.security_id)) / splitFactor(date, m.splits(pos.security_id));
+	const lo = (day.low ?? day.close) * k;
+	const hi = (day.high ?? day.close) * k;
+	if (price >= lo * (1 - PRICE_SLACK) && price <= hi * (1 + PRICE_SLACK)) return null;
+	const unit = pos.price_unit === 'ILA' ? 'агорот' : pos.currency === 'USD' ? '$' : '₪';
+	const hint = pos.price_unit === 'ILA' && price * 100 >= lo * 0.9 && price * 100 <= hi * 1.1 ? ' Похоже, цена в шекелях — здесь нужны агороты.' : '';
+	return `Цена ${price} ${unit} далеко от диапазона дня ${day.date}: ${fmt(lo)}–${fmt(hi)} ${unit}.${hint} Сохранить всё равно?`;
+}
+
+/**
+ * «Изменить» (owner's request, 18.11.2026): an event's date and numbers are corrected in place — the kind, the
+ * position and the currency stay. The database keeps what the event was before in event_edits. The same checks
+ * as for a new event: the date is not later than today, no point in time holds less than nothing, a price far
+ * from the day's range is asked about.
+ */
+export function editEvent(app: Database.Database, market: Database.Database, id: number, input: EventInput, now = new Date()) {
+	const e = app.prepare(`select ${EVENT_COLS} from position_events where id = ?`).get(id) as EventRow | undefined;
+	if (!e) throw bad({ id: 'События нет' });
+	if (e.cancelledAt || e.kind === 'reverse') throw new LockedError('Это событие уже не учитывается — его не изменить');
+	if (app.prepare(`select 1 from position_events where reverses_event_id = ? and cancelled_at is null`).get(id))
+		throw new LockedError('Событие сторнировано — его не изменить');
+	const pos = positionRow(app, e.positionId)!;
+	const port = app.prepare('select currency, auto_source_id from portfolios where id = ?').get(pos.portfolio_id) as { currency: string; auto_source_id: number | null };
+	if (port.auto_source_id) throw new LockedError('События автоматического портфеля записывает приложение');
+	const today = israelDate(now);
+	const errors: Record<string, string> = {};
+	const has = (k: keyof EventInput) => input[k] !== undefined;
+	const date = has('date') ? (input.date as string) : e.date;
+	if (!isDate(date)) errors.date = 'Дата в виде ГГГГ-ММ-ДД';
+	else if (date > today) errors.date = 'Дата не позже сегодняшней';
+	const trade = e.kind === 'buy' || e.kind === 'sell' || e.kind === 'opening';
+	const qty = has('qty') ? num(input.qty) : e.qty;
+	const price = has('price') ? num(input.price) : e.price;
+	const fee = has('fee') ? (num(input.fee) ?? 0) : e.fee;
+	const amount = has('amount') ? num(input.amount) : e.amount;
+	const costTotal = has('costTotal') ? num(input.costTotal) : (e.costTotal ?? null);
+	const note = has('note') ? (typeof input.note === 'string' ? input.note.trim().slice(0, 2000) || null : null) : e.note;
+	if (trade) {
+		if (qty === null || !(qty > 0)) errors.qty = 'Количество больше нуля';
+		if (price === null || !(price > 0)) errors.price = 'Цена больше нуля';
+		if (!((fee ?? 0) >= 0)) errors.fee = 'Комиссия не меньше нуля';
+	} else if (price !== null && !(price > 0)) errors.price = 'Цена больше нуля или пусто';
+	if (amount !== null && !(amount > 0)) errors.amount = 'Сумма больше нуля или пусто';
+	if (costTotal !== null && !(costTotal > 0)) errors.costTotal = 'Стоимость покупки больше нуля или пусто';
+	if (e.kind === 'basis' && price === null && costTotal === null) errors.price = 'Средняя цена покупки или вся стоимость покупки';
+	if (e.kind === 'note' && !note) errors.note = 'Текст заметки';
+	if (Object.keys(errors).length) throw bad(errors);
+	const m = marketView(market);
+	if (trade && !input.confirm && (price !== e.price || date !== e.date)) {
+		const far = farPrice(m, pos, price!, date);
+		if (far) throw new ConfirmError(far);
+	}
+	if (pos.currency !== port.currency && date !== e.date && !fxOn(market, date) && !fxOn(market, '9999-12-31'))
+		throw bad({ date: 'Курса доллара ещё нет — он загрузится утром' });
+	const fxRate = date === e.date ? e.fxRate : m.conv(pos.currency, port.currency, date);
+	const f = unitFactor(pos.price_unit);
+	return app.transaction(() => {
+		app.prepare(`update position_events set date = ?, qty = ?, price = ?, fee = ?, fx_rate = ?, amount = ?, cost_total = ?, note = ? where id = ?`).run(
+			date,
+			trade ? qty : e.qty,
+			price,
+			trade ? fee : e.fee,
+			fxRate,
+			amount,
+			costTotal,
+			note,
+			id
+		);
+		// a «Перенесено» and its purchase price entered with it move together
+		if (e.kind === 'opening' && date !== e.date)
+			app.prepare(`update position_events set date = ?, fx_rate = ? where position_id = ? and kind = 'basis' and date = ? and cancelled_at is null`).run(
+				date,
+				fxRate,
+				pos.id,
+				e.date
+			);
+		try {
+			fifo(trades(eventsOf(app, pos.id), m.splits(pos.security_id), f), f);
+		} catch (err) {
+			if (err instanceof OversellError) throw bad({ qty: `После изменения продажа больше, чем было: ${err.message}` });
+			throw err;
+		}
+		const first = (app.prepare(`select min(date) as d from position_events where position_id = ? and cancelled_at is null`).get(pos.id) as { d: string | null }).d;
+		if (first) app.prepare('update positions set opened_at = ? where id = ?').run(first, pos.id);
+		recomputeStage(app, market, pos.id);
+		return { positionId: pos.id };
+	})();
+}
+
+/** «Изменить» a money record: its date and sums; the kind and the currencies stay. */
+export function editCash(app: Database.Database, market: Database.Database, id: number, input: { date?: unknown; amount?: unknown; toAmount?: unknown; note?: unknown }, now = new Date()) {
+	const c = app.prepare(`select ${CASH_COLS} from cash_events where id = ?`).get(id) as CashRow | undefined;
+	if (!c) throw bad({ id: 'Записи нет' });
+	if (c.cancelledAt || c.kind === 'reverse') throw new LockedError('Эта запись уже не учитывается — её не изменить');
+	if (app.prepare(`select 1 from cash_events where reverses_event_id = ? and cancelled_at is null`).get(id)) throw new LockedError('Запись сторнирована — её не изменить');
+	const port = app.prepare('select currency, auto_source_id from portfolios where id = ?').get(c.portfolioId) as { currency: string; auto_source_id: number | null };
+	if (port.auto_source_id) throw new LockedError('Деньги автоматического портфеля записывает приложение');
+	const errors: Record<string, string> = {};
+	const date = input.date !== undefined ? (input.date as string) : c.date;
+	if (!isDate(date)) errors.date = 'Дата в виде ГГГГ-ММ-ДД';
+	else if (date > israelDate(now)) errors.date = 'Дата не позже сегодняшней';
+	const amount = input.amount !== undefined ? num(input.amount) : c.amount;
+	if (amount === null || !(amount > 0)) errors.amount = 'Сумма больше нуля';
+	const toAmount = c.kind === 'convert' && input.toAmount !== undefined ? num(input.toAmount) : c.toAmount;
+	if (c.kind === 'convert' && (toAmount === null || !(toAmount > 0))) errors.toAmount = 'Полученная сумма больше нуля';
+	const note = input.note !== undefined ? (typeof input.note === 'string' ? input.note.trim().slice(0, 500) || null : null) : c.note;
+	if (Object.keys(errors).length) throw bad(errors);
+	const fxRate = date === c.date ? c.fxRate : marketView(market).conv(c.currency, port.currency, date);
+	app.prepare('update cash_events set date = ?, amount = ?, to_amount = ?, fx_rate = ?, note = ? where id = ?').run(date, amount, toAmount, fxRate, note, id);
+	return c.portfolioId;
+}
 
 /** «Отменить» within 24 hours: an input error — the event leaves the account, the row stays. */
 export function cancelEvent(app: Database.Database, market: Database.Database, id: number) {
@@ -940,6 +1076,10 @@ export function deletePortfolio(app: Database.Database, id: number, confirmName:
 	const file = backup?.(`before-delete-portfolio-${id}`) ?? null;
 	const counts = app.transaction(() => {
 		app.prepare('insert or replace into portfolio_purge (portfolio_id) values (?)').run(id);
+		app.prepare(
+			`delete from event_edits where (event_table = 'cash_events' and event_id in (select id from cash_events where portfolio_id = ?))
+			   or (event_table = 'position_events' and event_id in (select e.id from position_events e join positions s on s.id = e.position_id where s.portfolio_id = ?))`
+		).run(id, id);
 		const ev = app.prepare('delete from position_events where position_id in (select id from positions where portfolio_id = ?)').run(id).changes;
 		const cash = app.prepare('delete from cash_events where portfolio_id = ?').run(id).changes;
 		const pos = app.prepare('delete from positions where portfolio_id = ?').run(id).changes;

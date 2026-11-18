@@ -29,10 +29,12 @@
 		lastFee?: Record<string, number>;
 		/** the portfolio's currency: the whole purchase cost of a transferred position is in it */
 		portfolioCurrency?: string;
+		/** «Изменить» (owner's request, 18.11.2026): the event to correct — its date and numbers, in place */
+		edit?: { id: number; date: string; qty: number | null; price: number | null; fee: number | null; amount: number | null; costTotal?: number | null; note: string | null } | null;
 		onsaved: (positionId: number) => void;
 		oncancel: () => void;
 	}
-	let { portfolioId, kind, position = null, securityId = null, hypothesisId = null, lastFee = {}, portfolioCurrency = 'ILS', onsaved, oncancel }: Props = $props();
+	let { portfolioId, kind, position = null, securityId = null, hypothesisId = null, lastFee = {}, portfolioCurrency = 'ILS', edit = null, onsaved, oncancel }: Props = $props();
 	let costTotal = $state('');
 	let warning = $state<string | null>(null);
 
@@ -51,7 +53,7 @@
 	let saving = $state(false);
 	let formError = $state<string | null>(null);
 
-	const trade = $derived(kind === 'buy' || kind === 'sell');
+	const trade = $derived(kind === 'buy' || kind === 'sell' || kind === 'opening');
 	const plan = $derived(kind === 'plan_buy' || kind === 'plan_sell');
 	const unitLabel = $derived(sec ? (sec.priceUnit === 'ILA' ? 'агорот' : sec.currency === 'USD' ? '$' : '₪') : '');
 
@@ -73,6 +75,17 @@
 	}
 
 	onMount(async () => {
+		if (edit) {
+			const t = (x: number | null | undefined) => (x === null || x === undefined ? '' : String(x));
+			date = edit.date;
+			qty = t(edit.qty);
+			price = t(edit.price);
+			fee = t(edit.fee);
+			amount = t(edit.amount);
+			costTotal = t(edit.costTotal);
+			note = edit.note ?? '';
+			priceTouched = true;
+		}
 		if (position) use({ id: position.securityId, symbol: position.symbol, name: position.name, currency: position.currency, priceUnit: position.priceUnit });
 		else if (securityId) {
 			const r = await fetch(`/api/securities/${securityId}/quote`).then((x) => x.json()).catch(() => null);
@@ -101,7 +114,7 @@
 		errors = {};
 		formError = null;
 		const body = {
-			...(position ? { positionId: position.id } : { securityId: sec.id }),
+			...(edit ? {} : position ? { positionId: position.id } : { securityId: sec.id }),
 			kind,
 			date,
 			qty: trade ? qty : undefined,
@@ -110,11 +123,13 @@
 			amount: kind === 'plan_buy' ? amount : undefined,
 			costTotal: kind === 'basis' ? costTotal : undefined,
 			note,
-			hypothesisId,
+			hypothesisId: edit ? undefined : hypothesisId,
 			confirm
 		};
 		try {
-			const r = await fetch(`/api/portfolios/${portfolioId}/events`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+			const r = edit
+				? await fetch(`/api/events/${edit.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+				: await fetch(`/api/portfolios/${portfolioId}/events`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 			const j = await r.json().catch(() => ({}));
 			if (r.status === 409 && j.confirm) {
 				ask = j.message;
@@ -132,7 +147,7 @@
 				setTimeout(() => onsaved(j.positionId), 2500);
 				return;
 			}
-			onsaved(j.positionId);
+			onsaved(j.positionId ?? position?.id);
 		} catch {
 			formError = 'Нет связи с сервером';
 		} finally {
@@ -172,7 +187,7 @@
 					{#if quoteDate && !plan}<em class="hint">закрытие {quoteDate.split('-').reverse().join('.')}</em>{/if}
 					{#if errors.price}<em class="err">{errors.price}</em>{/if}
 				</label>
-				{#if trade}
+				{#if trade && kind !== 'opening'}
 					<label>
 						<span>Комиссия, {sec.currency === 'USD' ? '$' : '₪'}</span>
 						<input inputmode="decimal" bind:value={fee} placeholder="0" />
@@ -187,7 +202,7 @@
 			</div>
 		{/if}
 
-		{#if total !== null}
+		{#if total !== null && kind !== 'opening'}
 			<p class="total">
 				{kind === 'buy' ? 'Списано' : 'Получено'}: <b>{money(total, sec.currency)}</b>
 				{#if sec.currency === 'USD' && fxUsd}<span class="muted"> ≈ {money(total * fxUsd)} по курсу {fxUsd}</span>{/if}
@@ -206,7 +221,7 @@
 				</label>
 			</div>
 			{#if errors.price}<em class="err">{errors.price}</em>{/if}
-			<p class="muted small">История не меняется: цена покупки запишется отдельным событием, прибыль будет считаться от неё, а не с даты переноса.</p>
+			{#if !edit}<p class="muted small">История не меняется: цена покупки запишется отдельным событием, прибыль будет считаться от неё, а не с даты переноса.</p>{/if}
 		{/if}
 
 		<label>
@@ -227,7 +242,7 @@
 		{:else}
 			{#if formError}<p class="err">{formError}</p>{/if}
 			<div class="btns">
-				<button class="primary" disabled={saving} onclick={() => save()}>{saving ? 'Сохраняю…' : EVENT_LABEL[kind]}</button>
+				<button class="primary" disabled={saving} onclick={() => save()}>{saving ? 'Сохраняю…' : edit ? 'Сохранить' : EVENT_LABEL[kind]}</button>
 				<button class="ghost" onclick={oncancel}>Отмена</button>
 			</div>
 		{/if}

@@ -8,12 +8,15 @@ import {
 	ConfirmError,
 	createPortfolio,
 	deletePortfolio,
+	editCash,
+	editEvent,
 	listPortfolios,
 	portfolioView,
 	positionView,
 	reverseEvent,
 	setAuto,
-	syncAuto
+	syncAuto,
+	updatePortfolio
 } from './portfolio.js';
 
 const NOW = new Date('2026-05-04T09:00:00Z');
@@ -80,11 +83,59 @@ describe('portfolio events (section 18)', () => {
 		expect(() => addEvent(s.app, s.market, { positionId, kind: 'buy', date: '2026-02-02', qty: 1, price: 6500 }, NOW)).not.toThrow();
 	});
 
-	it('the database refuses to change or delete an event', () => {
+	it("the database keeps an event's kind and position, refuses deletes, and logs every correction", () => {
 		const s = setup();
 		const { eventId } = addEvent(s.app, s.market, { portfolioId: s.p.id, securityId: s.us, kind: 'buy', date: '2026-01-05', qty: 1, price: 100 }, NOW);
-		expect(() => s.app.prepare('update position_events set qty = 2 where id = ?').run(eventId)).toThrow(/cannot change/);
+		expect(() => s.app.prepare(`update position_events set kind = 'sell' where id = ?`).run(eventId)).toThrow(/keeps its kind/);
 		expect(() => s.app.prepare('delete from position_events where id = ?').run(eventId)).toThrow(/never deleted/);
+		s.app.prepare('update position_events set qty = 2 where id = ?').run(eventId);
+		const log = s.app.prepare('select * from event_edits').all() as { event_id: number; old_values: string; new_values: string }[];
+		expect(log).toHaveLength(1);
+		expect(JSON.parse(log[0].old_values).qty).toBe(1);
+		expect(JSON.parse(log[0].new_values).qty).toBe(2);
+		expect(() => s.app.prepare('delete from event_edits').run()).toThrow(/never deleted/);
+	});
+
+	it('«Изменить»: date, quantity, price and fee change in place; the rate follows the date; checks as for a new event', () => {
+		const s = setup();
+		const { positionId, eventId } = addEvent(s.app, s.market, { portfolioId: s.p.id, securityId: s.us, kind: 'buy', date: '2026-01-05', qty: 10, price: 100, fee: 1 }, NOW);
+		const sell = addEvent(s.app, s.market, { positionId, kind: 'sell', date: '2026-04-01', qty: 4, price: 120 }, NOW);
+		editEvent(s.app, s.market, eventId, { date: '2026-04-01', qty: 12, price: 118, fee: 2 }, NOW);
+		const v = positionView(s.app, s.market, positionId, '2026-04-30')!;
+		const buy = v.events.find((e) => e.id === eventId)!;
+		expect([buy.date, buy.qty, buy.price, buy.fee, buy.fxRate]).toEqual(['2026-04-01', 12, 118, 2, 3.7]);
+		expect(v.position.qty).toBe(8);
+		expect(v.events).toHaveLength(2);
+		expect((s.app.prepare('select count(*) as n from event_edits').get() as { n: number }).n).toBe(1);
+		// the same rules: a future date, a buy smaller than what was sold, a price far from the day
+		expect(() => editEvent(s.app, s.market, eventId, { date: '2026-06-01' }, NOW)).toThrow(InputError);
+		expect(() => editEvent(s.app, s.market, eventId, { qty: 3 }, NOW)).toThrow(/продажа больше/);
+		expect(() => editEvent(s.app, s.market, eventId, { price: 12 }, NOW)).toThrow(ConfirmError);
+		expect(() => editEvent(s.app, s.market, eventId, { price: 12, confirm: true }, NOW)).not.toThrow();
+		// a reversed event is not changed
+		reverseEvent(s.app, s.market, sell.eventId, undefined, NOW);
+		expect(() => editEvent(s.app, s.market, sell.eventId, { qty: 1 }, NOW)).toThrow(LockedError);
+	});
+
+	it("«Изменить» a money record, and the portfolio's currency with the rates taken again", () => {
+		const s = setup();
+		const c = addCash(s.app, s.market, s.p.id, { kind: 'deposit', date: '2026-01-05', amount: 1000, currency: 'USD' }, NOW);
+		editCash(s.app, s.market, c.id, { date: '2026-04-01', amount: 2000 }, NOW);
+		const row = s.app.prepare('select date, amount, fx_rate as fx from cash_events where id = ?').get(c.id) as { date: string; amount: number; fx: number };
+		expect(row).toEqual({ date: '2026-04-01', amount: 2000, fx: 3.7 });
+		const { eventId } = addEvent(s.app, s.market, { portfolioId: s.p.id, securityId: s.us, kind: 'buy', date: '2026-01-05', qty: 1, price: 100 }, NOW);
+		updatePortfolio(s.app, s.p.id, { name: 'Доллары', currency: 'USD' }, s.market);
+		const p = s.app.prepare('select name, currency from portfolios where id = ?').get(s.p.id);
+		expect(p).toEqual({ name: 'Доллары', currency: 'USD' });
+		expect((s.app.prepare('select fx_rate as fx from position_events where id = ?').get(eventId) as { fx: number }).fx).toBe(1);
+		// a shekel security keeps a portfolio in shekels
+		addEvent(s.app, s.market, { portfolioId: s.p.id, securityId: s.us, kind: 'note', date: '2026-01-05', note: 'x' }, NOW);
+		updatePortfolio(s.app, s.p.id, { currency: 'ILS' }, s.market);
+		addEvent(s.app, s.market, { portfolioId: s.p.id, securityId: s.il, kind: 'buy', date: '2026-01-05', qty: 1, price: 5000 }, NOW);
+		expect(() => updatePortfolio(s.app, s.p.id, { currency: 'USD' }, s.market)).toThrow(/шекелевые: AAA/);
+		// a portfolio with corrections is still deleted whole
+		expect(() => deletePortfolio(s.app, s.p.id, 'Доллары')).not.toThrow();
+		expect((s.app.prepare('select count(*) as n from event_edits').get() as { n: number }).n).toBe(0);
 	});
 
 	it('storno fixes the total and keeps the history; a cancel only within 24 hours', () => {
