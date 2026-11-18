@@ -8,6 +8,7 @@ import {
 	ConfirmError,
 	createPortfolio,
 	deletePortfolio,
+	deletePosition,
 	editCash,
 	editEvent,
 	listPortfolios,
@@ -206,6 +207,26 @@ describe('portfolio events (section 18)', () => {
 		v = portfolioView(s.app, s.market, b.id, '2026-04-30')!;
 		expect(v.summary.balances).toEqual([{ currency: 'USD', amount: 1000, valuePc: 1000 }]);
 		expect(v.summary.twrPct!).toBeCloseTo(10, 6);
+	});
+});
+
+describe('deleting a position whole', () => {
+	it('takes its events, its dividends and corrections; the rest of the portfolio and single deletes stay guarded', () => {
+		const s = setup();
+		const a = addEvent(s.app, s.market, { portfolioId: s.p.id, securityId: s.us, kind: 'buy', date: '2026-01-05', qty: 10, price: 100 }, NOW);
+		addEvent(s.app, s.market, { positionId: a.positionId, kind: 'note', date: '2026-01-06', note: 'x' }, NOW);
+		editEvent(s.app, s.market, a.eventId, { qty: 11 }, NOW);
+		addCash(s.app, s.market, s.p.id, { kind: 'dividend', date: '2026-03-10', amount: 11, currency: 'USD', positionId: a.positionId }, NOW);
+		addCash(s.app, s.market, s.p.id, { kind: 'deposit', date: '2026-01-05', amount: 5000, currency: 'ILS' }, NOW);
+		const b = addEvent(s.app, s.market, { portfolioId: s.p.id, securityId: s.il, kind: 'buy', date: '2026-01-05', qty: 1, price: 5000 }, NOW);
+		const r = deletePosition(s.app, s.market, a.positionId);
+		expect([r.symbol, r.events, r.cash]).toEqual(['UUU', 2, 1]);
+		expect(positionView(s.app, s.market, a.positionId)).toBeNull();
+		expect(positionView(s.app, s.market, b.positionId)).not.toBeNull();
+		expect((s.app.prepare('select count(*) as n from cash_events').get() as { n: number }).n).toBe(1);
+		expect((s.app.prepare('select count(*) as n from event_edits').get() as { n: number }).n).toBe(0);
+		expect((s.app.prepare('select count(*) as n from portfolio_purge').get() as { n: number }).n).toBe(0);
+		expect(() => s.app.prepare('delete from position_events where id = ?').run(b.eventId)).toThrow(/never deleted/);
 	});
 });
 

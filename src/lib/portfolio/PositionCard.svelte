@@ -2,6 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import Pencil from '@lucide/svelte/icons/pencil';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import HelpIcon from '../HelpIcon.svelte';
 	import Pct from '../Pct.svelte';
 	import EventForm from './EventForm.svelte';
@@ -16,8 +17,21 @@
 	interface Props {
 		positionId: number;
 		onchange: () => void;
+		/** the position was deleted whole: close the card */
+		ondeleted?: () => void;
 	}
-	let { positionId, onchange }: Props = $props();
+	let { positionId, onchange, ondeleted }: Props = $props();
+	let removing = $state(false);
+	async function removePosition() {
+		problem = null;
+		const r = await fetch(`/api/positions/${positionId}`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: true }) });
+		const j = await r.json().catch(() => ({}));
+		if (!r.ok) return (problem = j.message ?? 'Не удалилось');
+		showToast(`${j.symbol} удалена из портфеля`);
+		removing = false;
+		onchange();
+		ondeleted?.();
+	}
 
 	interface View {
 		position: {
@@ -282,6 +296,22 @@
 			</li>
 		{/each}
 	</ol>
+	{#if !v.portfolio.auto_source_id}
+		{#if removing}
+			<div class="ask" role="alert">
+				<p>
+					Удалить <b>{p.symbol}</b> из портфеля «{v.portfolio.name}» целиком: событий {v.events.length}{v.cash.length ? `, записей денег по ней ${v.cash.length}` : ''}, со всей историей?
+					Перед удалением приложение сохранит копию журнала.
+				</p>
+				<div class="btns">
+					<button class="danger" onclick={removePosition}>Удалить навсегда</button>
+					<button class="ghost" onclick={() => (removing = false)}>Отмена</button>
+				</div>
+			</div>
+		{:else}
+			<button class="remove" onclick={() => (removing = true)}><Trash2 size={16} /> Удалить {p.symbol} из портфеля</button>
+		{/if}
+	{/if}
 	<p class="muted small">Ошибку в событии можно исправить — карандаш: дата, количество, цена, комиссия; прежние значения сохраняются в журнале правок. События не удаляются: в первые 24 часа запись можно отменить, позже — сторнировать.</p>
 {/if}
 
@@ -459,6 +489,49 @@
 		background: none;
 		color: var(--muted);
 		cursor: pointer;
+	}
+	.remove {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		margin: var(--s4) 0 0;
+		min-height: var(--tap);
+		padding: 0;
+		border: none;
+		background: none;
+		color: var(--down);
+		font-size: var(--fs-s);
+		cursor: pointer;
+	}
+	.ask {
+		margin-top: var(--s4);
+		padding: var(--s3);
+		border: 1px solid var(--down);
+		border-radius: var(--r1);
+	}
+	.ask p {
+		margin: 0 0 var(--s3);
+	}
+	.btns {
+		display: flex;
+		gap: var(--s2);
+	}
+	.btns button {
+		min-height: var(--tap);
+		padding: 0 var(--s4);
+		border-radius: var(--r1);
+		font: inherit;
+		cursor: pointer;
+	}
+	.danger {
+		border: none;
+		background: var(--down);
+		color: #fff;
+	}
+	.ghost {
+		border: 1px solid var(--line);
+		background: none;
+		color: var(--text);
 	}
 	.undo.text {
 		font-size: var(--fs-s);
