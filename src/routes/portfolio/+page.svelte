@@ -27,6 +27,7 @@
 		id: number;
 		name: string;
 		kind: 'real' | 'virtual';
+		currency: 'USD' | 'ILS';
 		auto_source_id: number | null;
 		auto_amount_ils: number;
 		sourceName?: string | null;
@@ -42,10 +43,12 @@
 		qty: number;
 		avgPrice: number | null;
 		lastPrice: number | null;
-		valueIls: number;
+		valuePc: number;
 		unrealizedPct: number | null;
-		unrealizedIls: number;
-		realizedIls: number;
+		unrealizedPc: number;
+		realizedPc: number;
+		fromTransfer: boolean;
+		eventPrice: boolean;
 		weight?: number;
 		plan: { kind: string; price: number | null; amount: number | null; note: string | null } | null;
 		closedAt: string | null;
@@ -59,15 +62,19 @@
 			invested: number;
 			twrPct: number | null;
 			from: string | null;
-			realizedIls: number;
-			unrealizedIls: number;
+			currency: string;
+			balances: { currency: string; amount: number; valuePc: number }[];
+			realizedPc: number;
+			unrealizedPc: number;
+			fromTransfer: boolean;
+			taxAccrued: number | null;
 			fxUsd: number;
 			pricesAsOf: string | null;
-			benchmarks: { key: string; label: string; returnPct: number | null; returnIlsPct?: number | null }[];
+			benchmark: { key: string; label: string; returnPct: number | null };
 		};
 		positions: Pos[];
 		lastFee: Record<string, number>;
-		cash: { id: number; kind: string; date: string; amount: number; currency: string; note: string | null; cancelledAt: string | null; reversedBy: number | null; auto: boolean; canCancel: boolean; canReverse: boolean }[];
+		cash: { id: number; kind: string; date: string; amount: number; currency: string; toAmount: number | null; toCurrency: string | null; note: string | null; cancelledAt: string | null; reversedBy: number | null; auto: boolean; canCancel: boolean; canReverse: boolean }[];
 	}
 
 	const KEY = 'portfolio-current';
@@ -78,11 +85,45 @@
 	let creating = $state(false);
 	let newName = $state('');
 	let newKind = $state<'real' | 'virtual'>('real');
+	let newCurrency = $state<'USD' | 'ILS' | null>(null);
+	// «Перенос позиций» (section 18): a pasted list, a preview, then «Перенести»
+	let transferring = $state(false);
+	let transferText = $state('');
+	let transferPreview = $state<{
+		date: string;
+		currency: string;
+		ok: boolean;
+		rows: { n: number; text: string; kind: string; ok: boolean; warnings: string[]; error?: string; qty?: number; price?: number; valuePc?: number; found?: { symbol: string; name: string; exchange: string; priceUnit: string; isNew?: boolean }; amount?: number; currency?: string }[];
+		total: { positions: number; cash: number; cost: number };
+	} | null>(null);
+	let transferBusy = $state(false);
+	let transferError = $state<string | null>(null);
+	async function transfer(apply: boolean) {
+		transferBusy = true;
+		transferError = null;
+		try {
+			const r = await fetch(`/api/portfolios/${current}/transfer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: transferText, apply }) });
+			const j = await r.json().catch(() => ({}));
+			if (!r.ok) return (transferError = j.message ?? 'Не получилось');
+			if (!apply) return (transferPreview = j);
+			showToast(`Перенесено позиций: ${j.added}${j.skipped.length ? `, пропущено строк: ${j.skipped.length}` : ''}`);
+			if (!j.skipped.length) {
+				transferring = false;
+				transferText = '';
+			}
+			transferPreview = null;
+			if (j.skipped.length) transferError = 'Пропущены: ' + j.skipped.map((x: { n: number; why: string }) => `строка ${x.n} — ${x.why}`).join('; ');
+			load();
+		} finally {
+			transferBusy = false;
+		}
+	}
 	let createError = $state<string | null>(null);
 	let adding = $state<{ kind: string; securityId: number | null; hypothesisId: number | null } | null>(null);
 	let opened = $state<number | null>(null);
 	let cashing = $state(false);
 	let cashKind = $state('deposit');
+	let cashTo = $state('');
 	let cashAmount = $state('');
 	let cashCurrency = $state<'ILS' | 'USD'>('ILS');
 	let cashDate = $state(israelDate());
@@ -113,10 +154,17 @@
 	}
 	let chart = $state<Series[] | null>(null);
 	let compare = $state<number[]>([]);
-	let hidden = $state<string[]>(['benchmark:SPX']);
+	let hiddenSet = false;
+	// only the portfolio's own benchmark is on at first (S&P 500 for dollars, TA-125 for shekels)
+	let hidden = $state<string[]>([]);
 	async function loadChart() {
 		const r = await fetch(`/api/portfolios/${current}/chart?compare=${compare.join(',')}`).catch(() => null);
 		chart = r?.ok ? (await r.json()).series : null;
+		if (chart && !hiddenSet && v) {
+			const own = v.summary.currency === 'USD' ? 'benchmark:SPX' : 'benchmark:TA125';
+			hidden = chart.filter((x) => x.kind === 'benchmark' && x.key !== own).map((x) => x.key);
+			hiddenSet = true;
+		}
 	}
 	function toggleCompare(id: number) {
 		compare = compare.includes(id) ? compare.filter((x) => x !== id) : [...compare, id];
@@ -135,16 +183,16 @@
 	// section 19 «Распределение»: shares by security, market and currency — bars, not a pie
 	const alloc = $derived.by(() => {
 		if (!v) return null;
-		const held = v.positions.filter((p) => p.valueIls > 0);
-		const total = held.reduce((n, p) => n + p.valueIls, 0) + Math.max(0, v.summary.cash);
+		const held = v.positions.filter((p) => p.valuePc > 0);
+		const total = held.reduce((n, p) => n + p.valuePc, 0) + Math.max(0, v.summary.cash);
 		if (total <= 0) return null;
 		const share = (x: number) => (x / total) * 100;
-		const top = [...held].sort((a, b) => b.valueIls - a.valueIls);
-		const bySec = top.slice(0, 8).map((p) => ({ label: p.symbol, value: p.valueIls }));
-		const rest = top.slice(8).reduce((n, p) => n + p.valueIls, 0);
+		const top = [...held].sort((a, b) => b.valuePc - a.valuePc);
+		const bySec = top.slice(0, 8).map((p) => ({ label: p.symbol, value: p.valuePc }));
+		const rest = top.slice(8).reduce((n, p) => n + p.valuePc, 0);
 		if (rest > 0) bySec.push({ label: 'остальные', value: rest });
 		if (v.summary.cash > 0) bySec.push({ label: 'деньги', value: v.summary.cash });
-		const sum = (f: (p: Pos) => boolean) => held.filter(f).reduce((n, p) => n + p.valueIls, 0);
+		const sum = (f: (p: Pos) => boolean) => held.filter(f).reduce((n, p) => n + p.valuePc, 0);
 		const us = sum((p) => p.currency === 'USD');
 		const il = sum((p) => p.currency !== 'USD');
 		const cash = Math.max(0, v.summary.cash);
@@ -176,6 +224,7 @@
 	});
 	function choose(id: number) {
 		current = id;
+		hiddenSet = false;
 		try {
 			localStorage.setItem(KEY, String(id));
 		} catch {
@@ -211,7 +260,7 @@
 
 	async function create() {
 		createError = null;
-		const r = await fetch('/api/portfolios', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: newName, kind: newKind }) });
+		const r = await fetch('/api/portfolios', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: newName, kind: newKind, currency: newCurrency }) });
 		const j = await r.json().catch(() => ({}));
 		if (!r.ok) return (createError = j.message ?? 'Не создался');
 		creating = false;
@@ -225,13 +274,21 @@
 		const r = await fetch(`/api/portfolios/${current}/cash`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ kind: cashKind, amount: cashAmount, currency: cashCurrency, date: cashDate, note: cashNote })
+			body: JSON.stringify({
+				kind: cashKind,
+				amount: cashAmount,
+				currency: cashCurrency,
+				date: cashDate,
+				note: cashNote,
+				...(cashKind === 'convert' ? { toAmount: cashTo, toCurrency: cashCurrency === 'ILS' ? 'USD' : 'ILS' } : {})
+			})
 		});
 		const j = await r.json().catch(() => ({}));
 		if (!r.ok) return (cashError = j.message ?? 'Не сохранилось');
 		showToast(`${CASH_LABEL[cashKind]}: ${money(Number(cashAmount.replace(',', '.')), cashCurrency)} — записано`);
 		cashing = false;
 		cashAmount = '';
+		cashTo = '';
 		cashNote = '';
 		load();
 	}
@@ -271,41 +328,45 @@
 	<Empty title="Ваши портфели">
 		Здесь будут реальный портфель и виртуальные: позиции от «наблюдаю» до «продал», стоимость в шекелях и доходность против
 		S&P 500 и ТА-125. Всё вводится вручную, сделка — за полминуты.
-		{#snippet action()}<button onclick={() => ((newName = 'Мой портфель'), (newKind = 'real'), (creating = true))}>Создать портфель</button>{/snippet}
+		{#snippet action()}<button onclick={() => ((newName = 'Мой портфель'), (newKind = 'real'), (newCurrency = null), (creating = true))}>Создать портфель</button>{/snippet}
 	</Empty>
 {:else if v}
 	{@const s = v.summary}
 	{#if v.portfolio.auto_source_id}
 		<p class="auto">
-			Автоматический: каждая гипотеза «{v.portfolio.sourceName}» на рост покупается на {money(v.portfolio.auto_amount_ils)} и продаётся при закрытии.
+			Автоматический: каждая гипотеза «{v.portfolio.sourceName}» на рост покупается на {money(v.portfolio.auto_amount_ils, v.portfolio.currency)} и продаётся при закрытии.
 			<HelpIcon topicKey="portfolio.source_auto" label="автоматический портфель" />
 		</p>
 	{/if}
 	<section class="card summary">
 		<div class="value">
 			<span class="k">Стоимость</span>
-			<b>{money(s.value)}</b>
-			<span class="sub">в бумагах {money(s.held)} · деньги {money(s.cash)}</span>
+			<b>{money(s.value, s.currency)}</b>
+			<span class="sub">в бумагах {money(s.held, s.currency)}</span>
+			{#each s.balances as bl (bl.currency)}
+				<span class="sub" class:neg={bl.amount < 0}
+					>деньги {money(bl.amount, bl.currency)}{bl.currency !== s.currency ? ` ≈ ${money(bl.valuePc, s.currency)}` : ''}</span
+				>
+			{/each}
+			{#if s.taxAccrued}<span class="sub">начисленный налог {money(s.taxAccrued, s.currency)} (справочно)</span>{/if}
 		</div>
 		<div class="ret">
 			<span class="k">Доходность <HelpIcon topicKey="portfolio.twr" label="доходность TWR" /></span>
 			<b><Pct value={s.twrPct} /></b>
-			<span class="sub">{s.from ? `с ${d(s.from)}` : 'пока нет сделок'}</span>
+			<span class="sub">{s.from ? `с ${d(s.from)}` : 'пока нет сделок'}{s.fromTransfer ? ' · часть позиций — с даты переноса' : ''}</span>
 		</div>
 		{#if s.from}
 			<ul class="bench">
-				{#each s.benchmarks as b (b.key)}
-					<li>
-						<span>{b.label}</span>
-						<Pct value={b.returnPct} plain />
-						{#if b.returnIlsPct !== undefined && b.returnIlsPct !== null}<span class="sub">в ₪ <Pct value={b.returnIlsPct} plain /></span>{/if}
-					</li>
-				{/each}
+				<li>
+					<span>{s.benchmark.label}</span>
+					<Pct value={s.benchmark.returnPct} plain />
+					<span class="sub">за тот же срок</span>
+				</li>
 			</ul>
 		{/if}
 		<p class="sub line">
-			Реализовано {money(s.realizedIls, 'ILS', true)} · не реализовано {money(s.unrealizedIls, 'ILS', true)} · $ = {s.fxUsd} ₪
-			<HelpIcon topicKey="portfolio.fx" label="курс" />
+			Реализовано {money(s.realizedPc, s.currency, true)} · не реализовано {money(s.unrealizedPc, s.currency, true)}{#if s.balances.some((b) => b.currency !== s.currency) || v.positions.some((p) => p.currency !== s.currency && p.qty > 0)}
+				· $ = {s.fxUsd} ₪ <HelpIcon topicKey="portfolio.fx" label="курс" />{/if}
 			{#if s.pricesAsOf}<br />Цены на {d(s.pricesAsOf)}{/if}
 		</p>
 	</section>
@@ -316,6 +377,8 @@
 			<button onclick={() => (adding = { kind: 'plan_buy', securityId: null, hypothesisId: null })}>Хочу купить</button>
 			<button onclick={() => (adding = { kind: 'watch', securityId: null, hypothesisId: null })}>Наблюдаю</button>
 			<button onclick={() => (cashing = true)}><Wallet size={18} /> Деньги</button>
+			<button onclick={() => ((transferring = true), (transferPreview = null), (transferError = null))}>Перенос позиций</button>
+			<a class="together" href="/portfolio/together">Всё вместе</a>
 		</div>
 	{/if}
 
@@ -339,11 +402,11 @@
 									<b>{p.symbol}</b>
 									<span class="grow"></span>
 									{#if st === 'holding' || st === 'plan_sell'}
-										<span>{money(p.valueIls)}</span>
+										<span>{money(p.valuePc, v.summary.currency)}</span>
 										<b class="res"><Pct value={p.unrealizedPct} /></b>
 									{:else if st === 'closed'}
 										<span class="sub">{p.closedAt ? d(p.closedAt) : ''}</span>
-										{#if p.realizedIls}<b class="res">{money(p.realizedIls, 'ILS', true)}</b>{/if}
+										{#if p.realizedPc}<b class="res">{money(p.realizedPc, v.summary.currency, true)}</b>{/if}
 									{:else if p.plan?.price}
 										<span class="sub">по {priceText(p.plan.price, p.priceUnit)} · сейчас {priceText(p.lastPrice, p.priceUnit)}</span>
 									{:else}
@@ -351,7 +414,7 @@
 									{/if}
 								</span>
 								<span class="mid">
-									{p.name}{#if st === 'holding' || st === 'plan_sell'} · {qtyText(p.qty)} шт. · {Math.round(p.weight ?? 0)}%{/if}
+									{p.name}{#if st === 'holding' || st === 'plan_sell'} · {qtyText(p.qty)} шт. · {Math.round(p.weight ?? 0)}%{#if p.fromTransfer} · с даты переноса{/if}{#if p.eventPrice} · цена переноса{/if}{/if}
 								</span>
 								{#if p.plan?.note && st !== 'closed' && st !== 'holding'}<span class="note">{p.plan.note}</span>{/if}
 								<ChevronRight size={18} />
@@ -405,7 +468,9 @@
 				{#each v.cash as c (c.id)}
 					<li class:off={c.cancelledAt || c.reversedBy || c.kind === 'reverse'}>
 						<span class="when">{d(c.date)}</span>
-						<span class="what"><b>{CASH_LABEL[c.kind]}</b> {money(c.amount, c.currency)}{#if c.note} · {c.note}{/if}{#if c.auto} · авто{/if}</span>
+						<span class="what"
+							><b>{CASH_LABEL[c.kind]}</b> {money(c.amount, c.currency)}{#if c.kind === 'convert' && c.toAmount} → {money(c.toAmount, c.toCurrency ?? 'USD')} · курс {(c.amount / c.toAmount).toFixed(4)}{/if}{#if c.note} · {c.note}{/if}{#if c.auto} · авто{/if}</span
+						>
 						{#if !c.auto && c.canCancel}
 							<button class="undo" aria-label="Отменить запись" onclick={() => undoCash(c.id, 'cancel')}><Undo2 size={16} /></button>
 						{:else if !c.auto && c.canReverse}
@@ -416,7 +481,7 @@
 			</ul>
 		</details>
 	{/if}
-	<p class="muted small">Взносы и выводы можно не записывать: покупка, на которую не хватило денег, считается взносом. Доходность от этого не искажается.</p>
+	<p class="muted small">Остаток денег — как у брокера; покупка без остатка только предупреждает. Для доходности недостающее считается взносом, так что она не искажается.</p>
 {/if}
 
 {#if creating}
@@ -427,9 +492,17 @@
 				<button role="radio" aria-checked={newKind === 'real'} class:on={newKind === 'real'} onclick={() => (newKind = 'real')}>Реальный</button>
 				<button role="radio" aria-checked={newKind === 'virtual'} class:on={newKind === 'virtual'} onclick={() => (newKind = 'virtual')}>Виртуальный</button>
 			</div>
-			<p class="muted small">Устроены одинаково: реальный — ваши деньги, виртуальный — проверка идей без денег. Автоматический портфель источника включается в карточке источника.</p>
+			<span class="muted small">Валюта — в ней брокер показывает итог; потом не меняется</span>
+			<div class="seg" role="radiogroup" aria-label="Валюта">
+				<button role="radio" aria-checked={newCurrency === 'USD'} class:on={newCurrency === 'USD'} onclick={() => (newCurrency = 'USD')}>$ доллары</button>
+				<button role="radio" aria-checked={newCurrency === 'ILS'} class:on={newCurrency === 'ILS'} onclick={() => (newCurrency = 'ILS')}>₪ шекели</button>
+			</div>
+			<p class="muted small">
+				Долларовый — бумаги США, бенчмарк S&P 500; шекелевый — бумаги TASE (и иностранные ETF, если брокер показывает их в шекелях), бенчмарк ТА-125.
+				Реальный — ваши деньги, виртуальный — проверка идей без денег. Автоматический портфель источника включается в карточке источника.
+			</p>
 			{#if createError}<p class="err">{createError}</p>{/if}
-			<button class="primary" disabled={!newName.trim()} onclick={create}>Создать</button>
+			<button class="primary" disabled={!newName.trim() || !newCurrency} onclick={create}>Создать</button>
 		</div>
 	</Sheet>
 {/if}
@@ -461,26 +534,90 @@
 	</Sheet>
 {/if}
 
+{#if transferring && v}
+	<Sheet title="Перенос позиций · {v.portfolio.name}" onclose={() => (transferring = false)}>
+		<div class="form">
+			<p class="muted small">
+				Позиции, купленные до начала ведения портфеля. По строке на бумагу, сначала строка с датой переноса: <HelpIcon topicKey="portfolio.transfer" label="перенос позиций" />
+			</p>
+			<pre class="sample">date 2026-11-17
+SCHD 103.205 35.45            тикер, количество, цена
+ESLT value=4770 cost=3032     стоимость и стоимость покупки
+yahoo:CSPX.L value=15564      ETF UCITS (Лондон) — по символу Yahoo
+cash ILS 5290.91 · cash USD 663.15 · tax 2881.45</pre>
+			<p class="muted small">
+				Количество по стоимости = стоимость / цена закрытия на дату, до целых. Можно дописать avg=средняя цена или cost=стоимость покупки — тогда прибыль считается от
+				покупки, иначе «с даты переноса». Данные остаются только в приложении.
+			</p>
+			<textarea rows="8" bind:value={transferText} spellcheck="false" aria-label="Список позиций"></textarea>
+			{#if transferError}<p class="err">{transferError}</p>{/if}
+			{#if transferPreview}
+				{@const tp = transferPreview}
+				<ul class="tp">
+					{#each tp.rows as r (r.n)}
+						<li class:bad={!r.ok}>
+							<span class="tn">{r.n}</span>
+							<span class="tw">
+								{#if r.kind === 'position'}
+									<b>{r.found?.symbol ?? r.text.split(/\s/)[0]}</b>{#if r.found} {r.found.name} · {r.found.exchange}{/if}
+									{#if r.qty !== undefined && r.price !== undefined} · {qtyText(r.qty)} × {priceText(r.price, r.found?.priceUnit ?? 'USD')} = {money(r.valuePc ?? 0, tp.currency)}{/if}
+								{:else if r.kind === 'cash'}
+									деньги {money(r.amount ?? 0, r.currency ?? 'ILS')}
+								{:else if r.kind === 'tax'}
+									начисленный налог {money(r.amount ?? 0, tp.currency)}
+								{:else}
+									{r.text}
+								{/if}
+								{#each [...(r.error ? [r.error] : []), ...r.warnings] as w (w)}<small>{w}</small>{/each}
+							</span>
+						</li>
+					{/each}
+				</ul>
+				<p class="small">
+					На {d(tp.date)}: бумаги <b>{money(tp.total.positions, tp.currency)}</b> + деньги {money(tp.total.cash, tp.currency)} =
+					<b>{money(tp.total.positions + tp.total.cash, tp.currency)}</b>{#if tp.total.cost} · стоимость покупки {money(tp.total.cost, tp.currency)}{/if}
+				</p>
+				<button class="primary" disabled={transferBusy} onclick={() => transfer(true)}>{tp.ok ? 'Перенести' : 'Перенести строки без ошибок'}</button>
+			{:else}
+				<button class="primary" disabled={transferBusy || !transferText.trim()} onclick={() => transfer(false)}>{transferBusy ? 'Проверяю…' : 'Проверить'}</button>
+			{/if}
+		</div>
+	</Sheet>
+{/if}
+
 {#if cashing}
 	<Sheet title="Деньги портфеля" onclose={() => (cashing = false)}>
 		<div class="form">
 			<div class="seg five" role="radiogroup" aria-label="Вид">
-				{#each ['deposit', 'withdraw', 'dividend', 'fee', 'tax'] as k (k)}
+				{#each ['deposit', 'convert', 'withdraw', 'dividend', 'fee', 'tax'] as k (k)}
 					<button role="radio" aria-checked={cashKind === k} class:on={cashKind === k} onclick={() => (cashKind = k)}>{CASH_LABEL[k]}</button>
 				{/each}
 			</div>
 			<div class="row">
-				<label>Сумма <input inputmode="decimal" bind:value={cashAmount} placeholder="0" /></label>
+				<label>{cashKind === 'convert' ? 'Отдал' : 'Сумма'} <input inputmode="decimal" bind:value={cashAmount} placeholder="0" /></label>
 				<label
 					>Валюта
 					<select bind:value={cashCurrency}><option value="ILS">₪</option><option value="USD">$</option></select>
 				</label>
 			</div>
+			{#if cashKind === 'convert'}
+				<label
+					>Получил, {cashCurrency === 'ILS' ? '$' : '₪'}
+					<input inputmode="decimal" bind:value={cashTo} placeholder="0" />
+				</label>
+				{#if Number(cashAmount.replace(',', '.')) > 0 && Number(cashTo.replace(',', '.')) > 0}
+					<p class="muted small">
+						Курс сделки: {(cashCurrency === 'ILS' ? Number(cashAmount.replace(',', '.')) / Number(cashTo.replace(',', '.')) : Number(cashTo.replace(',', '.')) / Number(cashAmount.replace(',', '.'))).toFixed(4)} ₪ за $ — с комиссией банка, фиксируется один раз.
+					</p>
+				{/if}
+			{/if}
 			<label>Дата <input type="date" max={israelDate()} bind:value={cashDate} /></label>
 			<label>Заметка <input bind:value={cashNote} placeholder="необязательно" /></label>
 			{#if cashError}<p class="err">{cashError}</p>{/if}
-			<button class="primary" disabled={!cashAmount.trim()} onclick={addCash}>Записать</button>
-			<p class="muted small">Взнос и вывод — деньги извне, они не меняют доходность. Дивиденд, комиссия и налог — её часть.</p>
+			<button class="primary" disabled={!cashAmount.trim() || (cashKind === 'convert' && !cashTo.trim())} onclick={addCash}>Записать</button>
+			<p class="muted small">
+				Взнос и вывод — деньги извне, они не меняют доходность. Конвертация в долларовом портфеле — его взнос; в шекелевом — перевод между валютами. Дивиденд, комиссия и налог — часть доходности.
+			</p>
 		</div>
 	</Sheet>
 {/if}
@@ -584,6 +721,70 @@
 		text-align: right;
 		font-variant-numeric: tabular-nums;
 		color: var(--muted);
+	}
+	.neg {
+		color: var(--down);
+	}
+	.together {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-height: var(--tap);
+		border: 1px solid var(--line);
+		border-radius: var(--r2);
+		background: var(--surface);
+		color: var(--text);
+		font-weight: 600;
+		text-decoration: none;
+	}
+	.sample {
+		margin: 0;
+		padding: var(--s2) var(--s3);
+		border-radius: var(--r1);
+		background: var(--surface-2);
+		font-size: var(--fs-xs);
+		overflow-x: auto;
+	}
+	.form textarea {
+		min-height: 160px;
+		padding: var(--s2) var(--s3);
+		border: 1px solid var(--line);
+		border-radius: var(--r1);
+		background: var(--surface);
+		font-family: ui-monospace, monospace;
+		font-size: 16px;
+	}
+	.tp {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		font-size: var(--fs-s);
+	}
+	.tp li {
+		display: flex;
+		gap: var(--s2);
+		padding: var(--s2);
+		border-radius: var(--r1);
+		background: var(--surface-2);
+	}
+	.tp li.bad {
+		background: var(--warn-bg);
+		color: var(--warn-text);
+	}
+	.tn {
+		flex: none;
+		width: 20px;
+		color: var(--muted);
+	}
+	.tw {
+		display: flex;
+		flex-direction: column;
+	}
+	.tw small {
+		font-size: var(--fs-xs);
 	}
 	.auto {
 		display: flex;

@@ -40,7 +40,7 @@
 		byAuthor: Part[];
 		byHorizon: Part[];
 		byMode: Part[];
-		auto: { id: number; name: string; archivedAt: string | null; amount: number } | null;
+		auto: { id: number; name: string; currency: string; archivedAt: string | null; amount: number }[];
 		articles: { article: { id: number; url: string | null; title: string | null; author: string | null; readAt: string }; hypotheses: Hyp[] }[];
 	}
 	const SIGNAL: Record<string, string> = { recommendation: 'Рекомендация', target: 'Целевая цена', opinion: 'Мнение', news: 'Новость' };
@@ -61,12 +61,13 @@
 	}
 	onMount(load);
 
+	const autoOn = $derived(!!card?.auto.some((a) => !a.archivedAt));
 	// section 18: the source's automatic virtual portfolio — each of its rise hypotheses bought for a fixed sum
 	let autoBusy = $state(false);
 	async function toggleAuto() {
 		if (!card) return;
 		autoBusy = true;
-		const on = !card.auto || !!card.auto.archivedAt;
+		const on = !autoOn;
 		const r = await fetch(`/api/sources/${card.source.id}/auto`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on }) });
 		autoBusy = false;
 		if (!r.ok) return (problem = (await r.json().catch(() => ({}))).message ?? 'Не получилось');
@@ -84,14 +85,15 @@
 {#if card}
 	<section class="card autoport">
 		<label class="toggle">
-			<input type="checkbox" checked={!!card.auto && !card.auto.archivedAt} disabled={autoBusy} onchange={toggleAuto} />
+			<input type="checkbox" checked={autoOn} disabled={autoBusy} onchange={toggleAuto} />
 			<span>Автоматический портфель</span>
 			<HelpIcon topicKey="portfolio.source_auto" label="автоматический портфель" />
 		</label>
 		<p class="muted small">
-			{#if card.auto && !card.auto.archivedAt}
-				Каждая гипотеза на рост (рекомендация, целевая цена, мнение) покупается на {card.auto.amount.toLocaleString('ru-RU')} ₪ по цене входа и продаётся при
-				закрытии. <a href="/portfolio?p={card.auto.id}">Открыть «{card.auto.name}»</a>
+			{#if autoOn}
+				Каждая гипотеза на рост (рекомендация, целевая цена, мнение) покупается по цене входа — бумаги США на 3 000 $, TASE на 10 000 ₪ — и продаётся при
+				закрытии.
+				{#each card.auto.filter((a) => !a.archivedAt) as a (a.id)}<a href="/portfolio?p={a.id}">«{a.name}»</a>{' '}{/each}
 			{:else}
 				Включите, чтобы сравнивать источник в деньгах — рядом с вашим реальным портфелем.
 			{/if}

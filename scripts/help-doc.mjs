@@ -37,7 +37,9 @@ export const WHERE = {
 	'portfolio.source_auto': 'Портфель автоматический; карточка источника, «Автоматический портфель»',
 	'portfolio.chart': 'Портфель, блок «Доходность» (график)',
 	'portfolio.allocation': 'Портфель, блок «Распределение»',
-	'security.chart': 'Карточка бумаги (график), заголовок'
+	'security.chart': 'Карточка бумаги (график), заголовок',
+	'portfolio.together': 'Экран «Всё вместе», заголовок',
+	'portfolio.transfer': 'Портфель, окно «Перенос позиций»'
 };
 
 export function helpDoc(dir = join(root, 'help')) {

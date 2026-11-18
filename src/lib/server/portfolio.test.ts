@@ -48,7 +48,7 @@ function setup() {
 	] as const)
 		fx.run(d, r);
 	market.prepare(`insert into market_corporate_actions (security_id, ex_date, kind, amount, provider_code) values (?, '2026-03-10', 'dividend', 1, 'test')`).run(us);
-	const p = createPortfolio(app, { name: 'Мой', kind: 'real' });
+	const p = createPortfolio(app, { name: 'Мой', kind: 'real', currency: 'ILS' });
 	return { app, market, us, il, p };
 }
 
@@ -61,7 +61,7 @@ describe('portfolio events (section 18)', () => {
 		const v = positionView(s.app, s.market, a.positionId, '2026-04-30')!;
 		expect(v.position.stage).toBe('holding');
 		expect(v.events.find((e) => e.kind === 'buy')!.fxRate).toBe(3.5);
-		expect(v.position.valueIls).toBeCloseTo(10 * 110 * 3.8, 6);
+		expect(v.position.valuePc).toBeCloseTo(10 * 110 * 3.8, 6);
 	});
 
 	it('refuses a future date, an oversell, a sell of nothing; asks about a price far from the day', () => {
@@ -108,25 +108,56 @@ describe('portfolio events (section 18)', () => {
 		expect(() => s.app.prepare(`update position_events set cancelled_at = 'x' where id = ?`).run(old)).toThrow(/24 hours/);
 	});
 
-	it('the portfolio view: shekel totals, TWR, benchmarks; dividends as money', () => {
+	it('a shekel portfolio: money by currency as the broker shows, the dollar buy without dollars warns; value, TWR, TA-125', () => {
 		const s = setup();
 		addCash(s.app, s.market, s.p.id, { kind: 'deposit', date: '2026-01-05', amount: 10000 }, NOW);
 		addEvent(s.app, s.market, { portfolioId: s.p.id, securityId: s.il, kind: 'buy', date: '2026-01-05', qty: 100, price: 5000, fee: 10 }, NOW);
 		const u = addEvent(s.app, s.market, { portfolioId: s.p.id, securityId: s.us, kind: 'buy', date: '2026-01-05', qty: 10, price: 100, fee: 1 }, NOW);
+		expect(u.warning).toMatch(/долларов ушёл в минус/);
 		addCash(s.app, s.market, s.p.id, { kind: 'dividend', date: '2026-03-10', amount: 10, currency: 'USD', positionId: u.positionId }, NOW);
 		const v = portfolioView(s.app, s.market, s.p.id, '2026-04-30')!;
-		// cash 10 000 − 5 010 − (10 × 100 + 1) × 3.5 + 10 × 3.5 (the rate of 01-05 is the last before 03-10) = 1 521.5
-		expect(v.summary.cash).toBeCloseTo(1521.5, 6);
-		// 1 521.5 + 100 × 65 + 10 × 110 × 3.8 = 12 201.5; one deposit of 10 000 → TWR +22.015%
-		expect(v.summary.value).toBeCloseTo(12201.5, 6);
-		expect(v.summary.twrPct!).toBeCloseTo(22.015, 6);
+		// ₪ 10 000 − 5 010 = 4 990; $ −1 001 + 10 = −991, worth −991 × 3.8 = −3 765.8
+		expect(v.summary.balances).toEqual([
+			{ currency: 'ILS', amount: 4990, valuePc: 4990 },
+			{ currency: 'USD', amount: -991, valuePc: expect.closeTo(-3765.8, 6) }
+		]);
+		// 4 990 − 3 765.8 + 100 × 65 + 10 × 110 × 3.8 = 11 904.2
+		expect(v.summary.value).toBeCloseTo(11904.2, 6);
+		// TWR: the dollar buy is paid by an implied deposit of 1 001 × 3.5 on 01-05 → (4 990 + 10 × 3.8 + 6 500 + 4 180) / 13 503.5 − 1
+		expect(v.summary.twrPct!).toBeCloseTo((15708 / 13503.5 - 1) * 100, 6);
+		expect(v.summary.benchmark.label).toBe('ТА-125');
 		expect(v.positions.map((p) => p.stage)).toEqual(['holding', 'holding']);
 		expect(v.lastFee).toEqual({ ILS: 10, USD: 1 });
+	});
+
+	it('a dollar portfolio: only dollar securities; «Перенесено» with the purchase price added later; a conversion is its deposit', () => {
+		const s = setup();
+		const b = createPortfolio(s.app, { name: 'Blink', kind: 'real', currency: 'USD' });
+		expect(() => addEvent(s.app, s.market, { portfolioId: b.id, securityId: s.il, kind: 'buy', qty: 1, price: 5000, date: '2026-01-05' }, NOW)).toThrow(/только бумаги в долларах/);
+		const o = addEvent(s.app, s.market, { portfolioId: b.id, securityId: s.us, kind: 'opening', date: '2026-01-05', qty: 10.123456, price: 100 }, NOW);
+		let v = portfolioView(s.app, s.market, b.id, '2026-04-30')!;
+		expect(v.positions[0]).toMatchObject({ stage: 'holding', fromTransfer: true });
+		expect(v.positions[0].qty).toBeCloseTo(10.123456, 9);
+		// from the transfer: 100 → 110 $, +10%; no money moved
+		expect(v.summary.twrPct!).toBeCloseTo(10, 6);
+		expect(v.summary.balances).toEqual([]);
+		expect(v.summary.benchmark.label).toBe('S&P 500');
+		// the average price comes later and does not change the history: profit from the purchase now
+		addEvent(s.app, s.market, { positionId: o.positionId, kind: 'basis', price: 80 }, NOW);
+		v = portfolioView(s.app, s.market, b.id, '2026-04-30')!;
+		expect(v.positions[0].fromTransfer).toBe(false);
+		expect(v.positions[0].unrealized).toBeCloseTo(10.123456 * 30, 6);
+		expect(v.summary.twrPct!).toBeCloseTo(10, 6);
+		// 3 600 ₪ converted into 1 000 $: dollars come from outside
+		addCash(s.app, s.market, b.id, { kind: 'convert', date: '2026-04-30', amount: 3600, currency: 'ILS', toAmount: 1000, toCurrency: 'USD' }, NOW);
+		v = portfolioView(s.app, s.market, b.id, '2026-04-30')!;
+		expect(v.summary.balances).toEqual([{ currency: 'USD', amount: 1000, valuePc: 1000 }]);
+		expect(v.summary.twrPct!).toBeCloseTo(10, 6);
 	});
 });
 
 describe('automatic portfolio of a source (section 18)', () => {
-	it('buys each rise hypothesis of the three types for 10 000 ₪, sells it when it closes, takes dividends; «down» and news stay out', () => {
+	it('buys each rise hypothesis of the three types for 3 000 $ in its dollar portfolio, sells it when it closes, takes dividends; «down» and news stay out', () => {
 		const s = setup();
 		const src = (s.app.prepare(`select id from sources where name = ?`).get("Barron's") as { id: number }).id;
 		const art = (s.app.prepare(`insert into articles (source_id, read_at) values (?, '2026-01-05') returning id`).get(src) as { id: number }).id;
@@ -141,16 +172,16 @@ describe('automatic portfolio of a source (section 18)', () => {
 		hyp.get(art, s.us, 'news', 'long');
 		s.app.prepare(`update hypotheses set status = 'closed', exit_date = '2026-04-01', exit_price = 120, return_pct = 20, outcome = 'hit' where id = ?`).run(closedOne);
 
-		const p = setAuto(s.app, s.market, src, true, NOW)!;
-		expect(p).toMatchObject({ kind: 'virtual', auto_source_id: src });
-		const v = portfolioView(s.app, s.market, p.id, '2026-04-30')!;
+		const ports = setAuto(s.app, s.market, src, true, NOW);
+		expect(ports.map((p) => [p.kind, p.currency, p.auto_source_id, p.auto_amount_ils])).toEqual([['virtual', 'USD', src, 3000]]);
+		const v = portfolioView(s.app, s.market, ports[0].id, '2026-04-30')!;
 		expect(v.positions).toHaveLength(2);
 		const closed = v.positions.find((x) => x.hypotheses.includes(closedOne))!;
 		expect(closed.stage).toBe('closed');
-		// 10 000 ₪ at 100 $ × 3.5 → 28.5714 shares; sold at 120 $ × 3.7
-		const q = 10000 / 350;
+		// 3 000 $ at 100 $ → 30 shares; sold at 120 $
+		const q = 30;
 		expect(closed.realized).toBeCloseTo(q * 20, 6);
-		expect(closed.realizedIls).toBeCloseTo(q * (120 * 3.7 - 100 * 3.5), 6);
+		expect(closed.realizedPc).toBeCloseTo(q * 20, 6);
 		// the price return of the position equals the hypothesis's (20%); the dividend comes as money
 		expect((closed.realized / (q * 100)) * 100).toBeCloseTo(20, 6);
 		const cash = s.app.prepare(`select count(*) as n from cash_events where kind = 'dividend' and auto = 1`).get() as { n: number };

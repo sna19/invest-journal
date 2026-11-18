@@ -11,9 +11,9 @@ import {
 	trades,
 	twr,
 	unitFactor,
+	type BasisEv,
 	type Book,
 	type CashEv,
-	type Ev,
 	type Market,
 	type Split,
 	type Stage
@@ -26,19 +26,27 @@ import { fxOn } from './market/boi.js';
 /**
  * Spec section 18 — portfolios on the server: events in, positions and returns out. Plain SQL on both files:
  * the journal (app.db) and the market (market.db); the arithmetic is in $lib/portfolio.ts.
+ *
+ * A portfolio lives in one currency — the one the broker shows the total in (USD or ILS). Its value, return and
+ * benchmark are in it; positions in another currency (ETF UCITS in dollars in a shekel portfolio) and money kept
+ * in another currency are converted at the Bank of Israel rate of the day.
  */
 
 /** A price that differs from the day's range by more than this needs a confirmation (a typo, agorot for shekels). */
 export const PRICE_SLACK = 0.1;
 const EPS = 1e-9;
 const isDate = (d: unknown): d is string => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d));
-const num = (v: unknown) => (v === null || v === undefined || v === '' ? null : Number(String(v).replace(',', '.')));
+const num = (v: unknown) => (v === null || v === undefined || v === '' ? null : Number(String(v).replace(',', '.').replace(/\s/g, '')));
 
 /** Field errors of the portfolio forms, answered as 400 like the journal's. */
 const bad = (errors: Record<string, string>) => new InputError(errors as Errors);
 
 /** A rule asks the person to look again: the answer is 409 with `confirm: true`; sent again with confirm, it goes. */
 export class ConfirmError extends Error {}
+
+export const CURRENCIES = ['USD', 'ILS'] as const;
+/** The automatic portfolio's sum per hypothesis by currency (section 18). */
+export const AUTO_AMOUNT: Record<string, number> = { USD: 3000, ILS: 10000 };
 
 // ── market access ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -51,45 +59,51 @@ interface SecRow {
 	price_unit: string;
 	active: number;
 	country: string;
+	manual: number;
 }
 
 export function security(market: Database.Database, id: number) {
 	return market
 		.prepare(
-			`select s.id, s.symbol, s.name_en, s.exchange_code, s.currency, s.price_unit, s.active, e.country
+			`select s.id, s.symbol, s.name_en, s.exchange_code, s.currency, s.price_unit, s.active, s.manual, e.country
 			   from ref_securities s join ref_exchanges e on e.code = s.exchange_code where s.id = ?`
 		)
 		.get(id) as SecRow | undefined;
 }
 
+/** The money a security's prices are in: dollars for US and LSE dollar lines, shekels for TASE (agorot are shekels). */
+export const moneyOf = (priceUnit: string) => (priceUnit === 'USD' ? 'USD' : 'ILS');
+
 /** Prices, rates and splits with small caches: one view of a portfolio asks for the same ones many times. */
 export function marketView(market: Database.Database): Market & {
 	splits(securityId: number): Split[];
 	day(securityId: number, date: string): { date: string; low: number | null; high: number | null; close: number } | null;
-	last(securityId: number): { date: string; close: number } | null;
+	last(securityId: number): { date: string; close: number; providerCode: string } | null;
 	dividends(securityId: number, after: string, upTo: string): { date: string; amount: number }[];
+	usd(date: string): number;
 } {
 	const priceQ = market.prepare('select close from market_prices_daily where security_id = ? and date <= ? order by date desc limit 1');
 	const dayQ = market.prepare('select date, low, high, close from market_prices_daily where security_id = ? and date <= ? order by date desc limit 1');
-	const lastQ = market.prepare('select date, close from market_prices_daily where security_id = ? order by date desc limit 1');
+	const lastQ = market.prepare('select date, close, provider_code as providerCode from market_prices_daily where security_id = ? order by date desc limit 1');
 	const splitQ = market.prepare(`select ex_date as date, ratio from market_corporate_actions where security_id = ? and kind = 'split' and ratio > 0`);
 	const divQ = market.prepare(
 		`select ex_date as date, amount from market_corporate_actions where security_id = ? and kind = 'dividend' and ex_date > ? and ex_date <= ? order by ex_date`
 	);
 	const cache = new Map<string, number | null>();
 	const splitCache = new Map<number, Split[]>();
+	const usd = (date: string) => {
+		const k = `fx|${date}`;
+		if (!cache.has(k)) cache.set(k, fxOn(market, date) ?? fxOn(market, '9999-12-31'));
+		return cache.get(k) ?? 1;
+	};
 	return {
 		price(id, date) {
 			const k = `${id}|${date}`;
 			if (!cache.has(k)) cache.set(k, (priceQ.get(id, date) as { close: number } | undefined)?.close ?? null);
 			return cache.get(k)!;
 		},
-		fx(currency, date) {
-			if (currency !== 'USD') return 1;
-			const k = `fx|${date}`;
-			if (!cache.has(k)) cache.set(k, fxOn(market, date));
-			return cache.get(k) ?? fxOn(market, '9999-12-31') ?? 1;
-		},
+		conv: (from, to, date) => (from === to ? 1 : from === 'USD' && to === 'ILS' ? usd(date) : from === 'ILS' && to === 'USD' ? 1 / usd(date) : 1),
+		usd,
 		splits(id) {
 			if (!splitCache.has(id)) splitCache.set(id, splitQ.all(id) as Split[]);
 			return splitCache.get(id)!;
@@ -124,7 +138,7 @@ export interface PositionRow {
 	closed_at: string | null;
 }
 
-export interface EventRow extends Ev {
+export interface EventRow extends BasisEv {
 	positionId: number;
 	currency: string;
 	amount: number | null;
@@ -134,14 +148,16 @@ export interface EventRow extends Ev {
 	createdAt: string;
 }
 
-const EVENT_COLS = `id, position_id as positionId, kind, date, qty, price, currency, fee, fx_rate as fxRate, amount, note,
+const EVENT_COLS = `id, position_id as positionId, kind, date, qty, price, currency, fee, fx_rate as fxRate, amount, cost_total as costTotal, note,
 	hypothesis_id as hypothesisId, reverses_event_id as reversesEventId, auto, cancelled_at as cancelledAt, created_at as createdAt`;
-const CASH_COLS = `id, portfolio_id as portfolioId, kind, date, amount, currency, fx_rate as fxRate, note, position_id as positionId,
-	reverses_event_id as reversesEventId, auto, cancelled_at as cancelledAt, created_at as createdAt`;
+const CASH_COLS = `id, portfolio_id as portfolioId, kind, date, amount, currency, to_amount as toAmount, to_currency as toCurrency, fx_rate as fxRate,
+	note, position_id as positionId, reverses_event_id as reversesEventId, auto, cancelled_at as cancelledAt, created_at as createdAt`;
 
 export interface CashRow extends CashEv {
 	portfolioId: number;
 	currency: string;
+	toAmount: number | null;
+	toCurrency: string | null;
 	note: string | null;
 	positionId: number | null;
 	auto: number;
@@ -161,23 +177,25 @@ const cashOf = (app: Database.Database, portfolioId: number) =>
 
 const positionRow = (app: Database.Database, id: number) => app.prepare('select * from positions where id = ?').get(id) as PositionRow | undefined;
 
-/** The live cash events of a portfolio, with storno taken into account. */
-function liveCash(rows: CashRow[]) {
-	return effective(rows);
-}
-
 // ── portfolios ────────────────────────────────────────────────────────────────────────────────────────
 
 export interface PortfolioRow {
 	id: number;
 	name: string;
 	kind: 'real' | 'virtual';
+	currency: 'USD' | 'ILS';
 	auto_source_id: number | null;
 	auto_amount_ils: number;
+	tax_accrued: number | null;
 	sort_order: number;
 	archived_at: string | null;
 	sourceName?: string | null;
 }
+
+const portfolioRow = (app: Database.Database, id: number) =>
+	app.prepare('select p.*, s.name as sourceName from portfolios p left join sources s on s.id = p.auto_source_id where p.id = ?').get(id) as
+		| PortfolioRow
+		| undefined;
 
 export function listPortfolios(app: Database.Database, all = false): PortfolioRow[] {
 	return app
@@ -188,16 +206,21 @@ export function listPortfolios(app: Database.Database, all = false): PortfolioRo
 		.all() as PortfolioRow[];
 }
 
-export function createPortfolio(app: Database.Database, input: { name?: unknown; kind?: unknown }) {
+export function createPortfolio(app: Database.Database, input: { name?: unknown; kind?: unknown; currency?: unknown }) {
 	const name = String(input.name ?? '').trim();
 	if (!name) throw bad({ name: 'Название портфеля' });
 	if (name.length > 60) throw bad({ name: 'До 60 знаков' });
 	const kind = input.kind === 'virtual' ? 'virtual' : 'real';
+	if (!CURRENCIES.includes(input.currency as never)) throw bad({ currency: 'Валюта портфеля — доллары или шекели' });
 	if (app.prepare('select 1 from portfolios where name = ?').get(name)) throw bad({ name: 'Портфель с таким названием уже есть' });
-	return app.prepare('insert into portfolios (name, kind) values (?, ?) returning *').get(name, kind) as PortfolioRow;
+	return app.prepare('insert into portfolios (name, kind, currency) values (?, ?, ?) returning *').get(name, kind, input.currency) as PortfolioRow;
 }
 
-export function updatePortfolio(app: Database.Database, id: number, input: { name?: unknown; archived?: unknown; autoAmountIls?: unknown }) {
+export function updatePortfolio(
+	app: Database.Database,
+	id: number,
+	input: { name?: unknown; archived?: unknown; autoAmountIls?: unknown; taxAccrued?: unknown }
+) {
 	const p = app.prepare('select * from portfolios where id = ?').get(id) as PortfolioRow | undefined;
 	if (!p) throw bad({ id: 'Портфеля нет' });
 	if (input.name !== undefined) {
@@ -213,65 +236,82 @@ export function updatePortfolio(app: Database.Database, id: number, input: { nam
 		if (a === null || !(a > 0)) throw bad({ autoAmountIls: 'Сумма больше нуля' });
 		app.prepare('update portfolios set auto_amount_ils = ? where id = ?').run(a, id);
 	}
+	if (input.taxAccrued !== undefined) {
+		const t = num(input.taxAccrued);
+		if (t !== null && !(t >= 0)) throw bad({ taxAccrued: 'Налог не меньше нуля или пусто' });
+		app.prepare('update portfolios set tax_accrued = ? where id = ?').run(t, id);
+	}
 	return app.prepare('select * from portfolios where id = ?').get(id) as PortfolioRow;
 }
 
 /** The whole history of a portfolio as the arithmetic wants it. */
 export function book(app: Database.Database, m: ReturnType<typeof marketView>, portfolioId: number) {
+	const p = app.prepare('select currency from portfolios where id = ?').get(portfolioId) as { currency: string };
 	const rows = app.prepare('select * from positions where portfolio_id = ? order by id').all(portfolioId) as PositionRow[];
-	const evs = new Map(rows.map((p) => [p.id, eventsOf(app, p.id)]));
+	const evs = new Map(rows.map((r) => [r.id, eventsOf(app, r.id)]));
 	const cash = cashOf(app, portfolioId);
 	const b: Book = {
-		positions: rows.map((p) => ({
-			id: p.id,
-			securityId: p.security_id,
-			f: unitFactor(p.price_unit),
-			currency: p.currency,
-			trades: trades(evs.get(p.id)!, m.splits(p.security_id))
+		currency: p.currency,
+		positions: rows.map((r) => ({
+			id: r.id,
+			securityId: r.security_id,
+			f: unitFactor(r.price_unit),
+			currency: r.currency,
+			trades: trades(evs.get(r.id)!, m.splits(r.security_id), unitFactor(r.price_unit))
 		})),
-		cash: liveCash(cash).map((c) => ({ id: c.id, date: c.date, kind: c.kind, amount: c.amount, fx: c.fxRate ?? 1, at: c.createdAt }))
+		cash: effective(cash).map((c) => ({
+			id: c.id,
+			date: c.date,
+			kind: c.kind,
+			amount: c.amount,
+			currency: c.currency,
+			toAmount: c.toAmount,
+			toCurrency: c.toCurrency,
+			at: c.createdAt
+		}))
 	};
 	return { rows, evs, cash, book: b };
 }
 
-function bench(m: ReturnType<typeof marketView>, market: Database.Database, from: string | null, to: string) {
-	const out: { key: string; label: string; returnPct: number | null; returnIlsPct?: number | null }[] = [];
-	for (const [key, label] of [
-		['benchmark:SPX', 'S&P 500'],
-		['benchmark:TA125', 'ТА-125']
-	] as const) {
-		const id = benchmarkId(market, key);
-		const a = id && from ? m.price(id, from) : null;
-		const b = id ? m.price(id, to) : null;
-		const r = a && b ? (b / a - 1) * 100 : null;
-		const row: (typeof out)[number] = { key, label, returnPct: r };
-		// the S&P 500 in shekels too: the portfolio's return is in shekels
-		if (key === 'benchmark:SPX' && a && b && from) row.returnIlsPct = ((b * m.fx('USD', to)) / (a * m.fx('USD', from)) - 1) * 100;
-		out.push(row);
-	}
-	return out;
+/** The portfolio's benchmark by its currency: S&P 500 for dollars, TA-125 for shekels (section 18). */
+const BENCH: Record<string, { key: 'benchmark:SPX' | 'benchmark:TA125'; label: string }> = {
+	USD: { key: 'benchmark:SPX', label: 'S&P 500' },
+	ILS: { key: 'benchmark:TA125', label: 'ТА-125' }
+};
+
+function benchReturn(m: ReturnType<typeof marketView>, market: Database.Database, currency: string, from: string | null, to: string) {
+	const b = BENCH[currency];
+	const id = benchmarkId(market, b.key);
+	const x = id && from ? m.price(id, from) : null;
+	const y = id ? m.price(id, to) : null;
+	return { key: b.key, label: b.label, returnPct: x && y ? (y / x - 1) * 100 : null };
 }
 
-/** Spec section 18 — the «Портфель» screen: value in shekels, return against the benchmarks, positions by stage. */
+/** Spec section 18 — the «Портфель» screen: money, value and return in the portfolio's currency, positions by stage. */
 export function portfolioView(app: Database.Database, market: Database.Database, id: number, today = israelDate()) {
-	const p = app.prepare('select p.*, s.name as sourceName from portfolios p left join sources s on s.id = p.auto_source_id where p.id = ?').get(id) as
-		| PortfolioRow
-		| undefined;
+	const p = portfolioRow(app, id);
 	if (!p) return null;
+	const pc = p.currency;
 	const m = marketView(market);
 	const { rows, evs, book: b } = book(app, m, id);
 	const t = twr(b, m, today);
-	// cash in shekels after every event (implied deposits included)
-	const cash = cashFlow(b).cash;
+	const flow = cashFlow(b, m);
+	// money as the broker shows it, by currency; its worth in the portfolio's currency at today's rate
+	const balances = Object.entries(flow.raw)
+		.filter(([, x]) => Math.abs(x) > 0.005)
+		.map(([currency, amount]) => ({ currency, amount, valuePc: amount * m.conv(currency, pc, today) }));
+	const cash = balances.reduce((n, x) => n + x.valuePc, 0);
 
-	const fxNow = m.fx('USD', today);
 	const positions = rows.map((r) => {
 		const f = unitFactor(r.price_unit);
 		const list = evs.get(r.id)!;
-		const fi = fifo(trades(list, m.splits(r.security_id)), f);
-		const last = m.last(r.security_id);
-		const fx = r.currency === 'USD' ? fxNow : 1;
-		const h = holding(fi, f, last?.close ?? null, fx);
+		const tr = trades(list, m.splits(r.security_id), f);
+		const fi = fifo(tr, f);
+		// no price in the base yet (a security added by hand): the price of its last trade or transfer stands in
+		const market_ = m.last(r.security_id);
+		const lastTrade = tr.at(-1);
+		const last = market_ ?? (lastTrade ? { date: lastTrade.date, close: lastTrade.price, providerCode: 'event' } : null);
+		const h = holding(fi, f, last?.close ?? null, m.conv(r.currency, pc, today));
 		const live = effective(list);
 		const plan = [...live].reverse().find((e) => e.kind === 'plan_buy' || e.kind === 'plan_sell' || e.kind === 'watch');
 		const hyps = [...new Set(list.map((e) => e.hypothesisId).filter((x): x is number => !!x))];
@@ -290,23 +330,29 @@ export function portfolioView(app: Database.Database, market: Database.Database,
 			avgPrice: h.avgPrice,
 			lastPrice: last?.close ?? null,
 			lastDate: last?.date ?? null,
+			manualPrice: last?.providerCode === 'manual',
+			/** the price is the last trade's: the base has none for this security yet */
+			eventPrice: last?.providerCode === 'event',
 			value: h.value,
-			valueIls: h.valueIls,
+			valuePc: h.valuePc,
 			unrealized: h.unrealized,
 			unrealizedPct: fi.cost > EPS ? (h.unrealized / fi.cost) * 100 : null,
-			unrealizedIls: h.unrealizedIls,
+			unrealizedPc: h.unrealizedPc,
+			/** the profit counts from the transfer day: no purchase price yet */
+			fromTransfer: fi.fromTransfer,
 			fromPrice: h.fromPrice,
 			fromFx: h.fromFx,
 			realized: fi.realized,
-			realizedIls: fi.realizedIls,
+			realizedPc: fi.realizedPc,
 			plan: plan ? { kind: plan.kind, date: plan.date, price: plan.price, amount: plan.amount, note: plan.note } : null,
 			hypotheses: hyps,
-			lastEventAt: live.at(-1)?.date ?? r.opened_at
+			lastEventAt: live.at(-1)?.date ?? r.opened_at,
+			weight: 0
 		};
 	});
-	const held = positions.reduce((n, x) => n + x.valueIls, 0);
+	const held = positions.reduce((n, x) => n + x.valuePc, 0);
 	const value = cash + held;
-	for (const x of positions) Object.assign(x, { weight: value > EPS ? (x.valueIls / value) * 100 : 0 });
+	for (const x of positions) x.weight = value > EPS ? (x.valuePc / value) * 100 : 0;
 
 	// the last buy or sell fee in this portfolio, per currency — the form starts from it
 	const lastFee: Record<string, number> = {};
@@ -317,17 +363,21 @@ export function portfolioView(app: Database.Database, market: Database.Database,
 	return {
 		portfolio: p,
 		summary: {
+			currency: pc,
 			value,
 			cash,
+			balances,
 			held,
 			invested: t.invested,
 			twrPct: t.twr === null ? null : t.twr * 100,
 			from: t.from,
-			realizedIls: positions.reduce((n, x) => n + x.realizedIls, 0),
-			unrealizedIls: positions.reduce((n, x) => n + x.unrealizedIls, 0),
-			fxUsd: r2(fxNow),
+			realizedPc: positions.reduce((n, x) => n + x.realizedPc, 0),
+			unrealizedPc: positions.reduce((n, x) => n + x.unrealizedPc, 0),
+			fromTransfer: positions.some((x) => x.fromTransfer && x.qty > EPS),
+			fxUsd: r4(m.usd(today)),
 			pricesAsOf: positions.map((x) => x.lastDate).filter(Boolean).sort().at(-1) ?? null,
-			benchmarks: bench(m, market, t.from, today)
+			taxAccrued: p.tax_accrued,
+			benchmark: benchReturn(m, market, pc, t.from, today)
 		},
 		positions,
 		series: t.series,
@@ -335,7 +385,35 @@ export function portfolioView(app: Database.Database, market: Database.Database,
 	};
 }
 
-const r2 = (x: number) => Math.round(x * 10000) / 10000;
+const r4 = (x: number) => Math.round(x * 10000) / 10000;
+
+/**
+ * Section 18 «Всё вместе»: every real portfolio in one currency at today's Bank of Israel rate, and for a dollar
+ * portfolio — what its value is in shekels against the rate of its own conversions. Only shows; changes nothing.
+ */
+export function together(app: Database.Database, market: Database.Database, currency: 'USD' | 'ILS' = 'ILS', today = israelDate()) {
+	const m = marketView(market);
+	const items = listPortfolios(app)
+		.filter((p) => p.kind === 'real')
+		.map((p) => {
+			const v = portfolioView(app, market, p.id, today)!;
+			const rate = m.conv(p.currency, currency, today);
+			let conversions: { ils: number; usd: number; rate: number; valueIlsNow: number; changeIls: number } | null = null;
+			if (p.currency === 'USD') {
+				const conv = effective(cashOf(app, p.id)).filter((c) => c.kind === 'convert' && c.currency === 'ILS' && c.toCurrency === 'USD' && c.toAmount);
+				const ils = conv.reduce((n, c) => n + c.amount, 0);
+				const usd = conv.reduce((n, c) => n + (c.toAmount ?? 0), 0);
+				if (usd > 0) {
+					const valueIlsNow = v.summary.value * m.usd(today);
+					// at the conversions' own average rate the same dollars would be worth:
+					const atOwn = v.summary.value * (ils / usd);
+					conversions = { ils, usd, rate: ils / usd, valueIlsNow, changeIls: valueIlsNow - atOwn };
+				}
+			}
+			return { id: p.id, name: p.name, currency: p.currency, value: v.summary.value, inTotal: v.summary.value * rate, conversions };
+		});
+	return { currency, rate: r4(m.usd(today)), date: today, total: items.reduce((n, x) => n + x.inTotal, 0), items };
+}
 
 // ── a position ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -374,7 +452,17 @@ export function positionView(app: Database.Database, market: Database.Database, 
 		const pauseDays = firstBuy ? Math.round((Date.parse(firstBuy.date) - Date.parse(h.entryDate)) / 86400000) : null;
 		return { ...h, fromIdea, fromBuy, pauseDays, buyDate: firstBuy?.date ?? null };
 	});
-	return { position: pos, portfolio: view.portfolio, events, cash, hypotheses: hyps, lastFee: view.lastFee, fxUsd: view.summary.fxUsd };
+	const hasOpening = effective(list).some((e) => e.kind === 'opening');
+	return {
+		position: pos,
+		portfolio: view.portfolio,
+		events,
+		cash,
+		hypotheses: hyps,
+		lastFee: view.lastFee,
+		fxUsd: view.summary.fxUsd,
+		hasOpening
+	};
 }
 
 /** Keeps `stage` and `closed_at` of a position in step with its events. */
@@ -382,7 +470,8 @@ export function recomputeStage(app: Database.Database, market: Database.Database
 	const r = positionRow(app, positionId)!;
 	const list = eventsOf(app, positionId);
 	const m = marketView(market);
-	const qty = fifo(trades(list, m.splits(r.security_id)), unitFactor(r.price_unit)).qty;
+	const f = unitFactor(r.price_unit);
+	const qty = fifo(trades(list, m.splits(r.security_id), f), f).qty;
 	const stage = stageOf(list, qty);
 	const live = effective(list);
 	const closedAt = stage === 'closed' ? (live.at(-1)?.date ?? r.opened_at) : null;
@@ -400,18 +489,28 @@ export interface EventInput {
 	price?: unknown;
 	fee?: unknown;
 	amount?: unknown;
+	/** opening / basis: the whole purchase cost in the portfolio's currency */
+	costTotal?: unknown;
+	/** opening: the average purchase price, in the price unit */
+	basisPrice?: unknown;
 	note?: unknown;
 	hypothesisId?: unknown;
 	/** the person looked again at a price far from the day's range */
 	confirm?: unknown;
 }
 
-const KINDS = ['watch', 'plan_buy', 'buy', 'plan_sell', 'sell', 'drop', 'note'];
+const KINDS = ['watch', 'plan_buy', 'buy', 'plan_sell', 'sell', 'drop', 'note', 'opening', 'basis'];
+
+/** A dollar portfolio holds dollar securities only; a shekel one — TASE and dollar lines its broker shows in shekels. */
+function fits(pc: string, s: SecRow) {
+	return pc === 'ILS' || moneyOf(s.price_unit) === 'USD';
+}
 
 /**
  * A new event of a position (section 18). A first event for a security opens a position in the portfolio (or
  * continues the open one). Rules: the date is not later than today; one cannot sell more than there is; a price
- * further than 10% from the day's range asks for a confirmation.
+ * further than 10% from the day's range asks for a confirmation. «Перенесено» (opening) brings shares bought before
+ * the portfolio was kept, at the transfer day's price; their purchase price can come with it or later («basis»).
  */
 export function addEvent(app: Database.Database, market: Database.Database, input: EventInput, now = new Date(), auto = false) {
 	const today = israelDate(now);
@@ -425,13 +524,18 @@ export function addEvent(app: Database.Database, market: Database.Database, inpu
 	const price = num(input.price);
 	const fee = num(input.fee) ?? 0;
 	const amount = num(input.amount);
-	const trade = kind === 'buy' || kind === 'sell';
+	const costTotal = num(input.costTotal);
+	const basisPrice = num(input.basisPrice);
+	const trade = kind === 'buy' || kind === 'sell' || kind === 'opening';
 	if (trade) {
 		if (qty === null || !(qty > 0)) errors.qty = 'Количество больше нуля';
 		if (price === null || !(price > 0)) errors.price = 'Цена больше нуля';
 		if (!(fee >= 0)) errors.fee = 'Комиссия не меньше нуля';
 	} else if (price !== null && !(price > 0)) errors.price = 'Цена больше нуля или пусто';
 	if (amount !== null && !(amount > 0)) errors.amount = 'Сумма больше нуля или пусто';
+	if (costTotal !== null && !(costTotal > 0)) errors.costTotal = 'Стоимость покупки больше нуля или пусто';
+	if (basisPrice !== null && !(basisPrice > 0)) errors.basisPrice = 'Средняя цена больше нуля или пусто';
+	if (kind === 'basis' && price === null && costTotal === null) errors.price = 'Средняя цена покупки или вся стоимость покупки';
 	const note = typeof input.note === 'string' ? input.note.trim().slice(0, 2000) || null : null;
 	if (kind === 'note' && !note) errors.note = 'Текст заметки';
 	if (Object.keys(errors).length) throw bad(errors);
@@ -444,34 +548,38 @@ export function addEvent(app: Database.Database, market: Database.Database, inpu
 	} else {
 		const pid = Number(input.portfolioId);
 		const sid = Number(input.securityId);
-		if (!app.prepare('select 1 from portfolios where id = ?').get(pid)) throw bad({ portfolioId: 'Портфеля нет' });
+		const port = app.prepare('select currency from portfolios where id = ?').get(pid) as { currency: string } | undefined;
+		if (!port) throw bad({ portfolioId: 'Портфеля нет' });
 		const s = security(market, sid);
 		if (!s) throw bad({ securityId: 'Такой бумаги нет в базе' });
 		if (s.exchange_code === 'INDEX_US') throw bad({ securityId: 'Индекс нельзя купить — выберите акцию или ETF' });
+		if (!fits(port.currency, s)) throw bad({ securityId: 'В долларовый портфель — только бумаги в долларах' });
 		pos = app.prepare(`select * from positions where portfolio_id = ? and security_id = ? and stage <> 'closed' order by id desc limit 1`).get(pid, sid) as
 			| PositionRow
 			| undefined;
 		if (!pos) {
-			if (kind === 'sell' || kind === 'plan_sell') throw bad({ kind: 'Этой бумаги в портфеле нет' });
+			if (kind === 'sell' || kind === 'plan_sell' || kind === 'basis') throw bad({ kind: 'Этой бумаги в портфеле нет' });
 			pos = app
 				.prepare(
 					`insert into positions (portfolio_id, security_id, symbol, security_name, exchange_code, currency, price_unit, stage, opened_at)
 					 values (?, ?, ?, ?, ?, ?, ?, 'watch', ?) returning *`
 				)
-				.get(pid, sid, s.symbol, s.name_en, s.exchange_code, s.price_unit === 'USD' ? 'USD' : 'ILS', s.price_unit, date) as PositionRow;
+				.get(pid, sid, s.symbol, s.name_en, s.exchange_code, moneyOf(s.price_unit), s.price_unit, date) as PositionRow;
 		}
 	}
+	const pc = (app.prepare('select currency from portfolios where id = ?').get(pos.portfolio_id) as { currency: string }).currency;
 	const m = marketView(market);
 	const f = unitFactor(pos.price_unit);
 	const list = eventsOf(app, pos.id);
-	const held = fifo(trades(list, m.splits(pos.security_id)), f).qty;
+	const held = fifo(trades(list, m.splits(pos.security_id), f), f).qty;
 	if ((kind === 'plan_sell' || kind === 'sell') && held <= EPS) throw bad({ kind: 'Продавать нечего: бумаги в позиции нет' });
+	if (kind === 'basis' && !effective(list).some((e) => e.kind === 'opening')) throw bad({ kind: 'Цена покупки задаётся для перенесённой позиции' });
 
 	// a price far from the day's range: a typo or agorot for shekels — ask before saving
 	if (trade && !auto && !input.confirm) {
-		const day = m.day(pos.security_id, date as string);
+		const day = m.day(pos.security_id, date);
 		if (day) {
-			const k = splitFactor(day.date, m.splits(pos.security_id)) / splitFactor(date as string, m.splits(pos.security_id));
+			const k = splitFactor(day.date, m.splits(pos.security_id)) / splitFactor(date, m.splits(pos.security_id));
 			const lo = (day.low ?? day.close) * k;
 			const hi = (day.high ?? day.close) * k;
 			if (price! < lo * (1 - PRICE_SLACK) || price! > hi * (1 + PRICE_SLACK)) {
@@ -483,33 +591,52 @@ export function addEvent(app: Database.Database, market: Database.Database, inpu
 			}
 		}
 	}
-
-	const fxRate = pos.currency === 'USD' ? m.fx('USD', date as string) : 1;
-	if (pos.currency === 'USD' && !fxOn(market, date as string) && !fxOn(market, '9999-12-31'))
-		throw bad({ date: 'Курса доллара ещё нет — он загрузится утром' });
+	if (pos.currency !== pc && !fxOn(market, date) && !fxOn(market, '9999-12-31')) throw bad({ date: 'Курса доллара ещё нет — он загрузится утром' });
+	const fxRate = m.conv(pos.currency, pc, date);
 
 	const hypothesisId = input.hypothesisId ? Number(input.hypothesisId) : null;
 	if (hypothesisId && !app.prepare('select 1 from hypotheses where id = ?').get(hypothesisId)) throw bad({ hypothesisId: 'Гипотезы нет' });
 
+	const insert = app.prepare(
+		`insert into position_events (position_id, kind, date, qty, price, currency, fee, fx_rate, amount, cost_total, note, hypothesis_id, auto)
+		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id`
+	);
 	return app.transaction(() => {
-		const ev = app
-			.prepare(
-				`insert into position_events (position_id, kind, date, qty, price, currency, fee, fx_rate, amount, note, hypothesis_id, auto)
-				 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id`
-			)
-			.get(pos!.id, kind, date, trade ? qty : null, price, pos!.currency, trade ? fee : null, fxRate, amount, note, hypothesisId, auto ? 1 : 0) as {
-			id: number;
-		};
+		const ev = insert.get(
+			pos!.id,
+			kind,
+			date,
+			trade ? qty : null,
+			price,
+			pos!.currency,
+			trade ? fee : null,
+			fxRate,
+			amount,
+			kind === 'basis' ? costTotal : null,
+			note,
+			hypothesisId,
+			auto ? 1 : 0
+		) as { id: number };
+		// an opening with its purchase price: the price goes in as a «basis» event right after it
+		if (kind === 'opening' && (costTotal !== null || basisPrice !== null))
+			insert.run(pos!.id, 'basis', date, null, basisPrice, pos!.currency, null, fxRate, null, costTotal, null, null, 0);
 		// no point in time may hold less than nothing
 		try {
-			fifo(trades(eventsOf(app, pos!.id), m.splits(pos!.security_id)), f);
+			fifo(trades(eventsOf(app, pos!.id), m.splits(pos!.security_id), f), f);
 		} catch (e) {
 			if (e instanceof OversellError) throw bad({ qty: e.message });
 			throw e;
 		}
 		if (date < pos!.opened_at) app.prepare('update positions set opened_at = ? where id = ?').run(date, pos!.id);
 		recomputeStage(app, market, pos!.id);
-		return { positionId: pos!.id, eventId: ev.id };
+		// a buy without enough money only warns (section 18)
+		let warning: string | null = null;
+		if (kind === 'buy') {
+			const v = portfolioView(app, market, pos!.portfolio_id, date);
+			const bal = v?.summary.balances.find((x) => x.currency === pos!.currency)?.amount ?? 0;
+			if (bal < -0.005) warning = `Остаток ${pos!.currency === 'USD' ? 'долларов' : 'шекелей'} ушёл в минус: ${fmt(bal)}. Если были взнос или конвертация — запишите их.`;
+		}
+		return { positionId: pos!.id, eventId: ev.id, warning };
 	})();
 }
 
@@ -549,8 +676,9 @@ export function reverseEvent(app: Database.Database, market: Database.Database, 
 /** After a cancel or a storno no point in time may hold less than nothing (a buy taken out under a sell). */
 function checkPosition(app: Database.Database, market: Database.Database, positionId: number) {
 	const r = positionRow(app, positionId)!;
+	const f = unitFactor(r.price_unit);
 	try {
-		fifo(trades(eventsOf(app, positionId), marketView(market).splits(r.security_id)), unitFactor(r.price_unit));
+		fifo(trades(eventsOf(app, positionId), marketView(market).splits(r.security_id), f), f);
 	} catch (e) {
 		if (e instanceof OversellError) throw bad({ id: `Без этой покупки продажа больше, чем было: ${e.message}. Сначала сторнируйте продажу.` });
 		throw e;
@@ -559,13 +687,17 @@ function checkPosition(app: Database.Database, market: Database.Database, positi
 
 // ── money ─────────────────────────────────────────────────────────────────────────────────────────────
 
-const CASH_KINDS = ['deposit', 'withdraw', 'dividend', 'fee', 'tax'];
+const CASH_KINDS = ['deposit', 'withdraw', 'convert', 'dividend', 'fee', 'tax'];
 
+/**
+ * Money of a portfolio: deposits and withdrawals, a conversion (the sum given and the sum received — the deal's
+ * rate comes from the two, bank fee included, and is fixed once), dividends, fees, taxes.
+ */
 export function addCash(
 	app: Database.Database,
 	market: Database.Database,
 	portfolioId: number,
-	input: { kind?: unknown; date?: unknown; amount?: unknown; currency?: unknown; note?: unknown; positionId?: unknown },
+	input: { kind?: unknown; date?: unknown; amount?: unknown; currency?: unknown; toAmount?: unknown; toCurrency?: unknown; note?: unknown; positionId?: unknown },
 	now = new Date(),
 	auto = false
 ) {
@@ -573,24 +705,44 @@ export function addCash(
 	const errors: Record<string, string> = {};
 	const kind = String(input.kind ?? '');
 	if (!CASH_KINDS.includes(kind)) errors.kind = 'Неизвестный вид';
-	const date = input.date === undefined || input.date === '' ? today : input.date;
+	const date = (input.date === undefined || input.date === '' ? today : input.date) as string;
 	if (!isDate(date)) errors.date = 'Дата в виде ГГГГ-ММ-ДД';
 	else if (date > today) errors.date = 'Дата не позже сегодняшней';
 	const amount = num(input.amount);
 	if (amount === null || !(amount > 0)) errors.amount = 'Сумма больше нуля';
 	const currency = input.currency === 'USD' ? 'USD' : 'ILS';
-	if (!app.prepare('select 1 from portfolios where id = ?').get(portfolioId)) errors.portfolioId = 'Портфеля нет';
+	let toAmount: number | null = null;
+	let toCurrency: string | null = null;
+	if (kind === 'convert') {
+		toAmount = num(input.toAmount);
+		toCurrency = input.toCurrency === 'USD' ? 'USD' : input.toCurrency === 'ILS' ? 'ILS' : null;
+		if (toAmount === null || !(toAmount > 0)) errors.toAmount = 'Полученная сумма больше нуля';
+		if (!toCurrency || toCurrency === currency) errors.toCurrency = 'Конвертация — из одной валюты в другую';
+	}
+	const port = app.prepare('select currency from portfolios where id = ?').get(portfolioId) as { currency: string } | undefined;
+	if (!port) errors.portfolioId = 'Портфеля нет';
 	const positionId = input.positionId ? Number(input.positionId) : null;
 	if (positionId && positionRow(app, positionId)?.portfolio_id !== portfolioId) errors.positionId = 'Позиция из другого портфеля';
 	if (Object.keys(errors).length) throw bad(errors);
-	const fxRate = currency === 'USD' ? marketView(market).fx('USD', date as string) : 1;
+	const fxRate = marketView(market).conv(currency, port!.currency, date);
 	return app
 		.prepare(
-			`insert into cash_events (portfolio_id, kind, date, amount, currency, fx_rate, note, position_id, auto) values (?, ?, ?, ?, ?, ?, ?, ?, ?) returning id`
+			`insert into cash_events (portfolio_id, kind, date, amount, currency, to_amount, to_currency, fx_rate, note, position_id, auto)
+			 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id`
 		)
-		.get(portfolioId, kind, date, amount, currency, fxRate, typeof input.note === 'string' ? input.note.trim().slice(0, 500) || null : null, positionId, auto ? 1 : 0) as {
-		id: number;
-	};
+		.get(
+			portfolioId,
+			kind,
+			date,
+			amount,
+			currency,
+			toAmount,
+			toCurrency,
+			fxRate,
+			typeof input.note === 'string' ? input.note.trim().slice(0, 500) || null : null,
+			positionId,
+			auto ? 1 : 0
+		) as { id: number };
 }
 
 export function cancelCash(app: Database.Database, id: number) {
@@ -629,38 +781,60 @@ export function portfolioCash(app: Database.Database, id: number) {
 	}));
 }
 
-// ── automatic portfolio of a source ───────────────────────────────────────────────────────────────────
+// ── automatic portfolios of a source ──────────────────────────────────────────────────────────────────
+
+const autoName = (source: string, currency: string) => `Авто · ${source} ${currency === 'USD' ? '$' : '₪'}`;
+
+/** The source's automatic portfolio in a currency: found, or made when the source's portfolios are switched on. */
+function autoPortfolio(app: Database.Database, sourceId: number, currency: string, make: boolean) {
+	const p = app.prepare('select * from portfolios where auto_source_id = ? and currency = ?').get(sourceId, currency) as PortfolioRow | undefined;
+	if (p || !make) return p;
+	const src = app.prepare('select name from sources where id = ?').get(sourceId) as { name: string };
+	let name = autoName(src.name, currency);
+	if (app.prepare('select 1 from portfolios where name = ?').get(name)) name = `${name} (${sourceId})`;
+	return app
+		.prepare(`insert into portfolios (name, kind, currency, auto_source_id, auto_amount_ils) values (?, 'virtual', ?, ?, ?) returning *`)
+		.get(name, currency, sourceId, AUTO_AMOUNT[currency]) as PortfolioRow;
+}
 
 /**
  * Section 18 «Виртуальный портфель источника»: each hypothesis of the source of types recommendation, target or
- * opinion, on the rise, is bought for a fixed sum at its entry price and sold when it closes, at its exit price;
- * dividends while it is held come as money. A «down» hypothesis does not go in. Idempotent: run as often as
- * wanted (after the daily job, when it is switched on).
+ * opinion, on the rise, is bought for a fixed sum (3 000 $ or 10 000 ₪ — a source with securities of both markets
+ * has two portfolios) at its entry price and sold when it closes, at its exit price; dividends while it is held
+ * come as money. A «down» hypothesis does not go in. Idempotent: run as often as wanted.
  */
 export function syncAuto(app: Database.Database, market: Database.Database, now = new Date()) {
 	const today = israelDate(now);
-	const ports = app.prepare(`select * from portfolios where auto_source_id is not null and archived_at is null`).all() as PortfolioRow[];
+	// sources switched on: having a portfolio not archived
+	const on = (app.prepare(`select distinct auto_source_id as id from portfolios where auto_source_id is not null and archived_at is null`).all() as { id: number }[]).map(
+		(r) => r.id
+	);
 	const m = marketView(market);
 	const s = { bought: 0, sold: 0, dividends: 0, reversed: 0 };
-	for (const p of ports) {
+	for (const sourceId of on) {
 		const hyps = app
 			.prepare(
 				`select h.* from hypotheses h join articles a on a.id = h.article_id
 				  where a.source_id = ? and h.direction = 'long' and h.signal_type in (${RATED_TYPES.map(() => '?').join(',')})
 				  order by h.id`
 			)
-			.all(p.auto_source_id, ...RATED_TYPES) as Record<string, unknown>[];
+			.all(sourceId, ...RATED_TYPES) as Record<string, unknown>[];
 		for (const h of hyps) {
 			const hid = h.id as number;
+			const cur = moneyOf(h.price_unit as string);
+			const existing = autoPortfolio(app, sourceId, cur, false);
+			// a portfolio of this currency switched off on purpose stays off
+			if (existing?.archived_at) continue;
 			const buys = app
 				.prepare(
 					`select e.id, e.position_id as positionId from position_events e join positions p on p.id = e.position_id
-					  where p.portfolio_id = ? and e.hypothesis_id = ? and e.kind = 'buy' and e.auto = 1 and e.cancelled_at is null`
+					  join portfolios f on f.id = p.portfolio_id
+					  where f.auto_source_id = ? and e.hypothesis_id = ? and e.kind = 'buy' and e.auto = 1 and e.cancelled_at is null`
 				)
-				.all(p.id, hid) as { id: number; positionId: number }[];
+				.all(sourceId, hid) as { id: number; positionId: number }[];
 			const live = buys.filter((b) => !app.prepare(`select 1 from position_events where reverses_event_id = ? and cancelled_at is null`).get(b.id));
 			if (h.status === 'cancelled') {
-				for (const b of live) {
+				for (const b of live)
 					for (const e of app
 						.prepare(`select id from position_events where position_id = ? and kind <> 'reverse' and cancelled_at is null order by date desc, id desc`)
 						.all(b.positionId) as { id: number }[])
@@ -668,7 +842,6 @@ export function syncAuto(app: Database.Database, market: Database.Database, now 
 							reverseEvent(app, market, e.id, 'гипотеза отменена', now);
 							s.reversed++;
 						}
-				}
 				continue;
 			}
 			const entry = h.entry_price as number | null;
@@ -678,26 +851,26 @@ export function syncAuto(app: Database.Database, market: Database.Database, now 
 			if (!positionId) {
 				const sec = security(market, h.security_id as number);
 				if (!sec) continue;
+				const port = autoPortfolio(app, sourceId, cur, true)!;
 				const f = unitFactor(sec.price_unit);
-				const fx = sec.price_unit === 'USD' ? m.fx('USD', entryDate) : 1;
-				const qty = p.auto_amount_ils / (entry * f * fx);
+				const qty = port.auto_amount_ils / (entry * f);
 				positionId = app
 					.prepare(
 						`insert into positions (portfolio_id, security_id, symbol, security_name, exchange_code, currency, price_unit, stage, opened_at)
 						 values (?, ?, ?, ?, ?, ?, ?, 'watch', ?) returning id`
 					)
 					.pluck()
-					.get(p.id, sec.id, sec.symbol, sec.name_en, sec.exchange_code, sec.price_unit === 'USD' ? 'USD' : 'ILS', sec.price_unit, entryDate) as number;
+					.get(port.id, sec.id, sec.symbol, sec.name_en, sec.exchange_code, cur, sec.price_unit, entryDate) as number;
 				app.prepare(
 					`insert into position_events (position_id, kind, date, qty, price, currency, fee, fx_rate, note, hypothesis_id, auto)
-					 values (?, 'buy', ?, ?, ?, ?, 0, ?, ?, ?, 1)`
-				).run(positionId, entryDate, qty, entry, sec.price_unit === 'USD' ? 'USD' : 'ILS', fx, `гипотеза №${hid}`, hid);
+					 values (?, 'buy', ?, ?, ?, ?, 0, 1, ?, ?, 1)`
+				).run(positionId, entryDate, qty, entry, cur, `гипотеза №${hid}`, hid);
 				s.bought++;
 			}
 			const pos = positionRow(app, positionId)!;
 			const f = unitFactor(pos.price_unit);
 			const list = eventsOf(app, positionId);
-			const fi = fifo(trades(list, m.splits(pos.security_id)), f);
+			const fi = fifo(trades(list, m.splits(pos.security_id), f), f);
 			const closed = (h.status === 'closed' || h.status === 'closed_early') && h.exit_price && h.exit_date;
 			const exitDate = closed ? (h.exit_date as string) : today;
 			// dividends while held: ex-date after the buy, not after the sale
@@ -708,16 +881,15 @@ export function syncAuto(app: Database.Database, market: Database.Database, now 
 					.prepare(`select 1 from cash_events where position_id = ? and kind = 'dividend' and date = ? and auto = 1 and cancelled_at is null`)
 					.get(positionId, d.date);
 				if (exists) continue;
-				addCash(app, market, p.id, { kind: 'dividend', date: d.date, amount: qtyNow * d.amount * f, currency: pos.currency, note: `${pos.symbol}, авто`, positionId }, now, true);
+				addCash(app, market, pos.portfolio_id, { kind: 'dividend', date: d.date, amount: qtyNow * d.amount * f, currency: pos.currency, note: `${pos.symbol}, авто`, positionId }, now, true);
 				s.dividends++;
 			}
 			if (closed && fi.qty > EPS) {
-				const fx = pos.currency === 'USD' ? m.fx('USD', exitDate) : 1;
 				const k = splitFactor(exitDate, m.splits(pos.security_id));
 				app.prepare(
 					`insert into position_events (position_id, kind, date, qty, price, currency, fee, fx_rate, note, hypothesis_id, auto)
-					 values (?, 'sell', ?, ?, ?, ?, 0, ?, ?, ?, 1)`
-				).run(positionId, exitDate, fi.qty / k, h.exit_price, pos.currency, fx, `гипотеза №${hid} закрыта`, hid);
+					 values (?, 'sell', ?, ?, ?, ?, 0, 1, ?, ?, 1)`
+				).run(positionId, exitDate, fi.qty / k, h.exit_price, pos.currency, `гипотеза №${hid} закрыта`, hid);
 				s.sold++;
 			}
 			recomputeStage(app, market, positionId);
@@ -726,21 +898,30 @@ export function syncAuto(app: Database.Database, market: Database.Database, now 
 	return s;
 }
 
-/** Switches the automatic portfolio of a source on (made or brought back, filled at once) or off (archived). */
+/**
+ * Switches the automatic portfolios of a source on (made for the currencies its hypotheses need — or its market's —
+ * brought back if archived, filled at once) or off (archived, history kept).
+ */
 export function setAuto(app: Database.Database, market: Database.Database, sourceId: number, on: boolean, now = new Date()) {
-	const src = app.prepare('select id, name, kind from sources where id = ?').get(sourceId) as { id: number; name: string; kind: string } | undefined;
+	const src = app.prepare('select id, name, market from sources where id = ?').get(sourceId) as { id: number; name: string; market: string } | undefined;
 	if (!src) throw bad({ sourceId: 'Источника нет' });
-	const p = app.prepare('select * from portfolios where auto_source_id = ?').get(sourceId) as PortfolioRow | undefined;
 	if (!on) {
-		if (p) app.prepare('update portfolios set archived_at = ? where id = ?').run(new Date().toISOString(), p.id);
-		return null;
+		app.prepare('update portfolios set archived_at = ? where auto_source_id = ? and archived_at is null').run(new Date().toISOString(), sourceId);
+		return [];
 	}
-	if (p) app.prepare('update portfolios set archived_at = null where id = ?').run(p.id);
-	else {
-		let name = `Авто · ${src.name}`;
-		if (app.prepare('select 1 from portfolios where name = ?').get(name)) name = `${name} (${sourceId})`;
-		app.prepare(`insert into portfolios (name, kind, auto_source_id) values (?, 'virtual', ?)`).run(name, sourceId);
-	}
-	app.transaction(() => syncAuto(app, market, now))();
-	return app.prepare('select * from portfolios where auto_source_id = ?').get(sourceId) as PortfolioRow;
+	app.prepare('update portfolios set archived_at = null where auto_source_id = ?').run(sourceId);
+	const used = (
+		app
+			.prepare(
+				`select distinct h.price_unit as u from hypotheses h join articles a on a.id = h.article_id
+				  where a.source_id = ? and h.direction = 'long' and h.status <> 'cancelled'`
+			)
+			.all(sourceId) as { u: string }[]
+	).map((r) => moneyOf(r.u));
+	const want = new Set(used.length ? used : src.market === 'US' ? ['USD'] : src.market === 'IL' ? ['ILS'] : ['USD', 'ILS']);
+	app.transaction(() => {
+		for (const c of want) autoPortfolio(app, sourceId, c, true);
+		syncAuto(app, market, now);
+	})();
+	return app.prepare('select * from portfolios where auto_source_id = ? order by currency desc').all(sourceId) as PortfolioRow[];
 }

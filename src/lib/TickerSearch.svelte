@@ -53,8 +53,10 @@
 		noIndex?: boolean;
 		label?: string;
 		autofocus?: boolean;
+		/** also securities added by hand for a portfolio (ETF UCITS) */
+		withManual?: boolean;
 	}
-	let { onselect, includeInactive = false, noIndex = false, label = 'Тикер', autofocus = false }: Props = $props();
+	let { onselect, includeInactive = false, noIndex = false, label = 'Тикер', autofocus = false, withManual = false }: Props = $props();
 
 	let q = $state('');
 	let market = $state<Market>('all');
@@ -92,6 +94,7 @@
 			const p = new URLSearchParams({ q: query, market });
 			if (includeInactive) p.set('inactive', '1');
 			if (noIndex) p.set('noindex', '1');
+			if (withManual) p.set('manual', '1');
 			const r = await fetch(`/api/securities?${p}`);
 			if (!r.ok) throw new Error();
 			const j = await r.json();

@@ -44,6 +44,8 @@ export const securities = sqliteTable(
 		delistedAt: text(),
 		active: integer({ mode: 'boolean' }).notNull().default(true),
 		isBenchmark: integer({ mode: 'boolean' }).notNull().default(false),
+		/** added by hand for a portfolio (an ETF UCITS on the LSE): not in the search, not in models (section 18) */
+		manual: integer({ mode: 'boolean' }).notNull().default(false),
 		/** null — not tried yet; ok — the price provider knows it; none — it does not («нет цен») */
 		priceStatus: text(),
 		/** lower-case «symbol name_en name_he» for the search field */

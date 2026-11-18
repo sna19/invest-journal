@@ -33,16 +33,20 @@
 			lastPrice: number | null;
 			lastDate: string | null;
 			value: number;
-			valueIls: number;
+			valuePc: number;
 			unrealized: number;
 			unrealizedPct: number | null;
-			unrealizedIls: number;
+			unrealizedPc: number;
+			fromTransfer: boolean;
+			eventPrice: boolean;
+			manualPrice: boolean;
 			fromPrice: number;
 			fromFx: number;
 			realized: number;
-			realizedIls: number;
+			realizedPc: number;
 		};
-		portfolio: { id: number; name: string; kind: string; auto_source_id: number | null };
+		portfolio: { id: number; name: string; kind: string; currency: string; auto_source_id: number | null };
+		hasOpening: boolean;
 		events: {
 			id: number;
 			kind: string;
@@ -52,6 +56,7 @@
 			fee: number | null;
 			fxRate: number | null;
 			amount: number | null;
+			costTotal: number | null;
 			note: string | null;
 			hypothesisId: number | null;
 			reversesEventId: number | null;
@@ -70,6 +75,19 @@
 	let v = $state<View | null>(null);
 	let step = $state<string | null>(null);
 	let problem = $state<string | null>(null);
+	const pc = $derived(v?.portfolio.currency ?? 'ILS');
+	let pricing = $state(false);
+	let priceDate = $state(new Date().toISOString().slice(0, 10));
+	let priceValue = $state('');
+	async function savePrice(securityId: number) {
+		const r = await fetch(`/api/securities/${securityId}/price`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ date: priceDate, close: priceValue }) });
+		if (!r.ok) return (problem = (await r.json().catch(() => ({}))).message ?? 'Не сохранилось');
+		pricing = false;
+		priceValue = '';
+		showToast('Цена записана');
+		await load();
+		onchange();
+	}
 
 	async function load() {
 		const r = await fetch(`/api/positions/${positionId}`).catch(() => null);
@@ -85,7 +103,8 @@
 		plan_sell: ['sell', 'drop', 'note'],
 		closed: ['watch', 'buy', 'note']
 	};
-	const NEXT_LABEL: Record<string, string> = { buy: 'Купил', sell: 'Продал', plan_buy: 'Хочу купить', plan_sell: 'Хочу продать', drop: 'Передумал', note: 'Заметка', watch: 'Наблюдаю' };
+	const NEXT_LABEL: Record<string, string> = {
+		basis: 'Цена покупки', buy: 'Купил', sell: 'Продал', plan_buy: 'Хочу купить', plan_sell: 'Хочу продать', drop: 'Передумал', note: 'Заметка', watch: 'Наблюдаю' };
 
 	async function undo(id: number, how: 'cancel' | 'reverse') {
 		problem = null;
@@ -112,19 +131,49 @@
 	{#if p.qty > 0}
 		<div class="nums">
 			<div><span class="k">В позиции</span><b>{qtyText(p.qty)}</b><span class="sub">средняя {priceText(p.avgPrice, p.priceUnit)}</span></div>
-			<div><span class="k">Стоимость</span><b>{money(p.valueIls)}</b><span class="sub">{p.currency === 'USD' ? money(p.value, 'USD') + ' · ' : ''}{priceText(p.lastPrice, p.priceUnit)} на {p.lastDate ? d(p.lastDate) : '—'}</span></div>
-			<div><span class="k">Не реализовано</span><b><Pct value={p.unrealizedPct} /></b><span class="sub">{money(p.unrealized, p.currency, true)}{p.currency === 'USD' ? ` · ${money(p.unrealizedIls, 'ILS', true)}` : ''}</span></div>
-			{#if p.currency === 'USD'}
+			<div>
+				<span class="k">Стоимость</span><b>{money(p.valuePc, pc)}</b>
+				<span class="sub"
+					>{p.currency !== pc ? money(p.value, p.currency) + ' · ' : ''}{priceText(p.lastPrice, p.priceUnit)}
+					{p.eventPrice ? 'цена переноса — цен в базе ещё нет' : p.manualPrice ? `ручная цена от ${p.lastDate ? d(p.lastDate) : '—'}` : `на ${p.lastDate ? d(p.lastDate) : '—'}`}</span
+				>
+			</div>
+			<div>
+				<span class="k">{p.fromTransfer ? 'С даты переноса' : 'Не реализовано'}</span><b><Pct value={p.unrealizedPct} /></b>
+				<span class="sub">{money(p.unrealized, p.currency, true)}{p.currency !== pc ? ` · ${money(p.unrealizedPc, pc, true)}` : ''}</span>
+			</div>
+			{#if p.currency !== pc}
 				<div>
-					<span class="k">В шекелях <HelpIcon topicKey="portfolio.fx" label="рост и курс" /></span>
-					<span class="sub">от цены {money(p.fromPrice, 'ILS', true)}</span>
-					<span class="sub">от курса {money(p.fromFx, 'ILS', true)}</span>
+					<span class="k">В валюте портфеля <HelpIcon topicKey="portfolio.fx" label="рост и курс" /></span>
+					<span class="sub">от цены {money(p.fromPrice, pc, true)}</span>
+					<span class="sub">от курса {money(p.fromFx, pc, true)}</span>
 				</div>
 			{/if}
 		</div>
 	{/if}
 	{#if p.realized !== 0}
-		<p class="realized">Реализовано (FIFO): <b>{money(p.realized, p.currency, true)}</b>{#if p.currency === 'USD'} · {money(p.realizedIls, 'ILS', true)}{/if}</p>
+		<p class="realized">Реализовано (FIFO): <b>{money(p.realized, p.currency, true)}</b>{#if p.currency !== pc} · {money(p.realizedPc, pc, true)}{/if}</p>
+	{/if}
+	{#if !v.portfolio.auto_source_id && p.qty > 0 && (v.hasOpening || p.eventPrice || p.manualPrice)}
+		<div class="extra">
+			{#if v.hasOpening}
+				<button onclick={() => (step = 'basis')}>{p.fromTransfer ? 'Добавить цену покупки' : 'Изменить цену покупки'}</button>
+			{/if}
+			{#if p.eventPrice || p.manualPrice}
+				<button onclick={() => (pricing = true)}>Ввести цену</button>
+			{/if}
+		</div>
+		{#if pricing}
+			<div class="stepform">
+				<h3>Ручная цена, {p.priceUnit === 'ILA' ? 'агорот' : p.currency === 'USD' ? '$' : '₪'}</h3>
+				<div class="pr">
+					<input type="date" bind:value={priceDate} aria-label="Дата цены" />
+					<input inputmode="decimal" bind:value={priceValue} placeholder="цена" aria-label="Цена" />
+					<button class="main" disabled={!priceValue.trim()} onclick={() => savePrice(p.securityId)}>Сохранить</button>
+				</div>
+				<p class="sub">Пока у поставщика нет цены этой бумаги. Цена от поставщика за тот же день её заменит.</p>
+			</div>
+		{/if}
 	{/if}
 
 	{#each v.hypotheses as h (h.id)}
@@ -146,6 +195,7 @@
 				kind={step}
 				position={{ id: p.id, securityId: p.securityId, symbol: p.symbol, name: p.name, currency: p.currency, priceUnit: p.priceUnit, qty: p.qty }}
 				lastFee={v.lastFee}
+				portfolioCurrency={pc}
 				onsaved={async () => {
 					showToast(`${p.symbol}: ${NEXT_LABEL[step!].toLowerCase()} — записано`);
 					step = null;
@@ -173,8 +223,10 @@
 				<span class="when">{d(e.date)}</span>
 				<span class="what">
 					<b>{EVENT_LABEL[e.kind] ?? e.kind}</b>
-					{#if e.kind === 'buy' || e.kind === 'sell'}
-						{qtyText(e.qty ?? 0)} × {priceText(e.price, p.priceUnit)}{#if e.fee}, комиссия {money(e.fee, p.currency)}{/if}{#if p.currency === 'USD' && e.fxRate}, курс {e.fxRate}{/if}
+					{#if e.kind === 'buy' || e.kind === 'sell' || e.kind === 'opening'}
+						{qtyText(e.qty ?? 0)} × {priceText(e.price, p.priceUnit)}{#if e.fee}, комиссия {money(e.fee, p.currency)}{/if}{#if p.currency !== pc && e.fxRate}, курс {e.fxRate}{/if}
+					{:else if e.kind === 'basis'}
+						{e.costTotal ? `стоимость покупки ${money(e.costTotal, pc)}` : `средняя ${priceText(e.price, p.priceUnit)}`}
 					{:else if (e.kind === 'plan_buy' || e.kind === 'plan_sell') && (e.price || e.amount)}
 						{e.price ? `по ${priceText(e.price, p.priceUnit)}` : ''}{e.amount ? ` на ${money(e.amount, p.currency)}` : ''}
 					{:else if e.kind === 'reverse'}
@@ -271,6 +323,44 @@
 		border-color: var(--accent);
 		background: var(--accent);
 		color: var(--accent-text);
+	}
+	.extra {
+		display: flex;
+		gap: var(--s2);
+		flex-wrap: wrap;
+		margin-bottom: var(--s2);
+	}
+	.extra button {
+		min-height: 36px;
+		padding: 0 var(--s3);
+		border: 1px solid var(--line);
+		border-radius: var(--r2);
+		background: var(--surface);
+		font-size: var(--fs-s);
+		cursor: pointer;
+	}
+	.pr {
+		display: grid;
+		grid-template-columns: 1fr 1fr auto;
+		gap: var(--s2);
+	}
+	.pr input {
+		min-height: var(--tap);
+		padding: 0 var(--s2);
+		border: 1px solid var(--line);
+		border-radius: var(--r1);
+		background: var(--surface);
+		box-sizing: border-box;
+		width: 100%;
+	}
+	.pr .main {
+		min-height: var(--tap);
+		padding: 0 var(--s3);
+		border: none;
+		border-radius: var(--r2);
+		background: var(--accent);
+		color: var(--accent-text);
+		font-weight: 600;
 	}
 	.stepform {
 		margin: var(--s2) 0;
