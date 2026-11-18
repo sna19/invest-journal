@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
+	import Pencil from '@lucide/svelte/icons/pencil';
 	import HelpIcon from '../HelpIcon.svelte';
 	import Pct from '../Pct.svelte';
 	import EventForm from './EventForm.svelte';
@@ -74,6 +75,15 @@
 
 	let v = $state<View | null>(null);
 	let step = $state<string | null>(null);
+	/** «Изменить»: the event being corrected */
+	let editing = $state<View['events'][number] | null>(null);
+	let editEl = $state<HTMLElement | undefined>();
+	async function startEdit(e: View['events'][number]) {
+		step = null;
+		editing = e;
+		await tick();
+		editEl?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+	}
 	let problem = $state<string | null>(null);
 	const pc = $derived(v?.portfolio.currency ?? 'ILS');
 	let pricing = $state(false);
@@ -187,7 +197,25 @@
 		</a>
 	{/each}
 
-	{#if step}
+	{#if editing}
+		<div class="stepform" bind:this={editEl}>
+			<h3>Изменить: {(EVENT_LABEL[editing.kind] ?? editing.kind).toLowerCase()} от {d(editing.date)}</h3>
+			<EventForm
+				portfolioId={v.portfolio.id}
+				kind={editing.kind}
+				position={{ id: p.id, securityId: p.securityId, symbol: p.symbol, name: p.name, currency: p.currency, priceUnit: p.priceUnit, qty: p.qty }}
+				portfolioCurrency={pc}
+				edit={editing}
+				onsaved={async () => {
+					showToast(`${p.symbol}: событие изменено`);
+					editing = null;
+					await load();
+					onchange();
+				}}
+				oncancel={() => (editing = null)}
+			/>
+		</div>
+	{:else if step}
 		<div class="stepform">
 			<h3>{NEXT_LABEL[step]}</h3>
 			<EventForm
@@ -235,6 +263,11 @@
 					{#if e.note}<span class="note">{e.note}</span>{/if}
 					{#if e.cancelledAt}<span class="tag">отменено</span>{:else if e.reversedBy}<span class="tag">сторно</span>{:else if e.auto}<span class="tag">авто</span>{/if}
 				</span>
+				{#if !v.portfolio.auto_source_id && live(e)}
+					<button class="undo" title="Изменить" aria-label="Изменить событие" onclick={() => startEdit(e)}
+						><Pencil size={16} /></button
+					>
+				{/if}
 				{#if !v.portfolio.auto_source_id && e.canCancel}
 					<button class="undo" title="Отменить — ошибка ввода" aria-label="Отменить событие" onclick={() => undo(e.id, 'cancel')}><Undo2 size={16} /></button>
 				{:else if !v.portfolio.auto_source_id && e.canReverse && e.kind !== 'note'}
@@ -249,7 +282,7 @@
 			</li>
 		{/each}
 	</ol>
-	<p class="muted small">События не удаляются: в первые 24 часа запись можно отменить, позже — сторнировать и ввести верную.</p>
+	<p class="muted small">Ошибку в событии можно исправить — карандаш: дата, количество, цена, комиссия; прежние значения сохраняются в журнале правок. События не удаляются: в первые 24 часа запись можно отменить, позже — сторнировать.</p>
 {/if}
 
 <style>

@@ -6,7 +6,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { body, fail } from '#lib/server/respond.js';
 
-/** GET — value, return against the benchmarks, positions by stage, the money; PATCH { name, archived, autoAmountIls }. */
+/** GET — value, return against the benchmarks, positions by stage, the money; PATCH { name, currency, archived, autoAmountIls }. */
 export function GET({ params }) {
 	const id = Number(params.id);
 	const v = portfolioView(getApp().sqlite, getMarket().sqlite, id);
@@ -16,7 +16,7 @@ export function GET({ params }) {
 
 export async function PATCH({ params, request }) {
 	try {
-		return json(updatePortfolio(getApp().sqlite, Number(params.id), await body(request)));
+		return json(updatePortfolio(getApp().sqlite, Number(params.id), await body(request), getMarket().sqlite));
 	} catch (e) {
 		return fail(e);
 	}
