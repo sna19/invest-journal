@@ -166,17 +166,17 @@ export function securityChart(app: Database.Database, market: Database.Database,
 }
 
 /**
- * The growth of a portfolio day by day, in % from its first money: each day's value against the day before plus
- * the money that came that day (the same TWR, cut daily). Long histories are sampled weekly; days with outside
+ * The growth of a portfolio day by day, in % from its first money: each day's value less the money that came
+ * that day, against the day before (the same TWR, cut daily). Long histories are sampled weekly; days with outside
  * money always stay.
  */
 export function portfolioSeries(app: Database.Database, market: Database.Database, id: number, today = israelDate(), dates?: string[]) {
 	const m = marketView(market);
 	const { book: b } = book(app, m, id);
-	const cf = cashFlow(b);
+	const cf = cashFlow(b, m);
 	if (!cf.flows.length) return { start: null as string | null, points: [] as { date: string; value: number }[] };
 	const start = cf.flows[0].date;
-	const flowOn = new Map(cf.flows.map((f) => [f.date, f.ils]));
+	const flowOn = new Map(cf.flows.map((f) => [f.date, f.value]));
 	const days = [...new Set([...(dates ?? tradingDays(market, start, today)), ...cf.flows.map((f) => f.date), today])].filter((d) => d >= start && d <= today).sort();
 	const keep = days.length > 600 ? days.filter((d, i) => i % 5 === 0 || flowOn.has(d) || i === days.length - 1) : days;
 	let growth = 1;
@@ -187,10 +187,11 @@ export function portfolioSeries(app: Database.Database, market: Database.Databas
 	let k = 0;
 	const flowDates = cf.flows.map((f) => f.date);
 	for (const d of keep) {
-		while (k < flowDates.length && flowDates[k] <= d) pending += cf.flows[k++].ils;
-		const v = valueOn(b, m, d, cf.balance);
-		const base = prev + pending;
-		if (base > 1e-9) growth *= v / base;
+		while (k < flowDates.length && flowDates[k] <= d) pending += cf.flows[k++].value;
+		const v = valueOn(b, m, d, cf.history);
+		// money at the day's close, the first day from the money itself — as in twr()
+		if (prev > 1e-9) growth *= (v - pending) / prev;
+		else if (pending > 1e-9) growth *= v / pending;
 		pending = 0;
 		prev = v;
 		points.push({ date: d, value: (growth - 1) * 100 });
@@ -233,12 +234,12 @@ export function portfolioChart(app: Database.Database, market: Database.Database
 			}[];
 			const base = m.price(bid, main.start);
 			if (!base || !rows.length) continue;
-			const fx0 = ils ? m.fx('USD', main.start) : 1;
+			const fx0 = ils ? m.usd(main.start) : 1;
 			series.push({
 				key: `${key}${ils ? ':ils' : ''}`,
 				label,
 				kind: 'benchmark',
-				points: rows.map((r) => ({ date: r.date, value: ((r.close * (ils ? m.fx('USD', r.date) : 1)) / (base * fx0) - 1) * 100 }))
+				points: rows.map((r) => ({ date: r.date, value: ((r.close * (ils ? m.usd(r.date) : 1)) / (base * fx0) - 1) * 100 }))
 			});
 		}
 	}

@@ -27,10 +27,14 @@
 		securityId?: number | null;
 		hypothesisId?: number | null;
 		lastFee?: Record<string, number>;
+		/** the portfolio's currency: the whole purchase cost of a transferred position is in it */
+		portfolioCurrency?: string;
 		onsaved: (positionId: number) => void;
 		oncancel: () => void;
 	}
-	let { portfolioId, kind, position = null, securityId = null, hypothesisId = null, lastFee = {}, onsaved, oncancel }: Props = $props();
+	let { portfolioId, kind, position = null, securityId = null, hypothesisId = null, lastFee = {}, portfolioCurrency = 'ILS', onsaved, oncancel }: Props = $props();
+	let costTotal = $state('');
+	let warning = $state<string | null>(null);
 
 	const today = israelDate();
 	let sec = $state<{ id: number; symbol: string; name: string; currency: string; priceUnit: string } | null>(null);
@@ -58,7 +62,7 @@
 		quoteDate = r.date;
 		fxUsd = r.fxUsd;
 		// the price follows the date until the person types their own
-		if ((trade || kind === 'plan_buy') && r.close !== null && !priceTouched) price = String(r.close);
+		if ((trade || kind === 'plan_buy') && kind !== 'basis' && r.close !== null && !priceTouched) price = String(r.close);
 	}
 	let priceTouched = false;
 
@@ -101,9 +105,10 @@
 			kind,
 			date,
 			qty: trade ? qty : undefined,
-			price: trade || plan ? price : undefined,
+			price: trade || plan || kind === 'basis' ? price : undefined,
 			fee: trade ? fee : undefined,
 			amount: kind === 'plan_buy' ? amount : undefined,
+			costTotal: kind === 'basis' ? costTotal : undefined,
 			note,
 			hypothesisId,
 			confirm
@@ -121,6 +126,12 @@
 				return;
 			}
 			ask = null;
+			// a buy without enough money only warns (section 18)
+			if (j.warning) {
+				warning = j.warning;
+				setTimeout(() => onsaved(j.positionId), 2500);
+				return;
+			}
 			onsaved(j.positionId);
 		} catch {
 			formError = 'Нет связи с сервером';
@@ -132,7 +143,7 @@
 
 <div class="form">
 	{#if !sec}
-		<TickerSearch onselect={picked} noIndex label="Бумага" autofocus />
+		<TickerSearch onselect={picked} noIndex withManual label="Бумага" autofocus />
 	{:else}
 		<p class="sec"><b>{sec.symbol}</b> <span class="muted">{sec.name}</span></p>
 	{/if}
@@ -183,12 +194,28 @@
 			</p>
 		{/if}
 
+		{#if kind === 'basis'}
+			<div class="row">
+				<label>
+					<span>Средняя цена покупки, {unitLabel}</span>
+					<input inputmode="decimal" bind:value={price} placeholder="или справа" />
+				</label>
+				<label>
+					<span>Или вся стоимость покупки, {portfolioCurrency === 'USD' ? '$' : '₪'}</span>
+					<input inputmode="decimal" bind:value={costTotal} placeholder="как у брокера" />
+				</label>
+			</div>
+			{#if errors.price}<em class="err">{errors.price}</em>{/if}
+			<p class="muted small">История не меняется: цена покупки запишется отдельным событием, прибыль будет считаться от неё, а не с даты переноса.</p>
+		{/if}
+
 		<label>
 			<span>{kind === 'drop' ? 'Почему передумал' : plan ? 'Причина' : kind === 'note' ? 'Заметка' : 'Заметка (необязательно)'}</span>
 			<textarea rows="2" bind:value={note}></textarea>
 			{#if errors.note}<em class="err">{errors.note}</em>{/if}
 		</label>
 
+		{#if warning}<p class="warnbox" role="status">{warning}</p>{/if}
 		{#if ask}
 			<div class="ask" role="alert">
 				<p>{ask}</p>
@@ -271,6 +298,14 @@
 		color: var(--down);
 		font-size: var(--fs-s);
 		margin: 0;
+	}
+	.warnbox {
+		margin: 0;
+		padding: var(--s2) var(--s3);
+		border-radius: var(--r2);
+		background: var(--warn-bg);
+		color: var(--warn-text);
+		font-size: var(--fs-s);
 	}
 	.ask {
 		padding: var(--s3);

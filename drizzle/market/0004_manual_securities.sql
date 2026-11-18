@@ -1,0 +1,1 @@
+ALTER TABLE `ref_securities` ADD `manual` integer DEFAULT false NOT NULL;

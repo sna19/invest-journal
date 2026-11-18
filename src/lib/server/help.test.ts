@@ -60,7 +60,9 @@ const REQUIRED = [
 	'portfolio.source_auto',
 	'portfolio.chart',
 	'portfolio.allocation',
-	'security.chart'
+	'security.chart',
+	'portfolio.together',
+	'portfolio.transfer'
 ];
 
 describe('help (spec section 8)', () => {

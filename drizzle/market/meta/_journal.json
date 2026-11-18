@@ -29,6 +29,13 @@
       "when": 1794928787653,
       "tag": "0003_fx",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794934610020,
+      "tag": "0004_manual_securities",
+      "breakpoints": true
     }
   ]
 }

@@ -10,6 +10,7 @@ export function GET({ url }) {
 		market: m === 'us' || m === 'il' ? (m as Market) : 'all',
 		includeInactive: url.searchParams.get('inactive') === '1',
 		noIndex: url.searchParams.get('noindex') === '1',
+		withManual: url.searchParams.get('manual') === '1',
 		limit: Math.min(Number(url.searchParams.get('limit')) || 20, 100)
 	});
 	return json({ items, ms: Math.round((performance.now() - t0) * 10) / 10 });

@@ -45,7 +45,7 @@ describe('charts (section 19)', () => {
 				 values (?, ?, 'UUU', 'U', 'NASDAQ', 'USD', 'USD', 'recommendation', 'long', 'article', 't', 'i', '2026-04-01', 'article', '2026-01-05', ?, 'SPX', 200, '2026-01-05', 'closed', '2026-04-01', 120, 'hit')`
 			)
 			.run(art, t.us, t.spx);
-		const p = createPortfolio(t.app, { name: 'Мой' });
+		const p = createPortfolio(t.app, { name: 'Мой', currency: 'ILS' });
 		addEvent(t.app, t.market, { portfolioId: p.id, securityId: t.us, kind: 'buy', date: '2026-02-02', qty: 5, price: 210, confirm: true }, NOW);
 		const c = securityChart(t.app, t.market, t.us, '1Y', '2026-04-30')!;
 		expect(c.points).toHaveLength(6);
@@ -65,7 +65,7 @@ describe('charts (section 19)', () => {
 
 	it('portfolio: the daily series ends at the same TWR; benchmarks from its start, the S&P also in shekels', () => {
 		const t = setup();
-		const p = createPortfolio(t.app, { name: 'Мой' });
+		const p = createPortfolio(t.app, { name: 'Мой', currency: 'ILS' });
 		addCash(t.app, t.market, p.id, { kind: 'deposit', date: '2026-01-05', amount: 5000 }, NOW);
 		addEvent(t.app, t.market, { portfolioId: p.id, securityId: t.us, kind: 'buy', date: '2026-01-05', qty: 10, price: 200, confirm: true }, NOW);
 		addEvent(t.app, t.market, { positionId: 1, kind: 'sell', date: '2026-04-01', qty: 10, price: 120 }, NOW);

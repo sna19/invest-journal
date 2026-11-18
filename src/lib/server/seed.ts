@@ -11,7 +11,9 @@ export const EXCHANGES = [
 	{ code: 'NYSE_ARCA', name: 'NYSE Arca', country: 'US', currency: 'USD', timezone: 'America/New_York' },
 	{ code: 'CBOE_BZX', name: 'Cboe BZX', country: 'US', currency: 'USD', timezone: 'America/New_York' },
 	{ code: 'TASE', name: 'TASE', country: 'IL', currency: 'ILS', timezone: 'Asia/Jerusalem' },
-	{ code: 'INDEX_US', name: 'Индекс США', country: 'US', currency: 'USD', timezone: 'America/New_York' }
+	{ code: 'INDEX_US', name: 'Индекс США', country: 'US', currency: 'USD', timezone: 'America/New_York' },
+	// section 18: ETF UCITS bought through an Israeli broker on the London exchange — added by hand, one by one
+	{ code: 'LSE', name: 'London SE', country: 'GB', currency: 'USD', timezone: 'Europe/London' }
 ];
 
 export const PROVIDERS = [

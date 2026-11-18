@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 /**
  * app.db — the journal: sources, articles, hypotheses and help texts. Nothing here can be rebuilt from
@@ -137,21 +137,27 @@ export const hypotheses = sqliteTable(
 
 // ── Spec section 18 — portfolios: a history of events, positions and returns are computed from it ─────────
 
-export const portfolios = sqliteTable('portfolios', {
-	id: integer().primaryKey({ autoIncrement: true }),
-	name: text().notNull().unique(),
-	/** real | virtual */
-	kind: text().notNull().default('real'),
-	/** the source whose hypotheses this virtual portfolio buys by itself (section 18) */
-	autoSourceId: integer()
-		.unique()
-		.references(() => sources.id),
-	/** the sum an automatic portfolio puts into each hypothesis, in shekels */
-	autoAmountIls: real().notNull().default(10000),
-	sortOrder: integer().notNull().default(0),
-	createdAt: now(),
-	archivedAt: text()
-});
+export const portfolios = sqliteTable(
+	'portfolios',
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		name: text().notNull().unique(),
+		/** real | virtual */
+		kind: text().notNull().default('real'),
+		/** USD | ILS — the currency the broker shows the total in; chosen at creation, never changes (section 18) */
+		currency: text().notNull().default('ILS'),
+		/** the source whose hypotheses this virtual portfolio buys by itself (section 18) */
+		autoSourceId: integer().references(() => sources.id),
+		/** the sum an automatic portfolio puts into each hypothesis, in the portfolio's currency */
+		autoAmountIls: real().notNull().default(10000),
+		/** for reference only, as the broker shows it («мас лешалем»): entered by hand, not computed */
+		taxAccrued: real(),
+		sortOrder: integer().notNull().default(0),
+		createdAt: now(),
+		archivedAt: text()
+	},
+	(t) => [uniqueIndex('portfolios_auto_source_currency').on(t.autoSourceId, t.currency)]
+);
 
 export const positions = sqliteTable(
 	'positions',
@@ -185,7 +191,11 @@ export const positionEvents = sqliteTable(
 		positionId: integer()
 			.notNull()
 			.references(() => positions.id),
-		/** watch | plan_buy | buy | plan_sell | sell | drop | note | reverse */
+		/**
+		 * watch | plan_buy | buy | plan_sell | sell | drop | note | reverse;
+		 * opening («Перенесено»: a position bought before the portfolio was kept — qty and the price on that day);
+		 * basis (the purchase cost of an opening, added later: `price` = average price, or `costTotal`)
+		 */
 		kind: text().notNull(),
 		date: text().notNull(),
 		/** buy, sell */
@@ -199,6 +209,8 @@ export const positionEvents = sqliteTable(
 		fxRate: real(),
 		/** plan_buy: the sum to put in */
 		amount: real(),
+		/** opening / basis: the whole purchase cost of the position, in the portfolio's currency (as the broker shows it) */
+		costTotal: real(),
 		note: text(),
 		hypothesisId: integer().references(() => hypotheses.id),
 		/** reverse: the event it cancels (storno); both stay in the history */
@@ -219,13 +231,16 @@ export const cashEvents = sqliteTable(
 		portfolioId: integer()
 			.notNull()
 			.references(() => portfolios.id),
-		/** deposit | withdraw | dividend | fee | tax | reverse */
+		/** deposit | withdraw | convert | dividend | fee | tax | reverse */
 		kind: text().notNull(),
 		date: text().notNull(),
-		/** always positive; the kind gives the sign */
+		/** always positive; the kind gives the sign (convert: the sum given away) */
 		amount: real().notNull(),
 		/** USD | ILS */
 		currency: text().notNull(),
+		/** convert: the sum received and its currency; the deal's rate = amount / toAmount, bank fee included */
+		toAmount: real(),
+		toCurrency: text(),
 		fxRate: real(),
 		note: text(),
 		/** a dividend or a fee of a position */

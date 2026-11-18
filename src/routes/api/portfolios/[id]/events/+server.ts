@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { getApp, getMarket } from '#lib/server/db.js';
 import { addEvent } from '#lib/server/portfolio.js';
+import { queueSecurity } from '#lib/server/jobs.js';
 import { body, fail } from '#lib/server/respond.js';
 
 /**
@@ -13,6 +14,9 @@ export async function POST({ params, request }) {
 		const input = { ...(await body(request)), portfolioId: Number(params.id) };
 		// one transaction: a refused event leaves no empty position behind
 		const r = app.transaction(() => addEvent(app, getMarket().sqlite, input))();
+		// section 14 ring 1: a security that came into a portfolio gets its price history
+		const sid = (input as { securityId?: unknown }).securityId;
+		if (sid) queueSecurity(Number(sid));
 		return json(r, { status: 201 });
 	} catch (e) {
 		return fail(e);

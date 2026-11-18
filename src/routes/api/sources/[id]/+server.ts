@@ -8,7 +8,7 @@ export function GET({ params, url }) {
 	if (!card) error(404, 'нет такого источника');
 	// section 18: the source's automatic portfolio, if it was ever switched on
 	const auto = getApp()
-		.sqlite.prepare('select id, name, archived_at as archivedAt, auto_amount_ils as amount from portfolios where auto_source_id = ?')
-		.get(Number(params.id));
-	return json({ ...card, auto: auto ?? null });
+		.sqlite.prepare('select id, name, currency, archived_at as archivedAt, auto_amount_ils as amount from portfolios where auto_source_id = ? order by currency desc')
+		.all(Number(params.id));
+	return json({ ...card, auto });
 }

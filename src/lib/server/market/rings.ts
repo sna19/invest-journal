@@ -2,7 +2,7 @@ import type Database from 'better-sqlite3';
 
 /**
  * Spec section 14 — rings of price loading; one code for all, the next ring is a setting.
- * 1 — the two benchmarks and the securities hypotheses point to (on from day one);
+ * 1 — the two benchmarks, the securities hypotheses point to and the portfolios' open positions (on from day one);
  * 2 — + all TASE shares and the S&P 500 (off);
  * 3 — all active securities of the base (off).
  */
@@ -27,6 +27,10 @@ export function ringSecurities(market: Database.Database, app: Database.Database
 	for (const b of market.prepare('select id from ref_securities where is_benchmark = 1 order by id').all() as { id: number }[]) ids.add(b.id);
 	for (const h of app.prepare(`select distinct security_id as id from hypotheses where status <> 'cancelled'`).all() as { id: number }[])
 		ids.add(h.id);
+	// section 18: what the portfolios hold or plan needs its prices too
+	const hasPositions = app.prepare(`select 1 from sqlite_master where type = 'table' and name = 'positions'`).get();
+	if (hasPositions)
+		for (const p of app.prepare(`select distinct security_id as id from positions where stage <> 'closed'`).all() as { id: number }[]) ids.add(p.id);
 	if (r >= 2) {
 		for (const s of market
 			.prepare(`select id from ref_securities where active = 1 and exchange_code = 'TASE' and type = 'stock' and coalesce(price_status, '') <> 'none'`)

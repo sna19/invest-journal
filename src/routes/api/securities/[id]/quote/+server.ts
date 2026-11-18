@@ -19,6 +19,6 @@ export function GET({ params, url }) {
 		priceUnit: s.price_unit,
 		close: day?.close ?? null,
 		date: day?.date ?? null,
-		fxUsd: v.fx('USD', date)
+		fxUsd: v.usd(date)
 	});
 }
