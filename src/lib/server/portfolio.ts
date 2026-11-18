@@ -1115,3 +1115,98 @@ export function deletePortfolio(app: Database.Database, id: number, confirmName:
 	})();
 	return { name: p.name, ...counts, backup: file };
 }
+
+// ── export ────────────────────────────────────────────────────────────────────────────────────────────
+
+const r2 = (x: number | null | undefined) => (x === null || x === undefined ? null : Math.round(x * 100) / 100);
+
+/**
+ * Export of a portfolio as JSON (owner's request, 18.11.2026): everything an AI adviser needs, to be copied and
+ * pasted — the totals, every position with its numbers and its history, the money, the linked hypotheses.
+ * Cancelled and reversed records are left out: only what counts. Built on request, never stored.
+ */
+export function exportPortfolio(app: Database.Database, market: Database.Database, id: number, today = israelDate()) {
+	const v = portfolioView(app, market, id, today);
+	if (!v) return null;
+	const pc = v.summary.currency;
+	const counted = <T extends { id: number; kind: string; cancelledAt: string | null }>(list: T[], reversed: Set<number>) =>
+		list.filter((e) => !e.cancelledAt && e.kind !== 'reverse' && !reversed.has(e.id));
+	const hyp = app.prepare(
+		`select id, symbol, direction, signal_type as signalType, thesis, invalidation, entry_date as entryDate, entry_price as entryPrice,
+		        horizon_date as horizonDate, status, return_pct as returnPct from hypotheses where id = ?`
+	);
+	const positions = v.positions.map((p) => {
+		const list = eventsOf(app, p.id);
+		const reversed = new Set(list.filter((e) => e.kind === 'reverse' && !e.cancelledAt).map((e) => e.reversesEventId!));
+		const unit = p.priceUnit === 'ILA' ? 'ILA (agorot, 1/100 ILS)' : p.currency;
+		return {
+			symbol: p.symbol,
+			name: p.name,
+			exchange: p.exchange,
+			currency: p.currency,
+			priceUnit: unit,
+			stage: p.stage,
+			openedAt: p.openedAt,
+			closedAt: p.closedAt,
+			quantity: p.qty,
+			avgBuyPrice: r2(p.avgPrice),
+			lastPrice: p.lastPrice,
+			lastPriceDate: p.lastDate,
+			[`value_${pc}`]: r2(p.valuePc),
+			[`invested_${pc}`]: r2(p.valuePc - p.unrealizedPc),
+			unrealizedPct: r2(p.unrealizedPct),
+			[`unrealized_${pc}`]: r2(p.unrealizedPc),
+			[`realized_${pc}`]: r2(p.realizedPc),
+			weightPct: r2(p.weight),
+			profitCountsFromTransferDate: p.fromTransfer || undefined,
+			plan: p.plan ?? undefined,
+			events: counted(list, reversed).map((e) => ({
+				date: e.date,
+				kind: e.kind,
+				quantity: e.qty ?? undefined,
+				price: e.price ?? undefined,
+				fee: e.fee || undefined,
+				amount: e.amount ?? undefined,
+				[`purchaseCost_${pc}`]: e.costTotal ?? undefined,
+				note: e.note ?? undefined
+			})),
+			hypotheses: p.hypotheses.length ? p.hypotheses.map((h) => hyp.get(h)) : undefined
+		};
+	});
+	const cashList = cashOf(app, id);
+	const cashReversed = new Set(cashList.filter((c) => c.kind === 'reverse' && !c.cancelledAt).map((c) => c.reversesEventId!));
+	return {
+		exportedAt: new Date().toISOString(),
+		asOf: today,
+		about:
+			'Investment portfolio exported from the owner\'s journal app. Amounts with a currency suffix (_USD/_ILS) are in that currency; ' +
+			'prices are in the security\'s price unit (TASE shares in agorot). timeWeightedReturnPct is the time-weighted return since returnSince; ' +
+			'events are the position history (watch, plan_buy, buy, plan_sell, sell, drop, note, opening = shares transferred in, basis = purchase price of transferred shares).',
+		portfolio: { name: v.portfolio.name, kind: v.portfolio.kind, currency: pc, automaticFromSource: v.portfolio.sourceName ?? undefined },
+		summary: {
+			[`value_${pc}`]: r2(v.summary.value),
+			[`inSecurities_${pc}`]: r2(v.summary.held),
+			[`cash_${pc}`]: r2(v.summary.cash),
+			cashByCurrency: v.summary.balances.map((b) => ({ currency: b.currency, amount: r2(b.amount) })),
+			timeWeightedReturnPct: r2(v.summary.twrPct),
+			returnSince: v.summary.from,
+			benchmark: { name: v.summary.benchmark.label, returnPctSamePeriod: r2(v.summary.benchmark.returnPct) },
+			[`realized_${pc}`]: r2(v.summary.realizedPc),
+			[`unrealized_${pc}`]: r2(v.summary.unrealizedPc),
+			usdIls: v.summary.fxUsd,
+			pricesAsOf: v.summary.pricesAsOf,
+			[`taxAccrued_${pc}`]: v.summary.taxAccrued ?? undefined
+		},
+		positions,
+		cash: counted(cashList, cashReversed).map((c) => ({
+			date: c.date,
+			kind: c.kind,
+			amount: c.amount,
+			currency: c.currency,
+			toAmount: c.toAmount ?? undefined,
+			toCurrency: c.toCurrency ?? undefined,
+			security: c.positionId ? v.positions.find((p) => p.id === c.positionId)?.symbol : undefined,
+			note: c.note ?? undefined
+		}))
+	};
+}
