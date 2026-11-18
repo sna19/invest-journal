@@ -358,7 +358,60 @@
 		load();
 	}
 
-	const by = (s: Stage) => v?.positions.filter((p) => p.stage === s) ?? [];
+	/**
+	 * Sorting of the positions (owner's request, 18.11.2026): by the money put in, by ticker, by the change, by the
+	 * whole profit. A second tap on the chosen key turns the order; the choice is remembered on this device.
+	 */
+	type SortKey = 'cost' | 'symbol' | 'change' | 'profit';
+	const SORTS: { key: SortKey; label: string }[] = [
+		{ key: 'cost', label: 'Вложено' },
+		{ key: 'symbol', label: 'Тикер' },
+		{ key: 'change', label: 'Изменение' },
+		{ key: 'profit', label: 'Прибыль' }
+	];
+	let sortKey = $state<SortKey | null>(null);
+	let sortDesc = $state(true);
+	onMount(() => {
+		try {
+			const saved = JSON.parse(localStorage.getItem('portfolio-sort') ?? 'null');
+			if (saved && SORTS.some((x) => x.key === saved.key)) {
+				sortKey = saved.key;
+				sortDesc = !!saved.desc;
+			}
+		} catch {
+			/* no storage: the order of entry */
+		}
+	});
+	function setSort(k: SortKey) {
+		if (sortKey === k) sortDesc = !sortDesc;
+		else {
+			sortKey = k;
+			sortDesc = k !== 'symbol';
+		}
+		try {
+			localStorage.setItem('portfolio-sort', JSON.stringify({ key: sortKey, desc: sortDesc }));
+		} catch {
+			/* not remembered */
+		}
+	}
+	const costOf = (p: Pos) => p.valuePc - p.unrealizedPc;
+	const profitOf = (p: Pos) => p.unrealizedPc + p.realizedPc;
+	function sorted(rows: Pos[]): Pos[] {
+		if (!sortKey) return rows;
+		const k = sortKey;
+		const val = (p: Pos): number | string | null =>
+			k === 'symbol' ? p.symbol : k === 'cost' ? (p.qty > 0 ? costOf(p) : null) : k === 'change' ? p.unrealizedPct : profitOf(p);
+		return [...rows].sort((a, b) => {
+			const x = val(a);
+			const y = val(b);
+			// a position without the number goes last in either order
+			if (x === null || y === null) return x === y ? a.symbol.localeCompare(b.symbol) : x === null ? 1 : -1;
+			const c = typeof x === 'string' ? x.localeCompare(y as string) : x - (y as number);
+			// equal numbers: by ticker, so the order does not jump
+			return (sortDesc ? -c : c) || a.symbol.localeCompare(b.symbol);
+		});
+	}
+	const by = (s: Stage) => sorted(v?.positions.filter((p) => p.stage === s) ?? []);
 	// «17 нояб.» this year, «17 нояб. 2025» before it
 	const d = (s: string) =>
 		new Date(s + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', ...(s.slice(0, 4) !== String(new Date().getFullYear()) ? { year: 'numeric' } : {}) });
@@ -445,6 +498,16 @@
 		<p class="muted center">Позиций пока нет. «Купил» — сделка; «Хочу купить» и «Наблюдаю» — бумага на заметку, с причиной.</p>
 	{/if}
 
+	{#if v.positions.length > 1}
+		<div class="toggles sorts" role="group" aria-label="Сортировка позиций">
+			{#each SORTS as o (o.key)}
+				<button class:on={sortKey === o.key} aria-pressed={sortKey === o.key} onclick={() => setSort(o.key)}
+					>{o.label}{#if sortKey === o.key}{o.key === 'symbol' ? (sortDesc ? ' Я→А' : ' А→Я') : sortDesc ? ' ↓' : ' ↑'}{/if}</button
+				>
+			{/each}
+		</div>
+	{/if}
+
 	{#each STAGES as st (st)}
 		{@const rows = by(st)}
 		{#if rows.length}
@@ -473,7 +536,7 @@
 									{/if}
 								</span>
 								<span class="mid">
-									{p.name}{#if st === 'holding' || st === 'plan_sell'} · {qtyText(p.qty)} шт. · {Math.round(p.weight ?? 0)}%{#if p.fromTransfer} · с даты переноса{/if}{#if p.eventPrice} · цена переноса{/if}{/if}
+									{p.name}{#if st === 'holding' || st === 'plan_sell'} · {qtyText(p.qty)} шт. · {Math.round(p.weight ?? 0)}%{#if sortKey === 'cost'} · вложено {money(costOf(p), v.summary.currency)}{:else if sortKey === 'profit'} · прибыль {money(profitOf(p), v.summary.currency, true)}{/if}{#if p.fromTransfer} · с даты переноса{/if}{#if p.eventPrice} · цена переноса{/if}{/if}
 								</span>
 								{#if p.plan?.note && st !== 'closed' && st !== 'holding'}<span class="note">{p.plan.note}</span>{/if}
 								<ChevronRight size={18} />
@@ -808,6 +871,9 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45</pre>
 	.toggles button.on {
 		color: var(--text);
 		border-color: var(--text);
+	}
+	.sorts {
+		margin: var(--s3) 0 0;
 	}
 	.bars {
 		list-style: none;
