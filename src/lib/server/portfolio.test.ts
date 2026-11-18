@@ -11,6 +11,7 @@ import {
 	deletePosition,
 	editCash,
 	editEvent,
+	exportPortfolio,
 	listPortfolios,
 	portfolioView,
 	positionView,
@@ -207,6 +208,24 @@ describe('portfolio events (section 18)', () => {
 		v = portfolioView(s.app, s.market, b.id, '2026-04-30')!;
 		expect(v.summary.balances).toEqual([{ currency: 'USD', amount: 1000, valuePc: 1000 }]);
 		expect(v.summary.twrPct!).toBeCloseTo(10, 6);
+	});
+});
+
+describe('export for an AI adviser', () => {
+	it('gives totals, positions with only the counted events, money and units', () => {
+		const s = setup();
+		const a = addEvent(s.app, s.market, { portfolioId: s.p.id, securityId: s.us, kind: 'buy', date: '2026-01-05', qty: 10, price: 100, fee: 1 }, NOW);
+		const wrong = addEvent(s.app, s.market, { positionId: a.positionId, kind: 'buy', date: '2026-02-02', qty: 1, price: 105 }, NOW);
+		reverseEvent(s.app, s.market, wrong.eventId, undefined, NOW);
+		addCash(s.app, s.market, s.p.id, { kind: 'deposit', date: '2026-01-05', amount: 4000, currency: 'ILS' }, NOW);
+		const x = exportPortfolio(s.app, s.market, s.p.id, '2026-04-30')!;
+		expect(x.portfolio).toMatchObject({ name: 'Мой', currency: 'ILS' });
+		expect(x.positions).toHaveLength(1);
+		const p = x.positions[0];
+		expect(p).toMatchObject({ symbol: 'UUU', quantity: 10, lastPrice: 110, value_ILS: 4180 });
+		expect(p.events.map((e) => [e.kind, e.quantity])).toEqual([['buy', 10]]);
+		expect(x.cash).toEqual([{ date: '2026-01-05', kind: 'deposit', amount: 4000, currency: 'ILS' }].map((c) => expect.objectContaining(c)));
+		expect(JSON.parse(JSON.stringify(x)).summary.value_ILS).toBeGreaterThan(0);
 	});
 });
 

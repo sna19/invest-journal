@@ -7,6 +7,7 @@
 	import Wallet from '@lucide/svelte/icons/wallet';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import Pencil from '@lucide/svelte/icons/pencil';
+	import FileJson from '@lucide/svelte/icons/file-json';
 	import TopBar from '#lib/TopBar.svelte';
 	import Empty from '#lib/Empty.svelte';
 	import Sheet from '#lib/Sheet.svelte';
@@ -351,6 +352,31 @@
 		showToast('Запись изменена');
 		load();
 	}
+	/** «Экспорт» (owner's request, 18.11.2026): the portfolio as JSON in a window, to copy into an AI adviser */
+	let exportText = $state<string | null>(null);
+	let exportError = $state<string | null>(null);
+	let copied = $state(false);
+	let exportEl = $state<HTMLTextAreaElement | undefined>();
+	async function openExport() {
+		exportError = null;
+		copied = false;
+		exportText = '';
+		const r = await fetch(`/api/portfolios/${current}/export`).catch(() => null);
+		if (!r?.ok) return (exportError = 'Не получилось собрать данные');
+		exportText = JSON.stringify(await r.json(), null, 2);
+	}
+	async function copyExport() {
+		if (!exportText) return;
+		try {
+			await navigator.clipboard.writeText(exportText);
+		} catch {
+			// older Safari: select the text and copy it the old way
+			exportEl?.select();
+			document.execCommand('copy');
+		}
+		copied = true;
+		showToast('Скопировано — вставьте в чат с AI');
+	}
 	async function undoCash(id: number, how: 'cancel' | 'reverse') {
 		const r = await fetch(`/api/cash/${id}/${how}`, { method: 'POST' });
 		if (!r.ok) return (problem = (await r.json().catch(() => ({}))).message ?? 'Не получилось');
@@ -614,6 +640,7 @@
 			</ul>
 		</details>
 	{/if}
+	<button class="delete edit" onclick={openExport}><FileJson size={16} /> Экспорт для AI</button>
 	<button class="delete edit" onclick={startRename}><Pencil size={16} /> Название и валюта портфеля</button>
 	<button class="delete" onclick={() => ((deleting = true), (deleteName = ''), (deleteError = null))}>Удалить портфель «{v.portfolio.name}»</button>
 	<p class="muted small">Остаток денег — как у брокера; покупка без остатка только предупреждает. Для доходности недостающее считается взносом, так что она не искажается.</p>
@@ -715,6 +742,23 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45</pre>
 				<button class="primary" disabled={transferBusy} onclick={() => transfer(true)}>{tp.ok ? 'Перенести' : 'Перенести строки без ошибок'}</button>
 			{:else}
 				<button class="primary" disabled={transferBusy || !transferText.trim()} onclick={() => transfer(false)}>{transferBusy ? 'Проверяю…' : 'Проверить'}</button>
+			{/if}
+		</div>
+	</Sheet>
+{/if}
+
+{#if exportText !== null && v}
+	<Sheet title="Экспорт · {v.portfolio.name}" onclose={() => (exportText = null)}>
+		<div class="form">
+			<p class="muted small">Все данные портфеля в JSON: итоги, позиции с историей сделок, деньги, связанные гипотезы. Скопируйте и вставьте в чат с AI вместе со своим вопросом.</p>
+			{#if exportError}
+				<p class="err">{exportError}</p>
+			{:else if !exportText}
+				<p class="muted">Собираю…</p>
+			{:else}
+				<textarea class="export" readonly bind:this={exportEl} value={exportText} aria-label="Данные портфеля в JSON"></textarea>
+				<p class="muted small">{(exportText.length / 1024).toFixed(1)} КБ · позиций {v.positions.length}</p>
+				<button class="primary" onclick={copyExport}>{copied ? 'Скопировано ✓' : 'Скопировать'}</button>
 			{/if}
 		</div>
 	</Sheet>
@@ -922,6 +966,19 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45</pre>
 		color: var(--down);
 		font-size: var(--fs-s);
 		cursor: pointer;
+	}
+	.export {
+		width: 100%;
+		height: 50vh;
+		box-sizing: border-box;
+		padding: var(--s2);
+		border: 1px solid var(--line);
+		border-radius: var(--r1);
+		background: var(--surface);
+		color: var(--text);
+		font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+		white-space: pre;
+		resize: none;
 	}
 	.delete.edit {
 		display: flex;
