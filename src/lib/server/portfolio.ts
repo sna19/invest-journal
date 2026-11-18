@@ -1069,6 +1069,32 @@ export function setAuto(app: Database.Database, market: Database.Database, sourc
  * mistake. The name must be typed back; a copy of the journal is made first (`backup` — VACUUM INTO). Events
  * still cannot be deleted one by one: the database lets them go only together with their portfolio.
  */
+/**
+ * A position deleted whole (owner's request, 18.11.2026: a share entered by mistake): its events, its money
+ * records (dividends of this share) and its corrections — after a copy of the journal. The guard of single
+ * deletes is passed the same way as for a whole portfolio: its id sits in portfolio_purge for the transaction.
+ */
+export function deletePosition(app: Database.Database, market: Database.Database, id: number, backup?: (tag: string) => string) {
+	const pos = positionRow(app, id);
+	if (!pos) throw bad({ id: 'Позиции нет' });
+	const port = app.prepare('select auto_source_id from portfolios where id = ?').get(pos.portfolio_id) as { auto_source_id: number | null };
+	if (port.auto_source_id) throw new LockedError('Позиции автоматического портфеля ведёт приложение');
+	const file = backup?.(`before-delete-position-${id}`) ?? null;
+	const counts = app.transaction(() => {
+		app.prepare('insert or replace into portfolio_purge (portfolio_id) values (?)').run(pos.portfolio_id);
+		app.prepare(
+			`delete from event_edits where (event_table = 'position_events' and event_id in (select id from position_events where position_id = ?))
+			   or (event_table = 'cash_events' and event_id in (select id from cash_events where position_id = ?))`
+		).run(id, id);
+		const events = app.prepare('delete from position_events where position_id = ?').run(id).changes;
+		const cash = app.prepare('delete from cash_events where position_id = ?').run(id).changes;
+		app.prepare('delete from positions where id = ?').run(id);
+		app.prepare('delete from portfolio_purge where portfolio_id = ?').run(pos.portfolio_id);
+		return { events, cash };
+	})();
+	return { symbol: pos.symbol, portfolioId: pos.portfolio_id, ...counts, backup: file };
+}
+
 export function deletePortfolio(app: Database.Database, id: number, confirmName: unknown, backup?: (tag: string) => string) {
 	const p = app.prepare('select id, name from portfolios where id = ?').get(id) as { id: number; name: string } | undefined;
 	if (!p) throw bad({ id: 'Портфеля нет' });

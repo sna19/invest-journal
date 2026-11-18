@@ -602,7 +602,7 @@
 {#if opened !== null}
 	{@const p = v?.positions.find((x) => x.id === opened)}
 	<Sheet title={p ? `${p.symbol} · ${v?.portfolio.name}` : 'Позиция'} onclose={() => (opened = null)}>
-		<PositionCard positionId={opened} onchange={load} />
+		<PositionCard positionId={opened} onchange={load} ondeleted={() => ((opened = null), load())} />
 	</Sheet>
 {/if}
 
