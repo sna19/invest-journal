@@ -7,6 +7,8 @@ import {
 	cancelEvent,
 	ConfirmError,
 	createPortfolio,
+	deletePortfolio,
+	listPortfolios,
 	portfolioView,
 	positionView,
 	reverseEvent,
@@ -153,6 +155,26 @@ describe('portfolio events (section 18)', () => {
 		v = portfolioView(s.app, s.market, b.id, '2026-04-30')!;
 		expect(v.summary.balances).toEqual([{ currency: 'USD', amount: 1000, valuePc: 1000 }]);
 		expect(v.summary.twrPct!).toBeCloseTo(10, 6);
+	});
+});
+
+describe('deleting a portfolio whole', () => {
+	it('needs the name typed back; takes positions, events and money; other portfolios and single-event deletes stay guarded', () => {
+		const s = setup();
+		const other = createPortfolio(s.app, { name: 'Другой', currency: 'USD' });
+		addEvent(s.app, s.market, { portfolioId: other.id, securityId: s.us, kind: 'buy', date: '2026-01-05', qty: 1, price: 100 }, NOW);
+		addCash(s.app, s.market, s.p.id, { kind: 'deposit', date: '2026-01-05', amount: 100 }, NOW);
+		const { eventId } = addEvent(s.app, s.market, { portfolioId: s.p.id, securityId: s.us, kind: 'buy', date: '2026-01-05', qty: 1, price: 100 }, NOW);
+		reverseEvent(s.app, s.market, eventId, '', NOW);
+		expect(() => deletePortfolio(s.app, s.p.id, 'мой')).toThrow(/Наберите название/);
+		const tags: string[] = [];
+		const r = deletePortfolio(s.app, s.p.id, ' Мой ', (t) => (tags.push(t), 'copy.db'));
+		expect(r).toEqual({ name: 'Мой', positions: 1, events: 2, cash: 1, backup: 'copy.db' });
+		expect(tags).toEqual([`before-delete-portfolio-${s.p.id}`]);
+		expect(listPortfolios(s.app).map((p) => p.name)).toEqual(['Другой']);
+		const left = s.app.prepare('select id from position_events').get() as { id: number };
+		expect(() => s.app.prepare('delete from position_events where id = ?').run(left.id)).toThrow(/never deleted/);
+		expect((s.app.prepare('select count(*) as n from portfolio_purge').get() as { n: number }).n).toBe(0);
 	});
 });
 
