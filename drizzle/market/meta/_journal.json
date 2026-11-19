@@ -43,6 +43,13 @@
       "when": 1795081207713,
       "tag": "0005_quotes",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1795091534017,
+      "tag": "0006_security_profiles",
+      "breakpoints": true
     }
   ]
 }

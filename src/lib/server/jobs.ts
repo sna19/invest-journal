@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { israelDate } from '../hypothesis.js';
+import { loadProfiles, staleProfiles, type ProfilesSummary } from './market/profiles.js';
 import { heldSecurities, loadQuotes, marketsOpen, readSchedule, type QuotesSummary } from './market/quotes.js';
 import { asUser, currentUserId, forEachUser, listUsers } from './auth.js';
 import { backupDir, getApp, getMarket, rawDir } from './db.js';
@@ -320,6 +321,37 @@ export function runQuotesJob(): Promise<QuotesSummary> {
 			const held = new Set((await forEachUser(() => heldSecurities(getApp().sqlite))).flat());
 			const s = await loadQuotes(getMarket().sqlite, [...held], makeFetcher({ retries: 1 }));
 			finishRun(id, { status: s.errors.length > s.securities / 2 ? 'error' : s.errors.length ? 'suspicious' : 'ok', received: s.securities, updated: s.updated, error: s.errors.slice(0, 5).join('; ') || null });
+			// a security new in a portfolio gets its profile (sector, …) right away, not at the next daily run
+			if (staleProfiles(getMarket().sqlite, [...held]).length) void runProfilesJob().catch((e) => console.error(`profiles: ${e}`));
+			return s;
+		} catch (e) {
+			finishRun(id, { status: 'error', error: String(e) });
+			throw e;
+		}
+	});
+}
+
+// ── security profiles ───────────────────────────────────────────────────────────
+
+/** Owner's request 19.11.2026: sector, industry, country, size of the held securities (market/profiles.ts). */
+export function runProfilesJob(): Promise<ProfilesSummary> {
+	return single('profiles', async () => {
+		const id = startRun('profiles', 'yahoo');
+		try {
+			const heldNow = async () => [...new Set((await forEachUser(() => heldSecurities(getApp().sqlite))).flat())];
+			const s = await loadProfiles(getMarket().sqlite, await heldNow());
+			// securities bought while this run went on (several buys in a row): load them too
+			for (let i = 0; i < 3; i++) {
+				const more = staleProfiles(getMarket().sqlite, await heldNow());
+				if (!more.length) break;
+				const n = await loadProfiles(getMarket().sqlite, more);
+				s.securities += n.securities;
+				s.updated += n.updated;
+				s.none += n.none;
+				s.errors.push(...n.errors);
+				if (!n.updated && !n.none) break;
+			}
+			finishRun(id, { status: s.errors.length > s.securities / 2 ? 'error' : s.errors.length ? 'suspicious' : 'ok', received: s.securities, updated: s.updated, error: s.errors.slice(0, 5).join('; ') || null });
 			return s;
 		} catch (e) {
 			finishRun(id, { status: 'error', error: String(e) });
@@ -410,6 +442,7 @@ export function startScheduler() {
 	// live quotes: checked every minute, run when due by the settings
 	at('* * * * *', 'quotes', () => (quotesDue() ? runQuotesJob() : undefined));
 	at('30 6 * * 0', 'listings', runListingsJob);
+	at('20 8 * * *', 'profiles', runProfilesJob);
 	at('0 9 * * 6', 'gaps', runGapsJob);
 	at('40 3 * * *', 'backup-app', () => runBackupJob('app'));
 	at('10 4 * * 0', 'backup-market', () => runBackupJob('market'));
@@ -426,6 +459,7 @@ export function startScheduler() {
 		else await runHistoryJob();
 		// the dollar rate (section 18): portfolios need it before the next morning's run
 		if (!lastRun('fx')) await runFxJob().catch((e) => console.error(`fx: ${e}`));
+		await runProfilesJob().catch((e) => console.error(`profiles: ${e}`));
 		const bApp = lastRun('backup-app');
 		if (!bApp || Date.now() - bApp.getTime() > 26 * 3600 * 1000) await runBackupJob('app');
 		const bMarket = lastRun('backup-market');

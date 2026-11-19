@@ -263,3 +263,24 @@ export const quotes = sqliteTable('market_quotes', {
 	fetchedAt: text().notNull(),
 	providerCode: text().notNull()
 });
+
+/**
+ * What a security is (owner's request 19.11.2026: the portfolio's allocation by sector and other measures):
+ * Yahoo's profile — the sector, industry and country of a company, its market capitalisation, and for a fund the
+ * category and the weights of the sectors it holds (JSON {technology: 0.38, …}). Refreshed monthly.
+ */
+export const securityProfiles = sqliteTable('ref_security_profiles', {
+	securityId: integer()
+		.primaryKey()
+		.references(() => securities.id),
+	/** stock | etf | none (the provider does not know it) */
+	kind: text().notNull(),
+	sector: text(),
+	industry: text(),
+	country: text(),
+	marketCap: real(),
+	capCurrency: text(),
+	fundCategory: text(),
+	sectorWeights: text(),
+	fetchedAt: text().notNull()
+});
