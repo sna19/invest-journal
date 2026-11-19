@@ -1,10 +1,11 @@
 <script lang="ts">
+	import { loc } from '#lib/i18n.js';
 	/** Spec section 13 — a result with a sign and an arrow, not by colour alone: ▲ +4,2%, ▼ −1,8%. */
 	let { value, digits = 1, plain = false }: { value: number | null | undefined; digits?: number; plain?: boolean } = $props();
 	const fmt = $derived(
 		value === null || value === undefined
 			? '—'
-			: `${value > 0 ? '▲ +' : value < 0 ? '▼ −' : ''}${Math.abs(value).toLocaleString('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits })}%`
+			: `${value > 0 ? '▲ +' : value < 0 ? '▼ −' : ''}${Math.abs(value).toLocaleString(loc(), { minimumFractionDigits: digits, maximumFractionDigits: digits })}%`
 	);
 </script>
 

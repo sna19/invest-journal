@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onDestroy, onMount } from 'svelte';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import TopBar from '#lib/TopBar.svelte';
@@ -45,8 +46,8 @@
 		const r = await fetch('/api/data/schedule', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(patch) });
 		const j = await r.json().catch(() => ({}));
 		saving = false;
-		if (!r.ok) return showToast(j.message ?? 'Не сохранилось');
-		showToast('Расписание сохранено');
+		if (!r.ok) return showToast(tl(j.message) || tx('Не сохранилось', 'Not saved'));
+		showToast(tx('Расписание сохранено', 'Schedule saved'));
 		load();
 	}
 	let quoting = $state(false);
@@ -55,7 +56,7 @@
 		const r = await fetch('/api/data/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ job: 'quotes' }) });
 		const j = await r.json().catch(() => ({}));
 		quoting = false;
-		showToast(j.error ? `Ошибка: ${j.error}` : `Котировки: обновлено ${j.updated ?? 0} из ${j.securities ?? 0}${j.fx ? ', курс доллара' : ''}`);
+		showToast(j.error ? `${tx('Ошибка', 'Error')}: ${j.error}` : `${tx('Котировки: обновлено', 'Quotes: updated')} ${j.updated ?? 0} ${tx('из', 'of')} ${j.securities ?? 0}${j.fx ? tx(', курс доллара', ', dollar rate') : ''}`);
 		load();
 	}
 
@@ -75,7 +76,7 @@
 				poll = undefined;
 			}
 		} catch {
-			problem = 'Нет связи с сервером.';
+			problem = tx('Нет связи с сервером.', 'No connection to the server.');
 		}
 	}
 	async function run(job: string) {
@@ -111,99 +112,98 @@
 		});
 		const j = await r.json().catch(() => ({}));
 		deciding = null;
-		if (!r.ok) return showToast(j.message ?? 'Не получилось');
+		if (!r.ok) return showToast(tl(j.message) || tx('Не получилось', 'It did not work'));
 		showToast(
-			(decision === 'valid' ? 'Цена принята' : 'День исключён из расчёта') + (j.closed ? ` · закрыто гипотез: ${j.closed}` : '')
+			(decision === 'valid' ? tx('Цена принята', 'Price accepted') : tx('День исключён из расчёта', 'Day excluded from the calculation')) + (j.closed ? ` · ${tx('закрыто гипотез', 'hypotheses closed')}: ${j.closed}` : '')
 		);
 		load();
 	}
 	onDestroy(() => clearInterval(poll));
 
-	const fmt = new Intl.NumberFormat('ru-RU');
-	const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
-	const JOB: Record<string, string> = {
-		quotes: 'Котировки в течение дня',
-		fx: 'Курс доллара (Банк Израиля)',
-		prices: 'Дневные цены',
-		history: 'Историческая загрузка',
-		hypotheses: 'Гипотезы: вход, результат, закрытие',
-		listings: 'Списки бумаг',
-		gaps: 'Контроль пропусков',
-		'backup-app': 'Копия журнала (app.db)',
-		'backup-market': 'Копия рыночных данных (market.db)'
-	};
-	const STATUS: Record<string, string> = { ok: 'ок', suspicious: 'подозрительно', error: 'ошибка', running: 'идёт' };
-	const RULE: Record<string, string> = {
-		'price.jump': 'скачок больше 50% без корпоративного действия, ждёт проверки',
-		'price.unit_glitch': 'агороты и шекели перепутаны',
-		'price.unit_mismatch': 'единица цены не совпадает',
-		'price.ohlc': 'цены дня не сходятся',
-		'price.not_trading_day': 'не торговый день',
-		'price.not_positive': 'цена не больше нуля',
-		'price.volume': 'отрицательный объём'
-	};
+	const fmt = $derived(new Intl.NumberFormat(loc()));
+	const when = (iso: string | null) => (iso ? new Date(iso).toLocaleString(loc(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—');
+	const JOB: Record<string, string> = $derived({
+		quotes: tx('Котировки в течение дня', 'Intraday quotes'),
+		fx: tx('Курс доллара (Банк Израиля)', 'Dollar rate (Bank of Israel)'),
+		prices: tx('Дневные цены', 'Daily prices'),
+		history: tx('Историческая загрузка', 'History load'),
+		hypotheses: tx('Гипотезы: вход, результат, закрытие', 'Hypotheses: entry, result, close'),
+		listings: tx('Списки бумаг', 'Security lists'),
+		gaps: tx('Контроль пропусков', 'Gap check'),
+		'backup-app': tx('Копия журнала (app.db)', 'Journal backup (app.db)'),
+		'backup-market': tx('Копия рыночных данных (market.db)', 'Market data backup (market.db)')
+	});
+	const STATUS: Record<string, string> = $derived({ ok: tx('ок', 'ok'), suspicious: tx('подозрительно', 'suspicious'), error: tx('ошибка', 'error'), running: tx('идёт', 'running') });
+	const RULE: Record<string, string> = $derived({
+		'price.jump': tx('скачок больше 50% без корпоративного действия, ждёт проверки', 'a jump over 50% without a corporate action, awaits a check'),
+		'price.unit_glitch': tx('агороты и шекели перепутаны', 'agorot and shekels mixed up'),
+		'price.unit_mismatch': tx('единица цены не совпадает', 'the price unit does not match'),
+		'price.ohlc': tx('цены дня не сходятся', 'the day prices do not agree'),
+		'price.not_trading_day': tx('не торговый день', 'not a trading day'),
+		'price.not_positive': tx('цена не больше нуля', 'the price is not above zero'),
+		'price.volume': tx('отрицательный объём', 'negative volume')
+	});
 </script>
 
-<svelte:head><title>Настройки · Журнал гипотез</title></svelte:head>
+<svelte:head><title>{tx('Настройки', 'Settings')} · {tx('Журнал гипотез', 'Hypothesis journal')}</title></svelte:head>
 
-<TopBar title="Настройки" back={{ href: '/more', label: 'Ещё' }} />
+<TopBar title={tx('Настройки', 'Settings')} back={{ href: '/more', label: tx('Ещё', 'More') }} />
 
 <section class="card">
-	<h2>Бенчмарки и пороги</h2>
+	<h2>{tx('Бенчмарки и пороги', 'Benchmarks and thresholds')}</h2>
 	<dl>
-		<dt>Бумаги США</dt>
+		<dt>{tx('Бумаги США', 'US securities')}</dt>
 		<dd>S&P 500</dd>
-		<dt>Бумаги TASE</dt>
-		<dd>ТА-125</dd>
-		<dt>Оценка источника</dt>
-		<dd>от 10 закрытых гипотез — «предварительно», от 30 — без пометки</dd>
+		<dt>{tx('Бумаги TASE', 'TASE securities')}</dt>
+		<dd>{tx('ТА-125', 'TA-125')}</dd>
+		<dt>{tx('Оценка источника', 'Source rating')}</dt>
+		<dd>{tx('от 10 закрытых гипотез — «предварительно», от 30 — без пометки', 'from 10 closed hypotheses — «preliminary», from 30 — unmarked')}</dd>
 	</dl>
 </section>
 
 {#if problem}<p class="warn" role="alert">{problem}</p>{/if}
 
 <section class="card">
-	<h2>Обновление данных</h2>
+	<h2>{tx('Обновление данных', 'Data updates')}</h2>
 	{#if !data}
 		<div class="skeleton"></div>
 	{:else}
 		{@const q = data.jobs.find((j) => j.job === 'quotes')}
 		{@const pr = data.jobs.find((j) => j.job === 'prices')}
 		<p class="muted small-top">
-			Два вида цен. <b>Котировки</b> — последняя цена бумаг ваших портфелей и курс доллара в течение дня (Yahoo, обычно с задержкой до 15–20 минут); ими считается экран портфеля. <b>Дневные закрытия</b> — проверенные цены закрытия раз в день; на них — статистика, гипотезы и модель.
+			{tx('Два вида цен.', 'Two kinds of prices.')} <b>{tx('Котировки', 'Quotes')}</b> — {tx('последняя цена бумаг ваших портфелей и курс доллара в течение дня (Yahoo, обычно с задержкой до 15–20 минут); ими считается экран портфеля.', 'the last price of the securities in your portfolios and the dollar rate during the day (Yahoo, usually delayed up to 15–20 minutes); the portfolio screen uses them.')} <b>{tx('Дневные закрытия', 'Daily closes')}</b> — {tx('проверенные цены закрытия раз в день; на них — статистика, гипотезы и модель.', 'checked closing prices once a day; stats, hypotheses and the model use them.')}
 		</p>
 		<div class="sched">
 			<label
-				>Котировки каждые
+				>{tx('Котировки каждые', 'Quotes every')}
 				<select value={data.schedule.quotesEvery} disabled={saving} onchange={(e) => setSchedule({ quotesEvery: Number(e.currentTarget.value) })}>
-					{#each [0, 5, 10, 15, 30, 60] as n (n)}<option value={n}>{n ? `${n} мин` : 'выключено'}</option>{/each}
+					{#each [0, 5, 10, 15, 30, 60] as n (n)}<option value={n}>{n ? `${n} ${tx('мин', 'min')}` : tx('выключено', 'off')}</option>{/each}
 				</select>
 			</label>
 			<label class="check"
-				><input type="checkbox" checked={data.schedule.quotesMarketHours} disabled={saving} onchange={(e) => setSchedule({ quotesMarketHours: e.currentTarget.checked })} /> только пока
-				открыта биржа (TASE или США)</label
+				><input type="checkbox" checked={data.schedule.quotesMarketHours} disabled={saving} onchange={(e) => setSchedule({ quotesMarketHours: e.currentTarget.checked })} /> {tx('только пока открыта биржа (TASE или США)', 'only while an exchange is open (TASE or US)')}</label
 			>
 			<label
-				>Дневные закрытия — каждый день в
+				>{tx('Дневные закрытия — каждый день в', 'Daily closes — every day at')}
 				<input type="time" value={data.schedule.pricesAt} disabled={saving} onchange={(e) => setSchedule({ pricesAt: e.currentTarget.value })} />
 			</label>
 		</div>
 		<dl class="state">
-			<dt>Сейчас</dt>
-			<dd>TASE {data.next.open.tase ? 'открыта' : 'закрыта'} · США {data.next.open.us ? 'открыты' : 'закрыты'}</dd>
-			<dt>Котировки</dt>
+			<dt>{tx('Сейчас', 'Now')}</dt>
+			<dd>TASE {data.next.open.tase ? tx('открыта', 'open') : tx('закрыта', 'closed')} · {tx('США', 'US')} {data.next.open.us ? tx('открыты', 'open') : tx('закрыты', 'closed')}</dd>
+			<dt>{tx('Котировки', 'Quotes')}</dt>
 			<dd>
-				{q ? `${when(q.finishedAt ?? q.startedAt)} · ${STATUS[q.status] ?? q.status}` : 'ещё не загружались'}{#if q?.updated} · обновлено {q.updated}{/if}<br /><span class="muted"
-					>следующие: {data.next.quotes === null ? 'выключены' : data.next.quotes === 'market-closed' ? 'когда откроется биржа' : when(data.next.quotes)}</span
+				{q ? `${when(q.finishedAt ?? q.startedAt)} · ${STATUS[q.status] ?? q.status}` : tx('ещё не загружались', 'not loaded yet')}{#if q?.updated} · {tx('обновлено', 'updated')} {q.updated}{/if}<br /><span class="muted"
+					>{tx('следующие', 'next')}: {data.next.quotes === null ? tx('выключены', 'off') : data.next.quotes === 'market-closed' ? tx('когда откроется биржа', 'when an exchange opens') : when(data.next.quotes)}</span
 				>
 			</dd>
-			<dt>Дневные закрытия</dt>
-			<dd>{pr ? `${when(pr.finishedAt ?? pr.startedAt)} · ${STATUS[pr.status] ?? pr.status}` : '—'}<br /><span class="muted">следующие: в {data.next.prices}</span></dd>
+			<dt>{tx('Дневные закрытия', 'Daily closes')}</dt>
+			<dd>{pr ? `${when(pr.finishedAt ?? pr.startedAt)} · ${STATUS[pr.status] ?? pr.status}` : '—'}<br /><span class="muted">{tx('следующие: в', 'next: at')} {data.next.prices}</span></dd>
 		</dl>
 		<div class="btns">
-			<button class="btn" onclick={quotesNow} disabled={quoting}><span class:spin={quoting}><RefreshCw size={16} /></span>{quoting ? 'Обновляю…' : 'Котировки сейчас'}</button>
+			<button class="btn" onclick={quotesNow} disabled={quoting}><span class:spin={quoting}><RefreshCw size={16} /></span>{quoting ? tx('Обновляю…', 'Refreshing…') : tx('Котировки сейчас', 'Quotes now')}</button>
 			<button class="btn" onclick={() => run('prices')} disabled={data.running.includes('prices')}>
-				<span class:spin={data.running.includes('prices')}><RefreshCw size={16} /></span>{data.running.includes('prices') ? 'Загружается…' : 'Закрытия сейчас'}
+				<span class:spin={data.running.includes('prices')}><RefreshCw size={16} /></span>{data.running.includes('prices') ? tx('Загружается…', 'Loading…') : tx('Закрытия сейчас', 'Closes now')}
 			</button>
 		</div>
 	{/if}
@@ -211,50 +211,49 @@
 
 <section class="card">
 	<div class="head">
-		<h2>Данные</h2>
+		<h2>{tx('Данные', 'Data')}</h2>
 		<button class="btn" onclick={() => run('prices')} disabled={data?.running.includes('prices')}>
-			<span class:spin={data?.running.includes('prices')}><RefreshCw size={16} /></span>{data?.running.includes('prices') ? 'Обновляется…' : 'Обновить сейчас'}
+			<span class:spin={data?.running.includes('prices')}><RefreshCw size={16} /></span>{data?.running.includes('prices') ? tx('Обновляется…', 'Refreshing…') : tx('Обновить сейчас', 'Refresh now')}
 		</button>
 	</div>
 	{#if !data}
 		<div class="skeleton"></div>
 	{:else}
-		{#if data.late}<p class="warn">Дневное задание не отработало больше двух дней.</p>{/if}
+		{#if data.late}<p class="warn">{tx('Дневное задание не отработало больше двух дней.', 'The daily job has not run for over two days.')}</p>{/if}
 		<div class="nums">
-			<div><b>{fmt.format(data.ringSize)}</b><span>бумаг грузятся (круг {data.ring})</span></div>
-			<div><b>{fmt.format(data.priceRows)}</b><span>строк цен</span></div>
-			<div><b>{fmt.format(data.queue.queued)}</b><span>в очереди истории{data.queue.failed ? `, ${data.queue.failed} не удалось` : ''}</span></div>
-			<div><b>{fmt.format(data.issues.open)}</b><span>проблем качества</span></div>
+			<div><b>{fmt.format(data.ringSize)}</b><span>{tx('бумаг грузятся', 'securities loading')} ({tx('круг', 'ring')} {data.ring})</span></div>
+			<div><b>{fmt.format(data.priceRows)}</b><span>{tx('строк цен', 'price rows')}</span></div>
+			<div><b>{fmt.format(data.queue.queued)}</b><span>{tx('в очереди истории', 'in the history queue')}{data.queue.failed ? `, ${data.queue.failed} ${tx('не удалось', 'failed')}` : ''}</span></div>
+			<div><b>{fmt.format(data.issues.open)}</b><span>{tx('проблем качества', 'quality issues')}</span></div>
 		</div>
 
-		<h3>Последние запуски</h3>
+		<h3>{tx('Последние запуски', 'Last runs')}</h3>
 		<ul class="runs">
 			{#each data.jobs as j (j.job)}
 				<li>
 					<span class="name">{JOB[j.job] ?? j.job}</span>
 					<span class="status {j.status}">{STATUS[j.status] ?? j.status}</span>
-					<span class="muted">{when(j.finishedAt ?? j.startedAt)}{j.received || j.added ? ` · получено ${fmt.format(j.received)}, новых ${fmt.format(j.added)}` : ''}</span>
+					<span class="muted">{when(j.finishedAt ?? j.startedAt)}{j.received || j.added ? ` · ${tx('получено', 'received')} ${fmt.format(j.received)}, ${tx('новых', 'new')} ${fmt.format(j.added)}` : ''}</span>
 					{#if j.error}<span class="err">{j.error}</span>{/if}
 				</li>
 			{/each}
 		</ul>
 
-		<h3>Нет данных</h3>
+		<h3>{tx('Нет данных', 'No data')}</h3>
 		{#if data.noData.length}
 			<ul class="plain">
 				{#each data.noData as n (n.id)}
-					<li><b>{n.symbol}</b> · {n.exchange} — {n.why}{n.lastDate ? `, последняя цена ${n.lastDate}` : ''}</li>
+					<li><b>{n.symbol}</b> · {n.exchange} — {tl(n.why)}{n.lastDate ? `, ${tx('последняя цена', 'last price')} ${n.lastDate}` : ''}</li>
 				{/each}
 			</ul>
 		{:else}
-			<p class="muted">Все бумаги с ценами.</p>
+			<p class="muted">{tx('Все бумаги с ценами.', 'All securities have prices.')}</p>
 		{/if}
 
 		{#if data.issues.recent.length}
-			<h3>Проблемы качества</h3>
+			<h3>{tx('Проблемы качества', 'Quality issues')}</h3>
 			<p class="muted small-top">
-				Скачок больше 50% за день без корпоративного действия не входит в расчёт, пока вы не решите: «Цена верна» — день
-				возвращается в расчёт; «Цена ошибочна» — исключается навсегда. Сверить цену можно на сайте биржи.
+				{tx('Скачок больше 50% за день без корпоративного действия не входит в расчёт, пока вы не решите: «Цена верна» — день возвращается в расчёт; «Цена ошибочна» — исключается навсегда. Сверить цену можно на сайте биржи.', 'A one-day jump over 50% without a corporate action stays out of the calculation until you decide: «Price is right» — the day returns to the calculation; «Price is wrong» — it is excluded for good. You can check the price on the exchange site.')}
 			</p>
 			<ul class="issues">
 				{#each data.issues.recent as q (q.id)}
@@ -266,8 +265,8 @@
 						</div>
 						{#if q.rule === 'price.jump'}
 							<div class="decide">
-								<button disabled={deciding === q.id} onclick={() => decide(q.id, 'valid')}>Цена верна</button>
-								<button disabled={deciding === q.id} onclick={() => decide(q.id, 'invalid')}>Цена ошибочна</button>
+								<button disabled={deciding === q.id} onclick={() => decide(q.id, 'valid')}>{tx('Цена верна', 'Price is right')}</button>
+								<button disabled={deciding === q.id} onclick={() => decide(q.id, 'invalid')}>{tx('Цена ошибочна', 'Price is wrong')}</button>
 							</div>
 						{/if}
 					</li>
@@ -275,8 +274,7 @@
 			</ul>
 		{/if}
 		<p class="muted small">
-			Дневные цены загружаются каждое утро в {data.schedule.pricesAt} по Израилю, пропущенные дни догружаются; списки бумаг — по воскресеньям; пропуски проверяются по
-			субботам. Копия журнала — каждую ночь (30 копий), рыночных данных — по воскресеньям (2 копии).
+			{tx('Дневные цены загружаются каждое утро в', 'Daily prices load every morning at')} {data.schedule.pricesAt} {tx('по Израилю, пропущенные дни догружаются; списки бумаг — по воскресеньям; пропуски проверяются по субботам. Копия журнала — каждую ночь (30 копий), рыночных данных — по воскресеньям (2 копии).', 'Israel time, missed days are filled in; security lists — on Sundays; gaps are checked on Saturdays. A journal backup — every night (30 copies), market data — on Sundays (2 copies).')}
 		</p>
 	{/if}
 </section>

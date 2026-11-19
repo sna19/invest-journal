@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onDestroy, onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
@@ -113,15 +114,15 @@
 		try {
 			const r = await fetch(`/api/portfolios/${current}/transfer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: transferText, apply }) });
 			const j = await r.json().catch(() => ({}));
-			if (!r.ok) return (transferError = j.message ?? 'Не получилось');
+			if (!r.ok) return (transferError = tl(j.message) || tx('Не получилось', 'It did not work'));
 			if (!apply) return (transferPreview = j);
-			showToast(`Перенесено позиций: ${j.added}${j.skipped.length ? `, пропущено строк: ${j.skipped.length}` : ''}`);
+			showToast(`${tx('Перенесено позиций', 'Positions carried over')}: ${j.added}${j.skipped.length ? `, ${tx('пропущено строк', 'lines skipped')}: ${j.skipped.length}` : ''}`);
 			if (!j.skipped.length) {
 				transferring = false;
 				transferText = '';
 			}
 			transferPreview = null;
-			if (j.skipped.length) transferError = 'Пропущены: ' + j.skipped.map((x: { n: number; why: string }) => `строка ${x.n} — ${x.why}`).join('; ');
+			if (j.skipped.length) transferError = tx('Пропущены: ', 'Skipped: ') + j.skipped.map((x: { n: number; why: string }) => `${tx('строка', 'line')} ${x.n} — ${tl(x.why)}`).join('; ');
 			load();
 		} finally {
 			transferBusy = false;
@@ -139,8 +140,8 @@
 		deleteError = null;
 		const r = await fetch(`/api/portfolios/${current}`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirmName: deleteName }) });
 		const j = await r.json().catch(() => ({}));
-		if (!r.ok) return (deleteError = j.message ?? 'Не удалилось');
-		showToast(`Портфель «${j.name}» удалён: позиций ${j.positions}, событий ${j.events}`);
+		if (!r.ok) return (deleteError = tl(j.message) || tx('Не удалилось', 'Not deleted'));
+		showToast(tx(`Портфель «${j.name}» удалён: позиций ${j.positions}, событий ${j.events}`, `Portfolio «${j.name}» deleted: positions ${j.positions}, events ${j.events}`));
 		deleting = false;
 		deleteName = '';
 		current = null;
@@ -157,14 +158,14 @@
 
 	async function loadList() {
 		const r = await fetch('/api/portfolios').catch(() => null);
-		if (!r?.ok) return (problem = 'Нет связи с сервером.');
+		if (!r?.ok) return (problem = tx('Нет связи с сервером.', 'No connection to the server.'));
 		list = (await r.json()).items;
 		if (!list!.some((p) => p.id === current)) current = list![0]?.id ?? null;
 	}
 	async function load() {
 		if (current === null) return (v = null);
 		const r = await fetch(`/api/portfolios/${current}`).catch(() => null);
-		if (!r?.ok) return (problem = 'Нет связи с сервером.');
+		if (!r?.ok) return (problem = tx('Нет связи с сервером.', 'No connection to the server.'));
 		v = await r.json();
 		problem = null;
 		loadChart();
@@ -215,8 +216,8 @@
 		const top = [...held].sort((a, b) => b.valuePc - a.valuePc);
 		const bySec = top.slice(0, 8).map((p) => ({ label: p.symbol, value: p.valuePc }));
 		const rest = top.slice(8).reduce((n, p) => n + p.valuePc, 0);
-		if (rest > 0) bySec.push({ label: 'остальные', value: rest });
-		if (v.summary.cash > 0) bySec.push({ label: 'деньги', value: v.summary.cash });
+		if (rest > 0) bySec.push({ label: tx('остальные', 'others'), value: rest });
+		if (v.summary.cash > 0) bySec.push({ label: tx('деньги', 'cash'), value: v.summary.cash });
 		const sum = (f: (p: Pos) => boolean) => held.filter(f).reduce((n, p) => n + p.valuePc, 0);
 		const us = sum((p) => p.currency === 'USD');
 		const il = sum((p) => p.currency !== 'USD');
@@ -224,22 +225,22 @@
 		return {
 			total,
 			groups: [
-				{ title: 'По бумагам', rows: bySec.map((r) => ({ ...r, pct: share(r.value) })) },
+				{ title: tx('По бумагам', 'By security'), rows: bySec.map((r) => ({ ...r, pct: share(r.value) })) },
 				{
-					title: 'По рынкам',
+					title: tx('По рынкам', 'By market'),
 					rows: [
-						{ label: 'США', value: us },
-						{ label: 'Израиль', value: il },
-						{ label: 'деньги', value: cash }
+						{ label: tx('США', 'US'), value: us },
+						{ label: tx('Израиль', 'Israel'), value: il },
+						{ label: tx('деньги', 'cash'), value: cash }
 					]
 						.filter((r) => r.value > 0)
 						.map((r) => ({ ...r, pct: share(r.value) }))
 				},
 				{
-					title: 'По валютам',
+					title: tx('По валютам', 'By currency'),
 					rows: [
-						{ label: '$ доллар', value: us },
-						{ label: '₪ шекель', value: il + cash }
+						{ label: tx('$ доллар', '$ dollar'), value: us },
+						{ label: tx('₪ шекель', '₪ shekel'), value: il + cash }
 					]
 						.filter((r) => r.value > 0)
 						.map((r) => ({ ...r, pct: share(r.value) }))
@@ -289,16 +290,16 @@
 		const limit = (every ? Math.max(20, every * 2) : 60) * 60_000;
 		return clock - Date.parse(f) <= limit ? 'fresh' : 'stale';
 	});
-	const FRESH_TITLE: Record<string, string> = { busy: 'Обновляется', fresh: 'Обновлено недавно', stale: 'Давно не обновлялось' };
+	const FRESH_TITLE: Record<string, string> = { busy: 'Обновляется', fresh: 'Обновлено недавно', stale: 'Давно не обновлялось' }; // shown through tl()
 	onDestroy(() => {
 		clearInterval(autoTimer);
 		clearInterval(clockTimer);
 		if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible);
 	});
-	const hm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+	const hm = (iso: string) => new Date(iso).toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' });
 	const ago = (iso: string) => {
 		const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
-		return m < 60 ? `${m} мин назад` : `${hm(iso)}${new Date(iso).toDateString() === new Date().toDateString() ? '' : ', ' + d(iso.slice(0, 10))}`;
+		return m < 60 ? tx(`${m} мин назад`, `${m} min ago`) : `${hm(iso)}${new Date(iso).toDateString() === new Date().toDateString() ? '' : ', ' + d(iso.slice(0, 10))}`;
 	};
 
 	onMount(async () => {
@@ -338,7 +339,7 @@
 		createError = null;
 		const r = await fetch('/api/portfolios', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: newName, kind: newKind, currency: newCurrency }) });
 		const j = await r.json().catch(() => ({}));
-		if (!r.ok) return (createError = j.message ?? 'Не создался');
+		if (!r.ok) return (createError = tl(j.message) || tx('Не создался', 'Not created'));
 		creating = false;
 		newName = '';
 		await loadList();
@@ -360,8 +361,8 @@
 			})
 		});
 		const j = await r.json().catch(() => ({}));
-		if (!r.ok) return (cashError = j.message ?? 'Не сохранилось');
-		showToast(`${CASH_LABEL[cashKind]}: ${money(Number(cashAmount.replace(',', '.')), cashCurrency)} — записано`);
+		if (!r.ok) return (cashError = tl(j.message) || tx('Не сохранилось', 'Not saved'));
+		showToast(`${CASH_LABEL[cashKind]}: ${money(Number(cashAmount.replace(',', '.')), cashCurrency)} — ${tx('записано', 'saved')}`);
 		cashing = false;
 		cashAmount = '';
 		cashTo = '';
@@ -388,9 +389,9 @@
 			body: JSON.stringify({ name: editName, currency: editCurrency })
 		});
 		const j = await r.json().catch(() => ({}));
-		if (!r.ok) return (editError = Object.values(j.errors ?? {})[0] as string ?? j.message ?? 'Не сохранилось');
+		if (!r.ok) return (editError = tl((Object.values(j.errors ?? {})[0] as string) ?? j.message) || tx('Не сохранилось', 'Not saved'));
 		renaming = false;
-		showToast('Портфель изменён');
+		showToast(tx('Портфель изменён', 'Portfolio changed'));
 		await loadList();
 		load();
 	}
@@ -405,9 +406,9 @@
 			body: JSON.stringify({ date: cashEdit.date, amount: cashEdit.amount, note: cashEdit.note, ...(cashEdit.kind === 'convert' ? { toAmount: cashEdit.toAmount } : {}) })
 		});
 		const j = await r.json().catch(() => ({}));
-		if (!r.ok) return (cashEditError = Object.values(j.errors ?? {})[0] as string ?? j.message ?? 'Не сохранилось');
+		if (!r.ok) return (cashEditError = tl((Object.values(j.errors ?? {})[0] as string) ?? j.message) || tx('Не сохранилось', 'Not saved'));
 		cashEdit = null;
-		showToast('Запись изменена');
+		showToast(tx('Запись изменена', 'Record changed'));
 		load();
 	}
 	/** «Экспорт» (owner's request, 18.11.2026): the portfolio as JSON in a window, to copy into an AI adviser */
@@ -420,7 +421,7 @@
 		copied = false;
 		exportText = '';
 		const r = await fetch(`/api/portfolios/${current}/export`).catch(() => null);
-		if (!r?.ok) return (exportError = 'Не получилось собрать данные');
+		if (!r?.ok) return (exportError = tx('Не получилось собрать данные', 'Could not gather the data'));
 		exportText = JSON.stringify(await r.json(), null, 2);
 	}
 	async function copyExport() {
@@ -433,12 +434,12 @@
 			document.execCommand('copy');
 		}
 		copied = true;
-		showToast('Скопировано — вставьте в чат с AI');
+		showToast(tx('Скопировано — вставьте в чат с AI', 'Copied — paste it into a chat with AI'));
 	}
 	async function undoCash(id: number, how: 'cancel' | 'reverse') {
 		const r = await fetch(`/api/cash/${id}/${how}`, { method: 'POST' });
-		if (!r.ok) return (problem = (await r.json().catch(() => ({}))).message ?? 'Не получилось');
-		showToast(how === 'cancel' ? 'Запись отменена' : 'Сторно записано');
+		if (!r.ok) return (problem = (await r.json().catch(() => ({}))).message ?? tx('Не получилось', 'It did not work'));
+		showToast(how === 'cancel' ? tx('Запись отменена', 'Record cancelled') : tx('Сторно записано', 'Reversal saved'));
 		load();
 	}
 
@@ -498,21 +499,21 @@
 	const by = (s: Stage) => sorted(v?.positions.filter((p) => p.stage === s) ?? []);
 	// «17 нояб.» this year, «17 нояб. 2025» before it
 	const d = (s: string) =>
-		new Date(s + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', ...(s.slice(0, 4) !== String(new Date().getFullYear()) ? { year: 'numeric' } : {}) });
+		new Date(s + 'T12:00:00').toLocaleDateString(loc(), { day: 'numeric', month: 'short', ...(s.slice(0, 4) !== String(new Date().getFullYear()) ? { year: 'numeric' } : {}) });
 </script>
 
-<svelte:head><title>Портфель · Журнал гипотез</title></svelte:head>
+<svelte:head><title>{tx('Портфель', 'Portfolio')} · {tx('Журнал гипотез', 'Hypothesis journal')}</title></svelte:head>
 
-<TopBar title="Портфель" help="portfolio.kinds" />
+<TopBar title={tx('Портфель', 'Portfolio')} help="portfolio.kinds" />
 
 {#if list && list.length}
-	<div class="switch" role="tablist" aria-label="Портфели">
+	<div class="switch" role="tablist" aria-label={tx('Портфели', 'Portfolios')}>
 		{#each list as p (p.id)}
 			<button role="tab" aria-selected={p.id === current} class:on={p.id === current} onclick={() => choose(p.id)}
-				>{p.name}{#if p.kind === 'virtual' && !p.auto_source_id}<small> · вирт.</small>{/if}</button
+				>{p.name}{#if p.kind === 'virtual' && !p.auto_source_id}<small> · {tx('вирт.', 'virt.')}</small>{/if}</button
 			>
 		{/each}
-		<button class="add" aria-label="Новый портфель" onclick={() => (creating = true)}><Plus size={18} /></button>
+		<button class="add" aria-label={tx('Новый портфель', 'New portfolio')} onclick={() => (creating = true)}><Plus size={18} /></button>
 	</div>
 {/if}
 
@@ -521,52 +522,51 @@
 {#if list === null}
 	<div class="skeleton"></div>
 {:else if !list.length}
-	<Empty title="Ваши портфели">
-		Здесь будут реальный портфель и виртуальные: позиции от «наблюдаю» до «продал», стоимость в шекелях и доходность против
-		S&P 500 и ТА-125. Всё вводится вручную, сделка — за полминуты.
-		{#snippet action()}<button onclick={() => ((newName = 'Мой портфель'), (newKind = 'real'), (newCurrency = null), (creating = true))}>Создать портфель</button>{/snippet}
+	<Empty title={tx('Ваши портфели', 'Your portfolios')}>
+		{tx('Здесь будут реальный портфель и виртуальные: позиции от «наблюдаю» до «продал», стоимость в шекелях и доходность против S&P 500 и ТА-125. Всё вводится вручную, сделка — за полминуты.', 'Here go your real portfolio and virtual ones: positions from «watching» to «sold», value and return against the S&P 500 and TA-125. Everything is entered by hand, a trade takes half a minute.')}
+		{#snippet action()}<button onclick={() => ((newName = tx('Мой портфель', 'My portfolio')), (newKind = 'real'), (newCurrency = null), (creating = true))}>{tx('Создать портфель', 'Create a portfolio')}</button>{/snippet}
 	</Empty>
 {:else if v}
 	{@const s = v.summary}
 	{#if v.portfolio.auto_source_id}
 		<p class="auto">
-			Автоматический: каждая гипотеза «{v.portfolio.sourceName}» на рост покупается на {money(v.portfolio.auto_amount_ils, v.portfolio.currency)} и продаётся при закрытии.
-			<HelpIcon topicKey="portfolio.source_auto" label="автоматический портфель" />
+			{tx('Автоматический: каждая гипотеза', 'Automatic: each hypothesis of')} «{tl(v.portfolio.sourceName)}» {tx('на рост покупается на', 'on a rise is bought for')} {money(v.portfolio.auto_amount_ils, v.portfolio.currency)} {tx('и продаётся при закрытии.', 'and sold when it closes.')}
+			<HelpIcon topicKey="portfolio.source_auto" label={tx('автоматический портфель', 'automatic portfolio')} />
 		</p>
 	{/if}
 	<section class="card summary">
 		<div class="value">
-			<span class="k">Стоимость</span>
+			<span class="k">{tx('Стоимость', 'Value')}</span>
 			<b>{money(s.value, s.currency)}</b>
-			<span class="sub">в бумагах {money(s.held, s.currency)}</span>
+			<span class="sub">{tx('в бумагах', 'in securities')} {money(s.held, s.currency)}</span>
 			{#each s.balances as bl (bl.currency)}
 				<span class="sub" class:neg={bl.amount < 0}
-					>деньги {money(bl.amount, bl.currency)}{bl.currency !== s.currency ? ` ≈ ${money(bl.valuePc, s.currency)}` : ''}</span
+					>{tx('деньги', 'cash')} {money(bl.amount, bl.currency)}{bl.currency !== s.currency ? ` ≈ ${money(bl.valuePc, s.currency)}` : ''}</span
 				>
 			{/each}
-			{#if s.taxAccrued}<span class="sub">начисленный налог {money(s.taxAccrued, s.currency)} (справочно)</span>{/if}
+			{#if s.taxAccrued}<span class="sub">{tx('начисленный налог', 'accrued tax')} {money(s.taxAccrued, s.currency)} ({tx('справочно', 'for reference')})</span>{/if}
 		</div>
 		<div class="ret">
-			<span class="k">Доходность <HelpIcon topicKey="portfolio.twr" label="доходность TWR" /></span>
+			<span class="k">{tx('Доходность', 'Return')} <HelpIcon topicKey="portfolio.twr" label={tx('доходность TWR', 'TWR return')} /></span>
 			<b><Pct value={s.twrPct} /></b>
-			<span class="sub">{s.from ? `с ${d(s.from)}` : 'пока нет сделок'}{s.fromTransfer ? ' · часть позиций — с даты переноса' : ''}</span>
+			<span class="sub">{s.from ? `${tx('с', 'since')} ${d(s.from)}` : tx('пока нет сделок', 'no trades yet')}{s.fromTransfer ? tx(' · часть позиций — с даты переноса', ' · some positions — since carry-over') : ''}</span>
 		</div>
 		{#if s.from}
 			<ul class="bench">
 				<li>
-					<span>{s.benchmark.label}</span>
+					<span>{tl(s.benchmark.label)}</span>
 					<Pct value={s.benchmark.returnPct} plain />
-					<span class="sub">за тот же срок</span>
+					<span class="sub">{tx('за тот же срок', 'over the same period')}</span>
 				</li>
 			</ul>
 		{/if}
 		<p class="sub line">
-			Реализовано {money(s.realizedPc, s.currency, true)} · не реализовано {money(s.unrealizedPc, s.currency, true)}{#if s.balances.some((b) => b.currency !== s.currency) || v.positions.some((p) => p.currency !== s.currency && p.qty > 0)}
-				· $ = {s.fxUsd} ₪ <HelpIcon topicKey="portfolio.fx" label="курс" />{/if}
+			{tx('Реализовано', 'Realized')} {money(s.realizedPc, s.currency, true)} · {tx('не реализовано', 'unrealized')} {money(s.unrealizedPc, s.currency, true)}{#if s.balances.some((b) => b.currency !== s.currency) || v.positions.some((p) => p.currency !== s.currency && p.qty > 0)}
+				· $ = {s.fxUsd} ₪ <HelpIcon topicKey="portfolio.fx" label={tx('курс', 'rate')} />{/if}
 			<br /><span class="freshline"
-				>{#if s.quotesAt}Котировки: {ago(s.quotesAt)}{:else}Котировок за сегодня нет{/if}{#if s.pricesAsOf} · закрытия на {d(s.pricesAsOf)}{/if}
-				<button class="ref {freshness}" onclick={refreshNow} disabled={refreshing} aria-label="Обновить котировки сейчас" title={FRESH_TITLE[freshness]}
-					><span class:spin={refreshing}><RefreshCw size={13} /></span>{refreshing ? 'Обновляю…' : 'Обновить'}</button
+				>{#if s.quotesAt}{tx('Котировки', 'Quotes')}: {ago(s.quotesAt)}{:else}{tx('Котировок за сегодня нет', 'No quotes today')}{/if}{#if s.pricesAsOf} · {tx('закрытия на', 'closes of')} {d(s.pricesAsOf)}{/if}
+				<button class="ref {freshness}" onclick={refreshNow} disabled={refreshing} aria-label={tx('Обновить котировки сейчас', 'Refresh quotes now')} title={tl(FRESH_TITLE[freshness])}
+					><span class:spin={refreshing}><RefreshCw size={13} /></span>{refreshing ? tx('Обновляю…', 'Refreshing…') : tx('Обновить', 'Refresh')}</button
 				></span
 			>
 		</p>
@@ -574,24 +574,24 @@
 
 	{#if !v.portfolio.auto_source_id}
 		<div class="actions">
-			<button class="main" onclick={() => (adding = { kind: 'buy', securityId: null, hypothesisId: null })}>Купил</button>
-			<button onclick={() => (adding = { kind: 'plan_buy', securityId: null, hypothesisId: null })}>Хочу купить</button>
-			<button onclick={() => (adding = { kind: 'watch', securityId: null, hypothesisId: null })}>Наблюдаю</button>
-			<button onclick={() => (cashing = true)}><Wallet size={18} /> Деньги</button>
-			<button onclick={() => ((transferring = true), (transferPreview = null), (transferError = null))}>Перенос позиций</button>
-			<a class="together" href="/portfolio/together">Всё вместе</a>
+			<button class="main" onclick={() => (adding = { kind: 'buy', securityId: null, hypothesisId: null })}>{tx('Купил', 'Bought')}</button>
+			<button onclick={() => (adding = { kind: 'plan_buy', securityId: null, hypothesisId: null })}>{tx('Хочу купить', 'Want to buy')}</button>
+			<button onclick={() => (adding = { kind: 'watch', securityId: null, hypothesisId: null })}>{tx('Наблюдаю', 'Watching')}</button>
+			<button onclick={() => (cashing = true)}><Wallet size={18} /> {tx('Деньги', 'Cash')}</button>
+			<button onclick={() => ((transferring = true), (transferPreview = null), (transferError = null))}>{tx('Перенос позиций', 'Carry over positions')}</button>
+			<a class="together" href="/portfolio/together">{tx('Всё вместе', 'All together')}</a>
 		</div>
 	{/if}
 
 	{#if !v.positions.length}
-		<p class="muted center">Позиций пока нет. «Купил» — сделка; «Хочу купить» и «Наблюдаю» — бумага на заметку, с причиной.</p>
+		<p class="muted center">{tx('Позиций пока нет. «Купил» — сделка; «Хочу купить» и «Наблюдаю» — бумага на заметку, с причиной.', 'No positions yet. «Bought» is a trade; «Want to buy» and «Watching» put a security on your list, with a reason.')}</p>
 	{/if}
 
 	{#if v.positions.length > 1}
-		<div class="toggles sorts" role="group" aria-label="Сортировка позиций">
+		<div class="toggles sorts" role="group" aria-label={tx('Сортировка позиций', 'Sort positions')}>
 			{#each SORTS as o (o.key)}
 				<button class:on={sortKey === o.key} aria-pressed={sortKey === o.key} onclick={() => setSort(o.key)}
-					>{o.label}{#if sortKey === o.key}{o.key === 'symbol' ? (sortDesc ? ' Я→А' : ' А→Я') : sortDesc ? ' ↓' : ' ↑'}{/if}</button
+					>{tl(o.label)}{#if sortKey === o.key}{o.key === 'symbol' ? (sortDesc ? tx(' Я→А', ' Z→A') : tx(' А→Я', ' A→Z')) : sortDesc ? ' ↓' : ' ↑'}{/if}</button
 				>
 			{/each}
 		</div>
@@ -603,7 +603,7 @@
 			<details class="stage" open={st !== 'closed'}>
 				<summary>
 					<h2>{STAGE_LABEL[st]} <span class="n">{rows.length}</span></h2>
-					{#if st === 'holding'}<HelpIcon topicKey="portfolio.stages" label="этапы позиции" />{/if}
+					{#if st === 'holding'}<HelpIcon topicKey="portfolio.stages" label={tx('этапы позиции', 'position stages')} />{/if}
 				</summary>
 				<ul class="list">
 					{#each rows as p (p.id)}
@@ -615,18 +615,18 @@
 									{#if st === 'holding' || st === 'plan_sell'}
 										<span>{money(p.valuePc, v.summary.currency)}</span>
 										<b class="res"><Pct value={p.unrealizedPct} /></b>
-										<span class="src" class:live={p.livePrice} title={p.livePrice && p.priceTime ? `котировка ${hm(p.priceTime)}` : p.lastClose ? `закрытие ${d(p.lastClose)}` : 'нет цены'}></span>
+										<span class="src" class:live={p.livePrice} title={p.livePrice && p.priceTime ? `${tx('котировка', 'quote')} ${hm(p.priceTime)}` : p.lastClose ? `${tx('закрытие', 'close')} ${d(p.lastClose)}` : tx('нет цены', 'no price')}></span>
 									{:else if st === 'closed'}
 										<span class="sub">{p.closedAt ? d(p.closedAt) : ''}</span>
 										{#if p.realizedPc}<b class="res">{money(p.realizedPc, v.summary.currency, true)}</b>{/if}
 									{:else if p.plan?.price}
-										<span class="sub">по {priceText(p.plan.price, p.priceUnit)} · сейчас {priceText(p.lastPrice, p.priceUnit)}</span>
+										<span class="sub">{tx('по', 'at')} {priceText(p.plan.price, p.priceUnit)} · {tx('сейчас', 'now')} {priceText(p.lastPrice, p.priceUnit)}</span>
 									{:else}
 										<span class="sub">{priceText(p.lastPrice, p.priceUnit)}</span>
 									{/if}
 								</span>
 								<span class="mid">
-									{p.name}{#if st === 'holding' || st === 'plan_sell'} · {qtyText(p.qty)} шт. · {Math.round(p.weight ?? 0)}%{#if sortKey === 'cost'} · вложено {money(costOf(p), v.summary.currency)}{:else if sortKey === 'profit'} · прибыль {money(profitOf(p), v.summary.currency, true)}{/if}{#if p.fromTransfer} · с даты переноса{/if}{#if p.eventPrice} · цена переноса{/if}{/if}
+									{p.name}{#if st === 'holding' || st === 'plan_sell'} · {qtyText(p.qty)} {tx('шт.', 'pcs')} · {Math.round(p.weight ?? 0)}%{#if sortKey === 'cost'} · {tx('вложено', 'invested')} {money(costOf(p), v.summary.currency)}{:else if sortKey === 'profit'} · {tx('прибыль', 'profit')} {money(profitOf(p), v.summary.currency, true)}{/if}{#if p.fromTransfer} · {tx('с даты переноса', 'since carry-over')}{/if}{#if p.eventPrice} · {tx('цена переноса', 'carry-over price')}{/if}{/if}
 								</span>
 								{#if p.plan?.note && st !== 'closed' && st !== 'holding'}<span class="note">{p.plan.note}</span>{/if}
 								<ChevronRight size={18} />
@@ -640,7 +640,7 @@
 
 	{#if chart && chart[0]?.points.length > 1}
 		<section class="card">
-			<div class="ch-head"><h2>Доходность</h2><HelpIcon topicKey="portfolio.chart" label="график доходности" /></div>
+			<div class="ch-head"><h2>{tx('Доходность', 'Return')}</h2><HelpIcon topicKey="portfolio.chart" label={tx('график доходности', 'return chart')} /></div>
 			<LineChart {lines} percent height={220} />
 			<div class="toggles">
 				{#each chart.slice(1).filter((sr) => sr.kind === 'benchmark') as sr (sr.key)}
@@ -655,7 +655,7 @@
 
 	{#if alloc}
 		<section class="card">
-			<div class="ch-head"><h2>Распределение</h2><HelpIcon topicKey="portfolio.allocation" label="распределение" /></div>
+			<div class="ch-head"><h2>{tx('Распределение', 'Allocation')}</h2><HelpIcon topicKey="portfolio.allocation" label={tx('распределение', 'allocation')} /></div>
 			{#each alloc.groups as g (g.title)}
 				{#if g.rows.length}
 					<h3>{g.title}</h3>
@@ -675,19 +675,19 @@
 
 	{#if v.cash.length}
 		<details class="stage">
-			<summary><h2>Деньги <span class="n">{v.cash.filter((c) => !c.cancelledAt && c.kind !== 'reverse').length}</span></h2></summary>
+			<summary><h2>{tx('Деньги', 'Cash')} <span class="n">{v.cash.filter((c) => !c.cancelledAt && c.kind !== 'reverse').length}</span></h2></summary>
 			<ul class="list cash">
 				{#each v.cash as c (c.id)}
 					<li class:off={c.cancelledAt || c.reversedBy || c.kind === 'reverse'}>
 						<span class="when">{d(c.date)}</span>
 						<span class="what"
-							><b>{CASH_LABEL[c.kind]}</b> {money(c.amount, c.currency)}{#if c.kind === 'convert' && c.toAmount} → {money(c.toAmount, c.toCurrency ?? 'USD')} · курс {(c.amount / c.toAmount).toFixed(4)}{/if}{#if c.note} · {c.note}{/if}{#if c.auto} · авто{/if}</span
+							><b>{CASH_LABEL[c.kind]}</b> {money(c.amount, c.currency)}{#if c.kind === 'convert' && c.toAmount} → {money(c.toAmount, c.toCurrency ?? 'USD')} · {tx('курс', 'rate')} {(c.amount / c.toAmount).toFixed(4)}{/if}{#if c.note} · {c.note}{/if}{#if c.auto} · {tx('авто', 'auto')}{/if}</span
 						>
 						{#if !c.auto && !v.portfolio.auto_source_id && !c.cancelledAt && !c.reversedBy && c.kind !== 'reverse'}
 							<button
 								class="undo"
-								aria-label="Изменить запись"
-								title="Изменить"
+								aria-label={tx('Изменить запись', 'Edit the record')}
+								title={tx('Изменить', 'Edit')}
 								onclick={() =>
 									((cashEditError = null),
 									(cashEdit = { id: c.id, kind: c.kind, currency: c.currency, toCurrency: c.toCurrency, date: c.date, amount: String(c.amount), toAmount: c.toAmount === null ? '' : String(c.toAmount), note: c.note ?? '' }))}
@@ -695,46 +695,45 @@
 							>
 						{/if}
 						{#if !c.auto && c.canCancel}
-							<button class="undo" aria-label="Отменить запись" onclick={() => undoCash(c.id, 'cancel')}><Undo2 size={16} /></button>
+							<button class="undo" aria-label={tx('Отменить запись', 'Cancel the record')} onclick={() => undoCash(c.id, 'cancel')}><Undo2 size={16} /></button>
 						{:else if !c.auto && c.canReverse}
-							<button class="undo text" onclick={() => undoCash(c.id, 'reverse')}>Сторно</button>
+							<button class="undo text" onclick={() => undoCash(c.id, 'reverse')}>{tx('Сторно', 'Reverse')}</button>
 						{/if}
 					</li>
 				{/each}
 			</ul>
 		</details>
 	{/if}
-	<button class="delete edit" onclick={openExport}><FileJson size={16} /> Экспорт для AI</button>
-	<button class="delete edit" onclick={startRename}><Pencil size={16} /> Название и валюта портфеля</button>
-	<button class="delete" onclick={() => ((deleting = true), (deleteName = ''), (deleteError = null))}>Удалить портфель «{v.portfolio.name}»</button>
-	<p class="muted small">Остаток денег — как у брокера; покупка без остатка только предупреждает. Для доходности недостающее считается взносом, так что она не искажается.</p>
+	<button class="delete edit" onclick={openExport}><FileJson size={16} /> {tx('Экспорт для AI', 'Export for AI')}</button>
+	<button class="delete edit" onclick={startRename}><Pencil size={16} /> {tx('Название и валюта портфеля', 'Portfolio name and currency')}</button>
+	<button class="delete" onclick={() => ((deleting = true), (deleteName = ''), (deleteError = null))}>{tx('Удалить портфель', 'Delete portfolio')} «{v.portfolio.name}»</button>
+	<p class="muted small">{tx('Остаток денег — как у брокера; покупка без остатка только предупреждает. Для доходности недостающее считается взносом, так что она не искажается.', 'The cash balance is as at the broker; a purchase without cash only warns. For the return the shortfall counts as a deposit, so it is not distorted.')}</p>
 {/if}
 
 {#if creating}
-	<Sheet title="Новый портфель" onclose={() => (creating = false)}>
+	<Sheet title={tx('Новый портфель', 'New portfolio')} onclose={() => (creating = false)}>
 		<div class="form">
-			<label>Название <input bind:value={newName} placeholder="Мой портфель" /></label>
-			<div class="seg" role="radiogroup" aria-label="Вид">
-				<button role="radio" aria-checked={newKind === 'real'} class:on={newKind === 'real'} onclick={() => (newKind = 'real')}>Реальный</button>
-				<button role="radio" aria-checked={newKind === 'virtual'} class:on={newKind === 'virtual'} onclick={() => (newKind = 'virtual')}>Виртуальный</button>
+			<label>{tx('Название', 'Name')} <input bind:value={newName} placeholder={tx('Мой портфель', 'My portfolio')} /></label>
+			<div class="seg" role="radiogroup" aria-label={tx('Вид', 'Kind')}>
+				<button role="radio" aria-checked={newKind === 'real'} class:on={newKind === 'real'} onclick={() => (newKind = 'real')}>{tx('Реальный', 'Real')}</button>
+				<button role="radio" aria-checked={newKind === 'virtual'} class:on={newKind === 'virtual'} onclick={() => (newKind = 'virtual')}>{tx('Виртуальный', 'Virtual')}</button>
 			</div>
-			<span class="muted small">Валюта — в ней брокер показывает итог; сменить можно и потом</span>
-			<div class="seg" role="radiogroup" aria-label="Валюта">
-				<button role="radio" aria-checked={newCurrency === 'USD'} class:on={newCurrency === 'USD'} onclick={() => (newCurrency = 'USD')}>$ доллары</button>
-				<button role="radio" aria-checked={newCurrency === 'ILS'} class:on={newCurrency === 'ILS'} onclick={() => (newCurrency = 'ILS')}>₪ шекели</button>
+			<span class="muted small">{tx('Валюта — в ней брокер показывает итог; сменить можно и потом', 'Currency — the one the broker shows the total in; it can be changed later')}</span>
+			<div class="seg" role="radiogroup" aria-label={tx('Валюта', 'Currency')}>
+				<button role="radio" aria-checked={newCurrency === 'USD'} class:on={newCurrency === 'USD'} onclick={() => (newCurrency = 'USD')}>$ {tx('доллары', 'dollars')}</button>
+				<button role="radio" aria-checked={newCurrency === 'ILS'} class:on={newCurrency === 'ILS'} onclick={() => (newCurrency = 'ILS')}>₪ {tx('шекели', 'shekels')}</button>
 			</div>
 			<p class="muted small">
-				Долларовый — бумаги США, бенчмарк S&P 500; шекелевый — бумаги TASE (и иностранные ETF, если брокер показывает их в шекелях), бенчмарк ТА-125.
-				Реальный — ваши деньги, виртуальный — проверка идей без денег. Автоматический портфель источника включается в карточке источника.
+				{tx('Долларовый — бумаги США, бенчмарк S&P 500; шекелевый — бумаги TASE (и иностранные ETF, если брокер показывает их в шекелях), бенчмарк ТА-125. Реальный — ваши деньги, виртуальный — проверка идей без денег. Автоматический портфель источника включается в карточке источника.', 'Dollar — US securities, benchmark S&P 500; shekel — TASE securities (and foreign ETFs if the broker shows them in shekels), benchmark TA-125. Real — your money, virtual — testing ideas without money. A source\'s automatic portfolio is turned on in the source card.')}
 			</p>
 			{#if createError}<p class="err">{createError}</p>{/if}
-			<button class="primary" disabled={!newName.trim() || !newCurrency} onclick={create}>Создать</button>
+			<button class="primary" disabled={!newName.trim() || !newCurrency} onclick={create}>{tx('Создать', 'Create')}</button>
 		</div>
 	</Sheet>
 {/if}
 
 {#if adding && current !== null && v}
-	<Sheet title={adding.kind === 'buy' ? 'Купил' : adding.kind === 'plan_buy' ? 'Хочу купить' : 'Наблюдаю'} onclose={() => (adding = null)}>
+	<Sheet title={adding.kind === 'buy' ? tx('Купил', 'Bought') : adding.kind === 'plan_buy' ? tx('Хочу купить', 'Want to buy') : tx('Наблюдаю', 'Watching')} onclose={() => (adding = null)}>
 		<EventForm
 			portfolioId={current}
 			kind={adding.kind}
@@ -743,39 +742,42 @@
 			lastFee={v.lastFee}
 			onsaved={(pid) => {
 				adding = null;
-				showToast('Записано');
+				showToast(tx('Записано', 'Saved'));
 				load();
 				opened = pid;
 			}}
 			oncancel={() => (adding = null)}
 		/>
-		{#if adding.hypothesisId}<p class="muted small">Позиция будет связана с гипотезой №{adding.hypothesisId}.</p>{/if}
+		{#if adding.hypothesisId}<p class="muted small">{tx('Позиция будет связана с гипотезой', 'The position will be linked to hypothesis')} №{adding.hypothesisId}.</p>{/if}
 	</Sheet>
 {/if}
 
 {#if opened !== null}
 	{@const p = v?.positions.find((x) => x.id === opened)}
-	<Sheet title={p ? `${p.symbol} · ${v?.portfolio.name}` : 'Позиция'} onclose={() => (opened = null)}>
+	<Sheet title={p ? `${p.symbol} · ${v?.portfolio.name}` : tx('Позиция', 'Position')} onclose={() => (opened = null)}>
 		<PositionCard positionId={opened} onchange={load} ondeleted={() => ((opened = null), load())} />
 	</Sheet>
 {/if}
 
 {#if transferring && v}
-	<Sheet title="Перенос позиций · {v.portfolio.name}" onclose={() => (transferring = false)}>
+	<Sheet title="{tx('Перенос позиций', 'Carry over positions')} · {v.portfolio.name}" onclose={() => (transferring = false)}>
 		<div class="form">
 			<p class="muted small">
-				Позиции, купленные до начала ведения портфеля. По строке на бумагу, сначала строка с датой переноса: <HelpIcon topicKey="portfolio.transfer" label="перенос позиций" />
+				{tx('Позиции, купленные до начала ведения портфеля. По строке на бумагу, сначала строка с датой переноса:', 'Positions bought before you started the portfolio. One line per security, first a line with the carry-over date:')} <HelpIcon topicKey="portfolio.transfer" label={tx('перенос позиций', 'carry over positions')} />
 			</p>
-			<pre class="sample">date 2026-11-17
+			<pre class="sample">{tx(`date 2026-11-17
 SCHD 40.5 30.00            тикер, количество, цена
 ESLT value=5000 cost=4000     стоимость и стоимость покупки
 yahoo:CSPX.L value=10000      ETF UCITS (Лондон) — по символу Yahoo
-cash ILS 5290.91 · cash USD 663.15 · tax 2881.45</pre>
+cash ILS 5290.91 · cash USD 663.15 · tax 2881.45`, `date 2026-11-17
+SCHD 40.5 30.00            ticker, quantity, price
+ESLT value=5000 cost=4000     value and purchase cost
+yahoo:CSPX.L value=10000      UCITS ETF (London) — by Yahoo symbol
+cash ILS 5290.91 · cash USD 663.15 · tax 2881.45`)}</pre>
 			<p class="muted small">
-				Количество по стоимости = стоимость / цена закрытия на дату, до целых. Можно дописать avg=средняя цена или cost=стоимость покупки — тогда прибыль считается от
-				покупки, иначе «с даты переноса». Данные остаются только в приложении.
+				{tx('Количество по стоимости = стоимость / цена закрытия на дату, до целых. Можно дописать avg=средняя цена или cost=стоимость покупки — тогда прибыль считается от покупки, иначе «с даты переноса». Данные остаются только в приложении.', 'Quantity from value = value / close on the date, to whole units. Add avg=average price or cost=purchase cost — then profit counts from the purchase, otherwise «since carry-over». The data stay in the app only.')}
 			</p>
-			<textarea rows="8" bind:value={transferText} spellcheck="false" aria-label="Список позиций"></textarea>
+			<textarea rows="8" bind:value={transferText} spellcheck="false" aria-label={tx('Список позиций', 'Position list')}></textarea>
 			{#if transferError}<p class="err">{transferError}</p>{/if}
 			{#if transferPreview}
 				{@const tp = transferPreview}
@@ -788,130 +790,128 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45</pre>
 									<b>{r.found?.symbol ?? r.text.split(/\s/)[0]}</b>{#if r.found} {r.found.name} · {r.found.exchange}{/if}
 									{#if r.found && r.qty !== undefined && r.price !== undefined} · {qtyText(r.qty)} × {priceText(r.price, r.found?.priceUnit ?? 'USD')} = {money(r.valuePc ?? 0, tp.currency)}{/if}
 								{:else if r.kind === 'cash'}
-									деньги {money(r.amount ?? 0, r.currency ?? 'ILS')}
+									{tx('деньги', 'cash')} {money(r.amount ?? 0, r.currency ?? 'ILS')}
 								{:else if r.kind === 'tax'}
-									начисленный налог {money(r.amount ?? 0, tp.currency)}
+									{tx('начисленный налог', 'accrued tax')} {money(r.amount ?? 0, tp.currency)}
 								{:else}
 									{r.text}
 								{/if}
-								{#each [...(r.error ? [r.error] : []), ...r.warnings] as w (w)}<small>{w}</small>{/each}
+								{#each [...(r.error ? [r.error] : []), ...r.warnings] as w (w)}<small>{tl(w)}</small>{/each}
 							</span>
 						</li>
 					{/each}
 				</ul>
 				<p class="small">
-					На {d(tp.date)}: бумаги <b>{money(tp.total.positions, tp.currency)}</b> + деньги {money(tp.total.cash, tp.currency)} =
-					<b>{money(tp.total.positions + tp.total.cash, tp.currency)}</b>{#if tp.total.cost} · стоимость покупки {money(tp.total.cost, tp.currency)}{/if}
+					{tx('На', 'On')} {d(tp.date)}: {tx('бумаги', 'securities')} <b>{money(tp.total.positions, tp.currency)}</b> + {tx('деньги', 'cash')} {money(tp.total.cash, tp.currency)} =
+					<b>{money(tp.total.positions + tp.total.cash, tp.currency)}</b>{#if tp.total.cost} · {tx('стоимость покупки', 'purchase cost')} {money(tp.total.cost, tp.currency)}{/if}
 				</p>
-				<button class="primary" disabled={transferBusy} onclick={() => transfer(true)}>{tp.ok ? 'Перенести' : 'Перенести строки без ошибок'}</button>
+				<button class="primary" disabled={transferBusy} onclick={() => transfer(true)}>{tp.ok ? tx('Перенести', 'Carry over') : tx('Перенести строки без ошибок', 'Carry over the lines without errors')}</button>
 			{:else}
-				<button class="primary" disabled={transferBusy || !transferText.trim()} onclick={() => transfer(false)}>{transferBusy ? 'Проверяю…' : 'Проверить'}</button>
+				<button class="primary" disabled={transferBusy || !transferText.trim()} onclick={() => transfer(false)}>{transferBusy ? tx('Проверяю…', 'Checking…') : tx('Проверить', 'Check')}</button>
 			{/if}
 		</div>
 	</Sheet>
 {/if}
 
 {#if exportText !== null && v}
-	<Sheet title="Экспорт · {v.portfolio.name}" onclose={() => (exportText = null)}>
+	<Sheet title="{tx('Экспорт', 'Export')} · {v.portfolio.name}" onclose={() => (exportText = null)}>
 		<div class="form">
-			<p class="muted small">Все данные портфеля в JSON: итоги, позиции с историей сделок, деньги, связанные гипотезы. Скопируйте и вставьте в чат с AI вместе со своим вопросом.</p>
+			<p class="muted small">{tx('Все данные портфеля в JSON: итоги, позиции с историей сделок, деньги, связанные гипотезы. Скопируйте и вставьте в чат с AI вместе со своим вопросом.', 'All the portfolio data in JSON: totals, positions with their trade history, cash, linked hypotheses. Copy it and paste into a chat with AI together with your question.')}</p>
 			{#if exportError}
 				<p class="err">{exportError}</p>
 			{:else if !exportText}
-				<p class="muted">Собираю…</p>
+				<p class="muted">{tx('Собираю…', 'Gathering…')}</p>
 			{:else}
-				<textarea class="export" readonly bind:this={exportEl} value={exportText} aria-label="Данные портфеля в JSON"></textarea>
-				<p class="muted small">{(exportText.length / 1024).toFixed(1)} КБ · позиций {v.positions.length}</p>
-				<button class="primary" onclick={copyExport}>{copied ? 'Скопировано ✓' : 'Скопировать'}</button>
+				<textarea class="export" readonly bind:this={exportEl} value={exportText} aria-label={tx('Данные портфеля в JSON', 'Portfolio data in JSON')}></textarea>
+				<p class="muted small">{(exportText.length / 1024).toFixed(1)} {tx('КБ', 'KB')} · {tx('позиций', 'positions')} {v.positions.length}</p>
+				<button class="primary" onclick={copyExport}>{copied ? tx('Скопировано ✓', 'Copied ✓') : tx('Скопировать', 'Copy')}</button>
 			{/if}
 		</div>
 	</Sheet>
 {/if}
 
 {#if renaming && v}
-	<Sheet title="Портфель" onclose={() => (renaming = false)}>
+	<Sheet title={tx('Портфель', 'Portfolio')} onclose={() => (renaming = false)}>
 		<div class="form">
-			<label>Название <input bind:value={editName} maxlength="60" /></label>
+			<label>{tx('Название', 'Name')} <input bind:value={editName} maxlength="60" /></label>
 			{#if !v.portfolio.auto_source_id}
-				<span class="muted small">Валюта портфеля</span>
-				<div class="seg" role="radiogroup" aria-label="Валюта">
-					<button role="radio" aria-checked={editCurrency === 'USD'} class:on={editCurrency === 'USD'} onclick={() => (editCurrency = 'USD')}>$ доллары</button>
-					<button role="radio" aria-checked={editCurrency === 'ILS'} class:on={editCurrency === 'ILS'} onclick={() => (editCurrency = 'ILS')}>₪ шекели</button>
+				<span class="muted small">{tx('Валюта портфеля', 'Portfolio currency')}</span>
+				<div class="seg" role="radiogroup" aria-label={tx('Валюта', 'Currency')}>
+					<button role="radio" aria-checked={editCurrency === 'USD'} class:on={editCurrency === 'USD'} onclick={() => (editCurrency = 'USD')}>$ {tx('доллары', 'dollars')}</button>
+					<button role="radio" aria-checked={editCurrency === 'ILS'} class:on={editCurrency === 'ILS'} onclick={() => (editCurrency = 'ILS')}>₪ {tx('шекели', 'shekels')}</button>
 				</div>
 				<p class="muted small">
-					Сделки и деньги остаются в своих валютах; стоимость, доходность и итоги пересчитаются в новой валюте с самого начала, по курсу каждого дня. В
-					долларовый портфель — только бумаги в долларах.
+					{tx('Сделки и деньги остаются в своих валютах; стоимость, доходность и итоги пересчитаются в новой валюте с самого начала, по курсу каждого дня. В долларовый портфель — только бумаги в долларах.', 'Trades and cash stay in their currencies; value, return and totals are recomputed in the new currency from the very start, at each day\'s rate. A dollar portfolio takes only dollar securities.')}
 				</p>
 			{/if}
 			{#if editError}<p class="err">{editError}</p>{/if}
-			<button class="primary" onclick={savePortfolio}>Сохранить</button>
+			<button class="primary" onclick={savePortfolio}>{tx('Сохранить', 'Save')}</button>
 		</div>
 	</Sheet>
 {/if}
 
 {#if cashEdit}
-	<Sheet title="Изменить: {CASH_LABEL[cashEdit.kind].toLowerCase()}" onclose={() => (cashEdit = null)}>
+	<Sheet title="{tx('Изменить', 'Edit')}: {CASH_LABEL[cashEdit.kind].toLowerCase()}" onclose={() => (cashEdit = null)}>
 		<div class="form">
-			<label>Дата <input type="date" bind:value={cashEdit.date} /></label>
-			<label>{cashEdit.kind === 'convert' ? 'Отдал' : 'Сумма'}, {cashEdit.currency === 'USD' ? '$' : '₪'} <input inputmode="decimal" bind:value={cashEdit.amount} /></label>
+			<label>{tx('Дата', 'Date')} <input type="date" bind:value={cashEdit.date} /></label>
+			<label>{cashEdit.kind === 'convert' ? tx('Отдал', 'Gave') : tx('Сумма', 'Amount')}, {cashEdit.currency === 'USD' ? '$' : '₪'} <input inputmode="decimal" bind:value={cashEdit.amount} /></label>
 			{#if cashEdit.kind === 'convert'}
-				<label>Получил, {cashEdit.toCurrency === 'USD' ? '$' : '₪'} <input inputmode="decimal" bind:value={cashEdit.toAmount} /></label>
+				<label>{tx('Получил', 'Got')}, {cashEdit.toCurrency === 'USD' ? '$' : '₪'} <input inputmode="decimal" bind:value={cashEdit.toAmount} /></label>
 			{/if}
-			<label>Заметка <input bind:value={cashEdit.note} /></label>
-			<p class="muted small">Прежние значения сохранятся в журнале правок. Вид записи и валюта не меняются — для этого сторно и новая запись.</p>
+			<label>{tx('Заметка', 'Note')} <input bind:value={cashEdit.note} /></label>
+			<p class="muted small">{tx('Прежние значения сохранятся в журнале правок. Вид записи и валюта не меняются — для этого сторно и новая запись.', 'Old values are kept in the edit log. The kind and currency do not change — for that, a reversal and a new record.')}</p>
 			{#if cashEditError}<p class="err">{cashEditError}</p>{/if}
-			<button class="primary" onclick={saveCashEdit}>Сохранить</button>
+			<button class="primary" onclick={saveCashEdit}>{tx('Сохранить', 'Save')}</button>
 		</div>
 	</Sheet>
 {/if}
 
 {#if deleting && v}
-	<Sheet title="Удалить портфель" onclose={() => (deleting = false)}>
+	<Sheet title={tx('Удалить портфель', 'Delete portfolio')} onclose={() => (deleting = false)}>
 		<div class="form">
 			<p>
-				Портфель «<b>{v.portfolio.name}</b>» удалится целиком: позиций {v.positions.length}, записей денег {v.cash.length} и вся их история. Вернуть его из приложения
-				нельзя; перед удалением приложение сохранит копию журнала в резервных копиях.
+				{tx('Портфель', 'Portfolio')} «<b>{v.portfolio.name}</b>» {tx('удалится целиком: позиций', 'is deleted entirely: positions')} {v.positions.length}, {tx('записей денег', 'cash records')} {v.cash.length} {tx('и вся их история. Вернуть его из приложения нельзя; перед удалением приложение сохранит копию журнала в резервных копиях.', 'and all their history. It cannot be brought back in the app; before deleting, the app saves a copy of the journal in the backups.')}
 			</p>
-			{#if v.portfolio.auto_source_id}<p class="muted small">Это автоматический портфель источника; если источник останется включённым, приложение заведёт его заново.</p>{/if}
-			<label>Чтобы подтвердить, наберите название <input bind:value={deleteName} placeholder={v.portfolio.name} autocomplete="off" /></label>
+			{#if v.portfolio.auto_source_id}<p class="muted small">{tx('Это автоматический портфель источника; если источник останется включённым, приложение заведёт его заново.', 'This is a source\'s automatic portfolio; if the source stays on, the app creates it again.')}</p>{/if}
+			<label>{tx('Чтобы подтвердить, наберите название', 'To confirm, type the name')} <input bind:value={deleteName} placeholder={v.portfolio.name} autocomplete="off" /></label>
 			{#if deleteError}<p class="err">{deleteError}</p>{/if}
-			<button class="danger" disabled={deleteName.trim() !== v.portfolio.name} onclick={removePortfolio}>Удалить навсегда</button>
+			<button class="danger" disabled={deleteName.trim() !== v.portfolio.name} onclick={removePortfolio}>{tx('Удалить навсегда', 'Delete forever')}</button>
 		</div>
 	</Sheet>
 {/if}
 
 {#if cashing}
-	<Sheet title="Деньги портфеля" onclose={() => (cashing = false)}>
+	<Sheet title={tx('Деньги портфеля', 'Portfolio cash')} onclose={() => (cashing = false)}>
 		<div class="form">
-			<div class="seg five" role="radiogroup" aria-label="Вид">
+			<div class="seg five" role="radiogroup" aria-label={tx('Вид', 'Kind')}>
 				{#each ['deposit', 'convert', 'withdraw', 'dividend', 'fee', 'tax'] as k (k)}
 					<button role="radio" aria-checked={cashKind === k} class:on={cashKind === k} onclick={() => (cashKind = k)}>{CASH_LABEL[k]}</button>
 				{/each}
 			</div>
 			<div class="row">
-				<label>{cashKind === 'convert' ? 'Отдал' : 'Сумма'} <input inputmode="decimal" bind:value={cashAmount} placeholder="0" /></label>
+				<label>{cashKind === 'convert' ? tx('Отдал', 'Gave') : tx('Сумма', 'Amount')} <input inputmode="decimal" bind:value={cashAmount} placeholder="0" /></label>
 				<label
-					>Валюта
+					>{tx('Валюта', 'Currency')}
 					<select bind:value={cashCurrency}><option value="ILS">₪</option><option value="USD">$</option></select>
 				</label>
 			</div>
 			{#if cashKind === 'convert'}
 				<label
-					>Получил, {cashCurrency === 'ILS' ? '$' : '₪'}
+					>{tx('Получил', 'Got')}, {cashCurrency === 'ILS' ? '$' : '₪'}
 					<input inputmode="decimal" bind:value={cashTo} placeholder="0" />
 				</label>
 				{#if Number(cashAmount.replace(',', '.')) > 0 && Number(cashTo.replace(',', '.')) > 0}
 					<p class="muted small">
-						Курс сделки: {(cashCurrency === 'ILS' ? Number(cashAmount.replace(',', '.')) / Number(cashTo.replace(',', '.')) : Number(cashTo.replace(',', '.')) / Number(cashAmount.replace(',', '.'))).toFixed(4)} ₪ за $ — с комиссией банка, фиксируется один раз.
+						{tx('Курс сделки', 'Deal rate')}: {(cashCurrency === 'ILS' ? Number(cashAmount.replace(',', '.')) / Number(cashTo.replace(',', '.')) : Number(cashTo.replace(',', '.')) / Number(cashAmount.replace(',', '.'))).toFixed(4)} ₪ {tx('за $ — с комиссией банка, фиксируется один раз.', 'per $ — with the bank fee, fixed once.')}
 					</p>
 				{/if}
 			{/if}
-			<label>Дата <input type="date" max={israelDate()} bind:value={cashDate} /></label>
-			<label>Заметка <input bind:value={cashNote} placeholder="необязательно" /></label>
+			<label>{tx('Дата', 'Date')} <input type="date" max={israelDate()} bind:value={cashDate} /></label>
+			<label>{tx('Заметка', 'Note')} <input bind:value={cashNote} placeholder={tx('необязательно', 'optional')} /></label>
 			{#if cashError}<p class="err">{cashError}</p>{/if}
-			<button class="primary" disabled={!cashAmount.trim() || (cashKind === 'convert' && !cashTo.trim())} onclick={addCash}>Записать</button>
+			<button class="primary" disabled={!cashAmount.trim() || (cashKind === 'convert' && !cashTo.trim())} onclick={addCash}>{tx('Записать', 'Save')}</button>
 			<p class="muted small">
-				Взнос и вывод — деньги извне, они не меняют доходность. Конвертация в долларовом портфеле — его взнос; в шекелевом — перевод между валютами. Дивиденд, комиссия и налог — часть доходности.
+				{tx('Взнос и вывод — деньги извне, они не меняют доходность. Конвертация в долларовом портфеле — его взнос; в шекелевом — перевод между валютами. Дивиденд, комиссия и налог — часть доходности.', 'Deposits and withdrawals are money from outside; they do not change the return. A conversion in a dollar portfolio is its deposit; in a shekel one — a transfer between currencies. Dividends, fees and tax are part of the return.')}
 			</p>
 		</div>
 	</Sheet>

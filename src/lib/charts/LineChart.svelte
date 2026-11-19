@@ -1,4 +1,5 @@
 <script lang="ts" module>
+	import { loc, tx } from '#lib/i18n.js';
 	/** Colours of sources' marks and of compared lines: readable in both themes. */
 	export const PALETTE = ['#2f7de1', '#d9822b', '#2e9e6b', '#b5479b', '#8a6fd8', '#c94040', '#1f9fb0', '#9a8a26'];
 	export const colorOf = (n: number) => PALETTE[Math.abs(n) % PALETTE.length];
@@ -52,7 +53,7 @@
 	let media: MediaQueryList | null = null;
 
 	const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-	const fmt = (v: number) => (format ? format(v) : percent ? `${v > 0 ? '+' : ''}${v.toFixed(1)}%` : v.toLocaleString('ru-RU', { maximumFractionDigits: 2 }));
+	const fmt = (v: number) => (format ? format(v) : percent ? `${v > 0 ? '+' : ''}${v.toFixed(1)}%` : v.toLocaleString(loc(), { maximumFractionDigits: 2 }));
 
 	function theme() {
 		return {
@@ -103,7 +104,7 @@
 	function onCross(p: MouseEventParams<Time>) {
 		if (!p.time || !p.seriesData.size) return (legend = null);
 		legend = {
-			date: new Date(String(p.time) + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' }),
+			date: new Date(String(p.time) + 'T12:00:00').toLocaleDateString(loc(), { day: 'numeric', month: 'short', year: 'numeric' }),
 			values: series
 				.map((s, i) => {
 					const d = p.seriesData.get(s) as { value?: number } | undefined;
@@ -123,7 +124,7 @@
 			height,
 			autoSize: true,
 			...theme(),
-			localization: { locale: 'ru-RU', dateFormat: 'dd.MM.yy' },
+			localization: { locale: loc(), dateFormat: 'dd.MM.yy' },
 			handleScale: { pinch: true, mouseWheel: false, axisPressedMouseMove: false },
 			handleScroll: { horzTouchDrag: true, vertTouchDrag: false, pressedMouseMove: true }
 		});
@@ -161,7 +162,7 @@
 			{#each lines as l (l.key)}<span><i style:background={l.color ?? 'var(--accent)'} class:dash={l.dashed}></i>{l.label}</span>{/each}
 		{/if}
 	</div>
-	<div class="chart" bind:this={el} style:height="{height}px" role="img" aria-label="График: {lines.map((l) => l.label).join(', ')}"></div>
+	<div class="chart" bind:this={el} style:height="{height}px" role="img" aria-label="{tx('График', 'Chart')}: {lines.map((l) => l.label).join(', ')}"></div>
 </div>
 
 <style>

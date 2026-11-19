@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onDestroy, onMount } from 'svelte';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import TopBar from '#lib/TopBar.svelte';
@@ -26,7 +27,7 @@
 			problem = undefined;
 			if (!stats!.running) stopPoll();
 		} catch {
-			problem = 'Нет связи с сервером.';
+			problem = tx('Нет связи с сервером.', 'No connection to the server.');
 		}
 	}
 	function stopPoll() {
@@ -35,7 +36,7 @@
 	}
 	async function refresh() {
 		if (stats) stats.running = true;
-		await fetch('/api/tickers/refresh', { method: 'POST' }).catch(() => (problem = 'Нет связи с сервером.'));
+		await fetch('/api/tickers/refresh', { method: 'POST' }).catch(() => (problem = tx('Нет связи с сервером.', 'No connection to the server.')));
 		stopPoll();
 		poll = setInterval(load, 2500);
 	}
@@ -47,29 +48,29 @@
 	});
 	onDestroy(stopPoll);
 
-	const fmt = new Intl.NumberFormat('ru-RU');
+	const fmt = $derived(new Intl.NumberFormat(loc()));
 	const when = (iso: string | null) =>
-		iso ? new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : 'ещё не загружалась';
+		iso ? new Date(iso).toLocaleString(loc(), { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : tx('ещё не загружалась', 'not loaded yet');
 	const groups = $derived(
 		stats
 			? [
-					{ title: 'США', rows: stats.byExchange.filter((e) => e.country === 'US' && e.stocks + e.etfs + e.inactive > 0) },
-					{ title: 'Израиль', rows: stats.byExchange.filter((e) => e.country === 'IL' && e.stocks + e.etfs + e.inactive > 0) }
+					{ title: tx('США', 'US'), rows: stats.byExchange.filter((e) => e.country === 'US' && e.stocks + e.etfs + e.inactive > 0) },
+					{ title: tx('Израиль', 'Israel'), rows: stats.byExchange.filter((e) => e.country === 'IL' && e.stocks + e.etfs + e.inactive > 0) }
 				]
 			: []
 	);
 	const total = $derived(stats ? stats.byExchange.reduce((n, e) => n + e.stocks + e.etfs, 0) : 0);
-	const PROVIDER: Record<string, string> = { nasdaqtrader: 'США — Nasdaq Trader', tase: 'Израиль — сайт TASE' };
-	const STATUS: Record<string, string> = { ok: 'загружено', suspicious: 'подозрительно — проверить', error: 'ошибка', running: 'идёт' };
-	const typeName = (t: string) => (t === 'etf' ? 'ETF' : t === 'index' ? 'Индекс' : 'Акция');
+	const PROVIDER: Record<string, string> = { nasdaqtrader: 'США — Nasdaq Trader', tase: 'Израиль — сайт TASE' }; // shown through tl()
+	const STATUS: Record<string, string> = { ok: 'загружено', suspicious: 'подозрительно — проверить', error: 'ошибка', running: 'идёт' }; // shown through tl()
+	const typeName = (t: string) => (t === 'etf' ? 'ETF' : t === 'index' ? tx('Индекс', 'Index') : tx('Акция', 'Stock'));
 </script>
 
-<svelte:head><title>Тикеры · Журнал гипотез</title></svelte:head>
+<svelte:head><title>{tx('Тикеры', 'Tickers')} · {tx('Журнал гипотез', 'Hypothesis journal')}</title></svelte:head>
 
-<TopBar title="Тикеры" help="ticker.db" back={{ href: '/more', label: 'Ещё' }}>
+<TopBar title={tx('Тикеры', 'Tickers')} help="ticker.db" back={{ href: '/more', label: tx('Ещё', 'More') }}>
 	{#snippet actions()}
-		<button class="refresh" onclick={refresh} disabled={stats?.running} aria-label="Обновить списки бумаг">
-			<span class:spin={stats?.running}><RefreshCw size={18} /></span>{stats?.running ? 'Обновляется…' : 'Обновить'}
+		<button class="refresh" onclick={refresh} disabled={stats?.running} aria-label={tx('Обновить списки бумаг', 'Refresh the security lists')}>
+			<span class:spin={stats?.running}><RefreshCw size={18} /></span>{stats?.running ? tx('Обновляется…', 'Refreshing…') : tx('Обновить', 'Refresh')}
 		</button>
 	{/snippet}
 </TopBar>
@@ -77,7 +78,7 @@
 {#if problem}<p class="warn" role="alert">{problem}</p>{/if}
 
 <section class="search">
-	<TickerSearch includeInactive label="Найти бумагу" onselect={(s) => (picked = s)} />
+	<TickerSearch includeInactive label={tx('Найти бумагу', 'Find a security')} onselect={(s) => (picked = s)} />
 </section>
 
 
@@ -85,12 +86,12 @@
 	<div class="skeleton tall"></div>
 {:else}
 	<section class="card">
-		<p class="big">{fmt.format(total)} <span>акций и ETF</span></p>
-		<p class="muted">Обновлено: {when(stats.updatedAt)}</p>
+		<p class="big">{fmt.format(total)} <span>{tx('акций и ETF', 'stocks and ETFs')}</span></p>
+		<p class="muted">{tx('Обновлено', 'Updated')}: {when(stats.updatedAt)}</p>
 		{#each groups as g (g.title)}
 			<table>
 				<caption>{g.title}</caption>
-				<thead><tr><th>Биржа</th><th>Акции</th><th>ETF</th><th title="Исчезли из списков биржи: хранятся для старых гипотез, но не предлагаются">Выбыли</th></tr></thead>
+				<thead><tr><th>{tx('Биржа', 'Exchange')}</th><th>{tx('Акции', 'Stocks')}</th><th>ETF</th><th title={tx('Исчезли из списков биржи: хранятся для старых гипотез, но не предлагаются', 'Gone from the exchange lists: kept for old hypotheses but not offered')}>{tx('Выбыли', 'Delisted')}</th></tr></thead>
 				<tbody>
 					{#each g.rows as e (e.code)}
 						<tr>
@@ -107,13 +108,13 @@
 
 	{#if stats.runs.length}
 		<section class="card runs">
-			<h2>Последняя загрузка</h2>
+			<h2>{tx('Последняя загрузка', 'Last load')}</h2>
 			{#each stats.runs as r (r.provider)}
 				<div class="run">
-					<b>{PROVIDER[r.provider] ?? r.provider}</b>
-					<span class="status {r.status}">{STATUS[r.status] ?? r.status}</span>
+					<b>{tl(PROVIDER[r.provider] ?? r.provider)}</b>
+					<span class="status {r.status}">{tl(STATUS[r.status] ?? r.status)}</span>
 					<span class="muted">
-						{when(r.finishedAt ?? r.startedAt)} · получено {fmt.format(r.received)}, новых {fmt.format(r.added)}, изменено {fmt.format(r.updated)}
+						{when(r.finishedAt ?? r.startedAt)} · {tx('получено', 'received')} {fmt.format(r.received)}, {tx('новых', 'new')} {fmt.format(r.added)}, {tx('изменено', 'changed')} {fmt.format(r.updated)}
 					</span>
 					{#if r.error}<span class="err">{r.error}</span>{/if}
 				</div>
@@ -126,17 +127,17 @@
 	{@const s = picked}
 	<Sheet title="{s.symbol} · {s.exchangeName}" onclose={() => (picked = null)}>
 		<dl>
-			<dt>Название</dt>
+			<dt>{tx('Название', 'Name')}</dt>
 			<dd>{s.nameEn}</dd>
-			{#if s.nameHe}<dt>На иврите</dt><dd><bdi class="he" lang="he">{s.nameHe}</bdi></dd>{/if}
-			<dt>Тип</dt>
+			{#if s.nameHe}<dt>{tx('На иврите', 'In Hebrew')}</dt><dd><bdi class="he" lang="he">{s.nameHe}</bdi></dd>{/if}
+			<dt>{tx('Тип', 'Type')}</dt>
 			<dd>{typeName(s.type)}</dd>
-			<dt>Валюта цены</dt>
-			<dd>{s.priceUnit === 'ILA' ? 'агороты (1/100 шекеля)' : s.currency}</dd>
-			<dt>В списках биржи</dt>
-			<dd>{s.active ? 'да' : 'нет — бумага сохранена для старых гипотез'}</dd>
+			<dt>{tx('Валюта цены', 'Price currency')}</dt>
+			<dd>{s.priceUnit === 'ILA' ? tx('агороты (1/100 шекеля)', 'agorot (1/100 of a shekel)') : s.currency}</dd>
+			<dt>{tx('В списках биржи', 'Listed')}</dt>
+			<dd>{s.active ? tx('да', 'yes') : tx('нет — бумага сохранена для старых гипотез', 'no — kept for old hypotheses')}</dd>
 		</dl>
-		<a class="tocard" href="/security/{s.id}">Карточка бумаги и график</a>
+		<a class="tocard" href="/security/{s.id}">{tx('Карточка бумаги и график', 'Security card and chart')}</a>
 	</Sheet>
 {/if}
 

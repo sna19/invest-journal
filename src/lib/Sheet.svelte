@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tx } from '#lib/i18n.js';
 	import type { Snippet } from 'svelte';
 	import X from '@lucide/svelte/icons/x';
 
@@ -41,7 +42,7 @@
 		<span class="handle"></span>
 		<div class="head">
 			<h2 {id}>{title}</h2>
-			<button class="close" aria-label="Закрыть" onclick={onclose}><X size={22} /></button>
+			<button class="close" aria-label={tx('Закрыть', 'Close')} onclick={onclose}><X size={22} /></button>
 		</div>
 	</div>
 	<div class="body">{@render children()}</div>

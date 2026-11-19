@@ -1,4 +1,5 @@
 <script lang="ts" module>
+	import { tx } from '#lib/i18n.js';
 	export interface Security {
 		id: number;
 		symbol: string;
@@ -56,7 +57,7 @@
 		/** also securities added by hand for a portfolio (ETF UCITS) */
 		withManual?: boolean;
 	}
-	let { onselect, includeInactive = false, noIndex = false, label = 'Тикер', autofocus = false, withManual = false }: Props = $props();
+	let { onselect, includeInactive = false, noIndex = false, label = tx('Тикер', 'Ticker'), autofocus = false, withManual = false }: Props = $props();
 
 	let q = $state('');
 	let market = $state<Market>('all');
@@ -103,7 +104,7 @@
 			active = items.length ? 0 : -1;
 			error = undefined;
 		} catch {
-			if (my === seq) error = 'Поиск не ответил — проверьте связь.';
+			if (my === seq) error = tx('Поиск не ответил — проверьте связь.', 'Search did not answer — check the connection.');
 		} finally {
 			if (my === seq) loading = false;
 		}
@@ -139,14 +140,14 @@
 		e.preventDefault();
 	}
 
-	const unit = (s: Security) => (s.priceUnit === 'ILA' ? 'агорот' : s.currency);
-	const kind = (s: Security) => (s.type === 'etf' ? 'ETF' : s.type === 'index' ? 'индекс' : '');
+	const unit = (s: Security) => (s.priceUnit === 'ILA' ? tx('агорот', 'agorot') : s.currency);
+	const kind = (s: Security) => (s.type === 'etf' ? 'ETF' : s.type === 'index' ? tx('индекс', 'index') : '');
 </script>
 
 <div class="ticker">
 	<div class="label-row">
 		<label for={inputId}>{label}</label>
-		<HelpIcon topicKey="ticker.search" label="поиск тикера" />
+		<HelpIcon topicKey="ticker.search" label={tx('поиск тикера', 'ticker search')} />
 	</div>
 	<div class="field">
 		<Search size={18} />
@@ -161,15 +162,15 @@
 			autocomplete="off"
 			autocapitalize="characters"
 			spellcheck="false"
-			placeholder="AMAT, Teva или לאומי"
+			placeholder={tx('AMAT, Teva или לאומי', 'AMAT, Teva or לאומי')}
 			{autofocus}
 			bind:value={q}
 			oninput={input}
 			onkeydown={key}
 		/>
 	</div>
-	<div class="markets" role="radiogroup" aria-label="Рынок">
-		{#each [['all', 'Все'], ['us', 'США'], ['il', 'Израиль']] as [m, t] (m)}
+	<div class="markets" role="radiogroup" aria-label={tx('Рынок', 'Market')}>
+		{#each [['all', tx('Все', 'All')], ['us', tx('США', 'US')], ['il', tx('Израиль', 'Israel')]] as [m, t] (m)}
 			<button role="radio" aria-checked={market === m} class:on={market === m} onclick={() => setMarket(m as Market)}>{t}</button>
 		{/each}
 	</div>
@@ -180,14 +181,14 @@
 		<div class="skeleton"></div>
 		<div class="skeleton"></div>
 	{:else if query.length >= 2 && !items.length}
-		<p class="note">Ничего не нашлось. В базе только акции и ETF бирж США и TASE; ручной ввод тикера не предусмотрен.</p>
+		<p class="note">{tx('Ничего не нашлось. В базе только акции и ETF бирж США и TASE; ручной ввод тикера не предусмотрен.', 'Nothing found. The base holds only stocks and ETFs of US exchanges and TASE; a ticker cannot be typed by hand.')}</p>
 	{:else if query.length > 0 && query.length < 2}
-		<p class="note">Ещё один символ — поиск начинается со второго.</p>
+		<p class="note">{tx('Ещё один символ — поиск начинается со второго.', 'One more character — search starts from the second.')}</p>
 	{/if}
 
 	{#if shown.length}
-		{#if query.length < 2}<p class="caption">Недавние</p>{/if}
-		<ul id="{inputId}-list" role="listbox" aria-label="Бумаги">
+		{#if query.length < 2}<p class="caption">{tx('Недавние', 'Recent')}</p>{/if}
+		<ul id="{inputId}-list" role="listbox" aria-label={tx('Бумаги', 'Securities')}>
 			{#each shown as s, i (s.id)}
 				<li role="option" aria-selected={i === active} class:active={i === active}>
 					<button onclick={() => choose(s)}>
@@ -196,7 +197,7 @@
 							— {s.nameEn}{#if s.nameHe}&nbsp;<bdi class="he" lang="he">{s.nameHe}</bdi>{/if}
 						</span>
 						<span class="meta"
-							>{[s.exchangeName, unit(s), kind(s)].filter(Boolean).join(' · ')}{#if !s.active}&nbsp;· нет в списках{/if}</span
+							>{[s.exchangeName, unit(s), kind(s)].filter(Boolean).join(' · ')}{#if !s.active}&nbsp;· {tx('нет в списках', 'delisted')}{/if}</span
 						>
 					</button>
 				</li>

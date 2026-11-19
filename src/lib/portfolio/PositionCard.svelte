@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onMount, tick } from 'svelte';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
 	import Pencil from '@lucide/svelte/icons/pencil';
@@ -26,8 +27,8 @@
 		problem = null;
 		const r = await fetch(`/api/positions/${positionId}`, { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ confirm: true }) });
 		const j = await r.json().catch(() => ({}));
-		if (!r.ok) return (problem = j.message ?? 'Не удалилось');
-		showToast(`${j.symbol} удалена из портфеля`);
+		if (!r.ok) return (problem = tl(j.message) || tx('Не удалилось', 'Not deleted'));
+		showToast(`${j.symbol} ${tx('удалена из портфеля', 'removed from the portfolio')}`);
 		removing = false;
 		onchange();
 		ondeleted?.();
@@ -105,17 +106,17 @@
 	let priceValue = $state('');
 	async function savePrice(securityId: number) {
 		const r = await fetch(`/api/securities/${securityId}/price`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ date: priceDate, close: priceValue }) });
-		if (!r.ok) return (problem = (await r.json().catch(() => ({}))).message ?? 'Не сохранилось');
+		if (!r.ok) return (problem = (await r.json().catch(() => ({}))).message ?? tx('Не сохранилось', 'Not saved'));
 		pricing = false;
 		priceValue = '';
-		showToast('Цена записана');
+		showToast(tx('Цена записана', 'Price saved'));
 		await load();
 		onchange();
 	}
 
 	async function load() {
 		const r = await fetch(`/api/positions/${positionId}`).catch(() => null);
-		if (!r?.ok) return (problem = 'Нет связи с сервером');
+		if (!r?.ok) return (problem = tx('Нет связи с сервером', 'No connection to the server'));
 		v = await r.json();
 	}
 	onMount(load);
@@ -127,22 +128,22 @@
 		plan_sell: ['sell', 'drop', 'note'],
 		closed: ['watch', 'buy', 'note']
 	};
-	const NEXT_LABEL: Record<string, string> = {
+	const NEXT_LABEL: Record<string, string> = { // shown through tl()
 		basis: 'Цена покупки', buy: 'Купил', sell: 'Продал', plan_buy: 'Хочу купить', plan_sell: 'Хочу продать', drop: 'Передумал', note: 'Заметка', watch: 'Наблюдаю' };
 
 	async function undo(id: number, how: 'cancel' | 'reverse') {
 		problem = null;
 		const r = await fetch(`/api/events/${id}/${how}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
 		const j = await r.json().catch(() => ({}));
-		if (!r.ok) return (problem = j.message ?? 'Не получилось');
-		showToast(how === 'cancel' ? 'Событие отменено' : 'Сторно записано — событие больше не учитывается');
+		if (!r.ok) return (problem = tl(j.message) || tx('Не получилось', 'It did not work'));
+		showToast(how === 'cancel' ? tx('Событие отменено', 'Event cancelled') : tx('Сторно записано — событие больше не учитывается', 'Reversal saved — the event no longer counts'));
 		await load();
 		onchange();
 	}
 
 	// «17 нояб.» this year, «17 нояб. 2025» before it
 	const d = (s: string) =>
-		new Date(s + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', ...(s.slice(0, 4) !== String(new Date().getFullYear()) ? { year: 'numeric' } : {}) });
+		new Date(s + 'T12:00:00').toLocaleDateString(loc(), { day: 'numeric', month: 'short', ...(s.slice(0, 4) !== String(new Date().getFullYear()) ? { year: 'numeric' } : {}) });
 	const live = (e: View['events'][number]) => !e.cancelledAt && !e.reversedBy && e.kind !== 'reverse';
 </script>
 
@@ -150,70 +151,70 @@
 	<div class="skeleton"></div>
 {:else}
 	{@const p = v.position}
-	<p class="name">{p.name} · {p.exchange.replace('_', ' ')} · <a href="/security/{p.securityId}">график</a> · <b>{STAGE_LABEL[p.stage]}</b><HelpIcon topicKey="portfolio.stages" label="этапы позиции" /></p>
+	<p class="name">{p.name} · {p.exchange.replace('_', ' ')} · <a href="/security/{p.securityId}">{tx('график', 'chart')}</a> · <b>{STAGE_LABEL[p.stage]}</b><HelpIcon topicKey="portfolio.stages" label={tx('этапы позиции', 'position stages')} /></p>
 
 	{#if p.qty > 0}
 		<div class="nums">
-			<div><span class="k">В позиции</span><b>{qtyText(p.qty)}</b><span class="sub">средняя {priceText(p.avgPrice, p.priceUnit)}</span></div>
+			<div><span class="k">{tx('В позиции', 'Position')}</span><b>{qtyText(p.qty)}</b><span class="sub">{tx('средняя', 'average')} {priceText(p.avgPrice, p.priceUnit)}</span></div>
 			<div>
-				<span class="k">Стоимость</span><b>{money(p.valuePc, pc)}</b>
+				<span class="k">{tx('Стоимость', 'Value')}</span><b>{money(p.valuePc, pc)}</b>
 				<span class="sub"
 					>{p.currency !== pc ? money(p.value, p.currency) + ' · ' : ''}{priceText(p.lastPrice, p.priceUnit)}
-					{p.eventPrice ? 'цена переноса — цен в базе ещё нет' : p.manualPrice ? `ручная цена от ${p.lastDate ? d(p.lastDate) : '—'}` : `на ${p.lastDate ? d(p.lastDate) : '—'}`}</span
+					{p.eventPrice ? tx('цена переноса — цен в базе ещё нет', 'carry-over price — no prices in the base yet') : p.manualPrice ? `${tx('ручная цена от', 'manual price of')} ${p.lastDate ? d(p.lastDate) : '—'}` : `${tx('на', 'as of')} ${p.lastDate ? d(p.lastDate) : '—'}`}</span
 				>
 			</div>
 			<div>
-				<span class="k">{p.fromTransfer ? 'С даты переноса' : 'Не реализовано'}</span><b><Pct value={p.unrealizedPct} /></b>
+				<span class="k">{p.fromTransfer ? tx('С даты переноса', 'Since carry-over') : tx('Не реализовано', 'Unrealized')}</span><b><Pct value={p.unrealizedPct} /></b>
 				<span class="sub">{money(p.unrealized, p.currency, true)}{p.currency !== pc ? ` · ${money(p.unrealizedPc, pc, true)}` : ''}</span>
 			</div>
 			{#if p.currency !== pc}
 				<div>
-					<span class="k">В валюте портфеля <HelpIcon topicKey="portfolio.fx" label="рост и курс" /></span>
-					<span class="sub">от цены {money(p.fromPrice, pc, true)}</span>
-					<span class="sub">от курса {money(p.fromFx, pc, true)}</span>
+					<span class="k">{tx('В валюте портфеля', 'In the portfolio currency')} <HelpIcon topicKey="portfolio.fx" label={tx('рост и курс', 'growth and rate')} /></span>
+					<span class="sub">{tx('от цены', 'from price')} {money(p.fromPrice, pc, true)}</span>
+					<span class="sub">{tx('от курса', 'from the rate')} {money(p.fromFx, pc, true)}</span>
 				</div>
 			{/if}
 		</div>
 	{/if}
 	{#if p.realized !== 0}
-		<p class="realized">Реализовано (FIFO): <b>{money(p.realized, p.currency, true)}</b>{#if p.currency !== pc} · {money(p.realizedPc, pc, true)}{/if}</p>
+		<p class="realized">{tx('Реализовано (FIFO)', 'Realized (FIFO)')}: <b>{money(p.realized, p.currency, true)}</b>{#if p.currency !== pc} · {money(p.realizedPc, pc, true)}{/if}</p>
 	{/if}
 	{#if !v.portfolio.auto_source_id && p.qty > 0 && (v.hasOpening || p.eventPrice || p.manualPrice)}
 		<div class="extra">
 			{#if v.hasOpening}
-				<button onclick={() => (step = 'basis')}>{p.fromTransfer ? 'Добавить цену покупки' : 'Изменить цену покупки'}</button>
+				<button onclick={() => (step = 'basis')}>{p.fromTransfer ? tx('Добавить цену покупки', 'Add the purchase price') : tx('Изменить цену покупки', 'Change the purchase price')}</button>
 			{/if}
 			{#if p.eventPrice || p.manualPrice}
-				<button onclick={() => (pricing = true)}>Ввести цену</button>
+				<button onclick={() => (pricing = true)}>{tx('Ввести цену', 'Enter a price')}</button>
 			{/if}
 		</div>
 		{#if pricing}
 			<div class="stepform">
-				<h3>Ручная цена, {p.priceUnit === 'ILA' ? 'агорот' : p.currency === 'USD' ? '$' : '₪'}</h3>
+				<h3>{tx('Ручная цена', 'Manual price')}, {p.priceUnit === 'ILA' ? tx('агорот', 'agorot') : p.currency === 'USD' ? '$' : '₪'}</h3>
 				<div class="pr">
-					<input type="date" bind:value={priceDate} aria-label="Дата цены" />
-					<input inputmode="decimal" bind:value={priceValue} placeholder="цена" aria-label="Цена" />
-					<button class="main" disabled={!priceValue.trim()} onclick={() => savePrice(p.securityId)}>Сохранить</button>
+					<input type="date" bind:value={priceDate} aria-label={tx('Дата цены', 'Price date')} />
+					<input inputmode="decimal" bind:value={priceValue} placeholder={tx('цена', 'price')} aria-label={tx('Цена', 'Price')} />
+					<button class="main" disabled={!priceValue.trim()} onclick={() => savePrice(p.securityId)}>{tx('Сохранить', 'Save')}</button>
 				</div>
-				<p class="sub">Пока у поставщика нет цены этой бумаги. Цена от поставщика за тот же день её заменит.</p>
+				<p class="sub">{tx('Пока у поставщика нет цены этой бумаги. Цена от поставщика за тот же день её заменит.', 'The provider has no price for this security yet. A provider price for the same day will replace it.')}</p>
 			</div>
 		{/if}
 	{/if}
 
 	{#each v.hypotheses as h (h.id)}
 		<a class="hyp" href="/?open={h.id}">
-			<span>Гипотеза №{h.id} от {d(h.entryDate)}{h.pauseDays !== null ? ` · куплено через ${h.pauseDays} дн.` : ''}</span>
+			<span>{tx('Гипотеза', 'Hypothesis')} №{h.id} {tx('от', 'of')} {d(h.entryDate)}{h.pauseDays !== null ? ` · ${tx(`куплено через ${h.pauseDays} дн.`, `bought ${h.pauseDays} d later`)}` : ''}</span>
 			{#if h.fromBuy !== null}
-				<span class="sub">от даты гипотезы <Pct value={h.fromIdea} /> · от покупки <Pct value={h.fromBuy} /></span>
+				<span class="sub">{tx('от даты гипотезы', 'since the hypothesis')} <Pct value={h.fromIdea} /> · {tx('от покупки', 'since the purchase')} <Pct value={h.fromBuy} /></span>
 			{:else if h.fromIdea !== null}
-				<span class="sub">с даты гипотезы <Pct value={h.fromIdea} /></span>
+				<span class="sub">{tx('с даты гипотезы', 'since the hypothesis')} <Pct value={h.fromIdea} /></span>
 			{/if}
 		</a>
 	{/each}
 
 	{#if editing}
 		<div class="stepform" bind:this={editEl}>
-			<h3>Изменить: {(EVENT_LABEL[editing.kind] ?? editing.kind).toLowerCase()} от {d(editing.date)}</h3>
+			<h3>{tx('Изменить', 'Edit')}: {(EVENT_LABEL[editing.kind] ?? editing.kind).toLowerCase()} {tx('от', 'of')} {d(editing.date)}</h3>
 			<EventForm
 				portfolioId={v.portfolio.id}
 				kind={editing.kind}
@@ -221,7 +222,7 @@
 				portfolioCurrency={pc}
 				edit={editing}
 				onsaved={async () => {
-					showToast(`${p.symbol}: событие изменено`);
+					showToast(`${p.symbol}: ${tx('событие изменено', 'event changed')}`);
 					editing = null;
 					await load();
 					onchange();
@@ -231,7 +232,7 @@
 		</div>
 	{:else if step}
 		<div class="stepform">
-			<h3>{NEXT_LABEL[step]}</h3>
+			<h3>{tl(NEXT_LABEL[step])}</h3>
 			<EventForm
 				portfolioId={v.portfolio.id}
 				kind={step}
@@ -239,7 +240,7 @@
 				lastFee={v.lastFee}
 				portfolioCurrency={pc}
 				onsaved={async () => {
-					showToast(`${p.symbol}: ${NEXT_LABEL[step!].toLowerCase()} — записано`);
+					showToast(`${p.symbol}: ${tl(NEXT_LABEL[step!]).toLowerCase()} — ${tx('записано', 'saved')}`);
 					step = null;
 					await load();
 					onchange();
@@ -250,15 +251,15 @@
 	{:else if !v.portfolio.auto_source_id}
 		<div class="next">
 			{#each NEXT[p.stage] as k (k)}
-				<button class:main={k === 'buy' || k === 'sell'} onclick={() => (step = k)}>{NEXT_LABEL[k]}</button>
+				<button class:main={k === 'buy' || k === 'sell'} onclick={() => (step = k)}>{tl(NEXT_LABEL[k])}</button>
 			{/each}
 		</div>
 	{:else}
-		<p class="muted small">Автоматический портфель: события записывает приложение по гипотезам источника.</p>
+		<p class="muted small">{tx('Автоматический портфель: события записывает приложение по гипотезам источника.', 'Automatic portfolio: the app records events from the source\'s hypotheses.')}</p>
 	{/if}
 	{#if problem}<p class="err" role="alert">{problem}</p>{/if}
 
-	<h3>История</h3>
+	<h3>{tx('История', 'History')}</h3>
 	<ol class="feed">
 		{#each v.events as e (e.id)}
 			<li class:off={!live(e)}>
@@ -266,26 +267,26 @@
 				<span class="what">
 					<b>{EVENT_LABEL[e.kind] ?? e.kind}</b>
 					{#if e.kind === 'buy' || e.kind === 'sell' || e.kind === 'opening'}
-						{qtyText(e.qty ?? 0)} × {priceText(e.price, p.priceUnit)}{#if e.fee}, комиссия {money(e.fee, p.currency)}{/if}{#if p.currency !== pc && e.fxRate}, курс {e.fxRate}{/if}
+						{qtyText(e.qty ?? 0)} × {priceText(e.price, p.priceUnit)}{#if e.fee}, {tx('комиссия', 'fee')} {money(e.fee, p.currency)}{/if}{#if p.currency !== pc && e.fxRate}, {tx('курс', 'rate')} {e.fxRate}{/if}
 					{:else if e.kind === 'basis'}
-						{e.costTotal ? `стоимость покупки ${money(e.costTotal, pc)}` : `средняя ${priceText(e.price, p.priceUnit)}`}
+						{e.costTotal ? `${tx('стоимость покупки', 'purchase cost')} ${money(e.costTotal, pc)}` : `${tx('средняя', 'average')} ${priceText(e.price, p.priceUnit)}`}
 					{:else if (e.kind === 'plan_buy' || e.kind === 'plan_sell') && (e.price || e.amount)}
-						{e.price ? `по ${priceText(e.price, p.priceUnit)}` : ''}{e.amount ? ` на ${money(e.amount, p.currency)}` : ''}
+						{e.price ? `${tx('по', 'at')} ${priceText(e.price, p.priceUnit)}` : ''}{e.amount ? ` ${tx('на', 'for')} ${money(e.amount, p.currency)}` : ''}
 					{:else if e.kind === 'reverse'}
-						события от {d(v.events.find((x) => x.id === e.reversesEventId)?.date ?? e.date)}
+						{tx('события от', 'of the event of')} {d(v.events.find((x) => x.id === e.reversesEventId)?.date ?? e.date)}
 					{/if}
 					{#if e.note}<span class="note">{e.note}</span>{/if}
-					{#if e.cancelledAt}<span class="tag">отменено</span>{:else if e.reversedBy}<span class="tag">сторно</span>{:else if e.auto}<span class="tag">авто</span>{/if}
+					{#if e.cancelledAt}<span class="tag">{tx('отменено', 'cancelled')}</span>{:else if e.reversedBy}<span class="tag">{tx('сторно', 'reversed')}</span>{:else if e.auto}<span class="tag">{tx('авто', 'auto')}</span>{/if}
 				</span>
 				{#if !v.portfolio.auto_source_id && live(e)}
-					<button class="undo" title="Изменить" aria-label="Изменить событие" onclick={() => startEdit(e)}
+					<button class="undo" title={tx('Изменить', 'Edit')} aria-label={tx('Изменить событие', 'Edit the event')} onclick={() => startEdit(e)}
 						><Pencil size={16} /></button
 					>
 				{/if}
 				{#if !v.portfolio.auto_source_id && e.canCancel}
-					<button class="undo" title="Отменить — ошибка ввода" aria-label="Отменить событие" onclick={() => undo(e.id, 'cancel')}><Undo2 size={16} /></button>
+					<button class="undo" title={tx('Отменить — ошибка ввода', 'Cancel — input error')} aria-label={tx('Отменить событие', 'Cancel the event')} onclick={() => undo(e.id, 'cancel')}><Undo2 size={16} /></button>
 				{:else if !v.portfolio.auto_source_id && e.canReverse && e.kind !== 'note'}
-					<button class="undo text" onclick={() => undo(e.id, 'reverse')}>Сторно</button>
+					<button class="undo text" onclick={() => undo(e.id, 'reverse')}>{tx('Сторно', 'Reverse')}</button>
 				{/if}
 			</li>
 		{/each}
@@ -300,19 +301,19 @@
 		{#if removing}
 			<div class="ask" role="alert">
 				<p>
-					Удалить <b>{p.symbol}</b> из портфеля «{v.portfolio.name}» целиком: событий {v.events.length}{v.cash.length ? `, записей денег по ней ${v.cash.length}` : ''}, со всей историей?
-					Перед удалением приложение сохранит копию журнала.
+					{tx('Удалить', 'Delete')} <b>{p.symbol}</b> {tx('из портфеля', 'from the portfolio')} «{v.portfolio.name}» {tx('целиком: событий', 'entirely: events')} {v.events.length}{v.cash.length ? `, ${tx('записей денег по ней', 'cash records for it')} ${v.cash.length}` : ''}, {tx('со всей историей?', 'with the whole history?')}
+					{tx('Перед удалением приложение сохранит копию журнала.', 'Before deleting, the app saves a copy of the journal.')}
 				</p>
 				<div class="btns">
-					<button class="danger" onclick={removePosition}>Удалить навсегда</button>
-					<button class="ghost" onclick={() => (removing = false)}>Отмена</button>
+					<button class="danger" onclick={removePosition}>{tx('Удалить навсегда', 'Delete forever')}</button>
+					<button class="ghost" onclick={() => (removing = false)}>{tx('Отмена', 'Cancel')}</button>
 				</div>
 			</div>
 		{:else}
-			<button class="remove" onclick={() => (removing = true)}><Trash2 size={16} /> Удалить {p.symbol} из портфеля</button>
+			<button class="remove" onclick={() => (removing = true)}><Trash2 size={16} /> {tx('Удалить', 'Delete')} {p.symbol} {tx('из портфеля', 'from the portfolio')}</button>
 		{/if}
 	{/if}
-	<p class="muted small">Ошибку в событии можно исправить — карандаш: дата, количество, цена, комиссия; прежние значения сохраняются в журнале правок. События не удаляются: в первые 24 часа запись можно отменить, позже — сторнировать.</p>
+	<p class="muted small">{tx('Ошибку в событии можно исправить — карандаш: дата, количество, цена, комиссия; прежние значения сохраняются в журнале правок. События не удаляются: в первые 24 часа запись можно отменить, позже — сторнировать.', 'A mistake in an event can be fixed with the pencil: date, quantity, price, fee; old values are kept in the edit log. Events are not deleted: within 24 hours a record can be cancelled, later — reversed.')}</p>
 {/if}
 
 <style>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -88,7 +89,7 @@
 	});
 	// section 13: errors show at the field while typing, not only after «Сохранить»
 	const errors = $derived<Errors>({ ...validate(input, today, !submitted), ...serverErrors });
-	const unit = $derived(security ? (security.priceUnit === 'ILA' ? 'агорот' : security.currency) : '');
+	const unit = $derived(security ? (security.priceUnit === 'ILA' ? tx('агорот', 'agorot') : security.currency) : '');
 
 	onMount(async () => {
 		const r = await fetch('/api/sources').then((r) => r.json()).catch(() => ({ items: [] }));
@@ -153,7 +154,7 @@
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ name, domain: normalizeUrl(url) ? new URL(normalizeUrl(url)!).hostname : null })
 		});
-		if (!r.ok) return (formError = (await r.json().catch(() => ({}))).message ?? 'Источник не добавился');
+		if (!r.ok) return (formError = (await r.json().catch(() => ({}))).message ?? tx('Источник не добавился', 'The source was not added'));
 		const s = await r.json();
 		if (!sources.some((x) => x.id === s.id)) sources = [...sources, s];
 		newSource = null;
@@ -172,7 +173,7 @@
 		serverErrors = {};
 		formError = undefined;
 		if (Object.keys(validate(input, today)).length) {
-			formError = 'Проверьте отмеченные поля';
+			formError = tx('Проверьте отмеченные поля', 'Check the marked fields');
 			document.querySelector('.err')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
 			return;
 		}
@@ -186,10 +187,10 @@
 			const j = await r.json().catch(() => ({}));
 			if (!r.ok) {
 				serverErrors = j.errors ?? {};
-				formError = j.message ?? 'Не сохранилось';
+				formError = tl(j.message) || tx('Не сохранилось', 'Not saved');
 				return;
 			}
-			showToast(`Записано: ${j.symbol} ${j.direction === 'long' ? '▲' : '▼'} до ${new Date(j.horizonDate).toLocaleDateString('ru-RU')}`);
+			showToast(`${tx('Записано', 'Recorded')}: ${j.symbol} ${j.direction === 'long' ? '▲' : '▼'} ${tx('до', 'until')} ${new Date(j.horizonDate).toLocaleDateString(loc())}`);
 			if (again) {
 				// same article: keep the link, source, author and title; the next ticker
 				articleId = j.articleId;
@@ -211,7 +212,7 @@
 				goto(`/?open=${j.id}`);
 			}
 		} catch {
-			formError = 'Нет связи с сервером — попробуйте ещё раз';
+			formError = tx('Нет связи с сервером — попробуйте ещё раз', 'No connection to the server — try again');
 		} finally {
 			saving = false;
 		}
@@ -220,9 +221,9 @@
 	const sourceName = $derived(sources.find((s) => s.id === sourceId)?.name);
 </script>
 
-<svelte:head><title>Новая гипотеза · Журнал гипотез</title></svelte:head>
+<svelte:head><title>{tx('Новая гипотеза', 'New hypothesis')} · {tx('Журнал гипотез', 'Hypothesis journal')}</title></svelte:head>
 
-<TopBar title="Новая гипотеза" back={{ href: '/', label: 'Гипотезы' }} />
+<TopBar title={tx('Новая гипотеза', 'New hypothesis')} back={{ href: '/', label: tx('Гипотезы', 'Hypotheses') }} />
 
 <form
 	novalidate
@@ -233,65 +234,65 @@
 >
 	<!-- 1. the article -->
 	<section class="group">
-		<label class="lbl" for="url">Ссылка на статью</label>
+		<label class="lbl" for="url">{tx('Ссылка на статью', 'Article link')}</label>
 		<input
 			id="url"
 			type="url"
 			inputmode="url"
 			autocomplete="off"
 			autocapitalize="off"
-			placeholder="https://…  (пусто — своя идея)"
+			placeholder={tx('https://…  (пусто — своя идея)', 'https://…  (empty — own idea)')}
 			bind:value={url}
 			onchange={lookup}
 			onpaste={() => setTimeout(lookup, 0)}
 		/>
-		{#if errors.url}<p class="err">{errors.url}</p>{/if}
-		{#if metaLoading}<p class="hint">Ищу источник и заголовок…</p>{/if}
+		{#if errors.url}<p class="err">{tl(errors.url)}</p>{/if}
+		{#if metaLoading}<p class="hint">{tx('Ищу источник и заголовок…', 'Looking for the source and title…')}</p>{/if}
 		{#if url && (articleTitle || !metaLoading)}
-			<input class="title-in" aria-label="Заголовок статьи" placeholder="Заголовок (необязательно)" bind:value={articleTitle} />
+			<input class="title-in" aria-label={tx('Заголовок статьи', 'Article title')} placeholder={tx('Заголовок (необязательно)', 'Title (optional)')} bind:value={articleTitle} />
 		{/if}
 
-		<div class="lbl-row"><span class="lbl">Источник</span>{#if sourceAuto && sourceName}<span class="hint">по ссылке</span>{/if}</div>
-		<div class="chips" role="radiogroup" aria-label="Источник">
+		<div class="lbl-row"><span class="lbl">{tx('Источник', 'Source')}</span>{#if sourceAuto && sourceName}<span class="hint">{tx('по ссылке', 'from the link')}</span>{/if}</div>
+		<div class="chips" role="radiogroup" aria-label={tx('Источник', 'Source')}>
 			{#each sources as s (s.id)}
-				<button type="button" role="radio" aria-checked={sourceId === s.id} class:on={sourceId === s.id} onclick={() => pickSource(s.id)}>{s.name}</button>
+				<button type="button" role="radio" aria-checked={sourceId === s.id} class:on={sourceId === s.id} onclick={() => pickSource(s.id)}>{tl(s.name)}</button>
 			{/each}
 			{#if newSource === null}
-				<button type="button" class="add" onclick={() => (newSource = '')}>+ другой</button>
+				<button type="button" class="add" onclick={() => (newSource = '')}>+ {tx('другой', 'other')}</button>
 			{/if}
 		</div>
 		{#if newSource !== null}
 			<div class="inline">
 				<!-- svelte-ignore a11y_autofocus -->
-				<input aria-label="Новый источник" placeholder="Название источника" bind:value={newSource} autofocus />
-				<button type="button" class="small" onclick={addSource}>Добавить</button>
+				<input aria-label={tx('Новый источник', 'New source')} placeholder={tx('Название источника', 'Source name')} bind:value={newSource} autofocus />
+				<button type="button" class="small" onclick={addSource}>{tx('Добавить', 'Add')}</button>
 			</div>
 		{/if}
-		{#if errors.sourceId}<p class="err">{errors.sourceId}</p>{/if}
+		{#if errors.sourceId}<p class="err">{tl(errors.sourceId)}</p>{/if}
 
-		<label class="lbl" for="author">Автор <span class="hint">аналитик или инвестдом, а не журналист</span></label>
-		<input id="author" list="authors" autocomplete="off" placeholder="Например, Morgan Stanley" bind:value={author} />
+		<label class="lbl" for="author">{tx('Автор', 'Author')} <span class="hint">{tx('аналитик или инвестдом, а не журналист', 'an analyst or an investment house, not a journalist')}</span></label>
+		<input id="author" list="authors" autocomplete="off" placeholder={tx('Например, Morgan Stanley', 'For example, Morgan Stanley')} bind:value={author} />
 		<datalist id="authors">{#each authors as a (a)}<option value={a}></option>{/each}</datalist>
 	</section>
 
 	<!-- 2. the security -->
 	<section class="group">
 		{#if security}
-			<div class="lbl-row"><span class="lbl">Бумага</span></div>
+			<div class="lbl-row"><span class="lbl">{tx('Бумага', 'Security')}</span></div>
 			<div class="chosen">
 				<div>
 					<b>{security.symbol}</b> — {security.nameEn}
-					<div class="hint">{security.exchangeName} · {unit} · бенчмарк {security.exchangeCode === 'TASE' ? 'ТА-125' : 'S&P 500'}</div>
+					<div class="hint">{security.exchangeName} · {unit} · {tx('бенчмарк', 'benchmark')} {security.exchangeCode === 'TASE' ? tx('ТА-125', 'TA-125') : 'S&P 500'}</div>
 				</div>
-				<button type="button" class="icon" aria-label="Выбрать другую бумагу" onclick={() => (security = null)}><X size={20} /></button>
+				<button type="button" class="icon" aria-label={tx('Выбрать другую бумагу', 'Choose another security')} onclick={() => (security = null)}><X size={20} /></button>
 			</div>
 		{:else}
-			<TickerSearch label="Бумага" noIndex onselect={choose} />
+			<TickerSearch label={tx('Бумага', 'Security')} noIndex onselect={choose} />
 		{/if}
-		{#if errors.securityId}<p class="err">{errors.securityId}</p>{/if}
+		{#if errors.securityId}<p class="err">{tl(errors.securityId)}</p>{/if}
 		{#if security && noPrices}
 			<p class="warn-box" role="alert">
-				У поставщика цен нет этой бумаги: гипотеза запишется, но цена входа и результат не появятся. Если есть такая же бумага на другой бирже — лучше выбрать её.
+				{tx('У поставщика цен нет этой бумаги: гипотеза запишется, но цена входа и результат не появятся. Если есть такая же бумага на другой бирже — лучше выбрать её.', 'The price provider does not have this security: the hypothesis is saved, but no entry price or result will appear. If the same security trades on another exchange — better choose that.')}
 			</p>
 		{/if}
 	</section>
@@ -299,108 +300,108 @@
 	<!-- 3. what the source says -->
 	<section class="group">
 		<div class="lbl-row">
-			<span class="lbl">Тип сигнала</span>
-			<HelpIcon topicKey="hypothesis.signal_type" label="тип сигнала" />
+			<span class="lbl">{tx('Тип сигнала', 'Signal type')}</span>
+			<HelpIcon topicKey="hypothesis.signal_type" label={tx('тип сигнала', 'signal type')} />
 		</div>
-		<div class="seg four" role="radiogroup" aria-label="Тип сигнала">
+		<div class="seg four" role="radiogroup" aria-label={tx('Тип сигнала', 'Signal type')}>
 			{#each SIGNAL_TYPES as t (t.id)}
-				<button type="button" role="radio" aria-checked={signalType === t.id} class:on={signalType === t.id} onclick={() => setSignal(t.id)}>{t.label}</button>
+				<button type="button" role="radio" aria-checked={signalType === t.id} class:on={signalType === t.id} onclick={() => setSignal(t.id)}>{tl(t.label)}</button>
 			{/each}
 		</div>
-		{#if signalType}<p class="hint">{SIGNAL_TYPES.find((t) => t.id === signalType)?.hint}</p>{/if}
-		{#if errors.signalType}<p class="err">{errors.signalType}</p>{/if}
+		{#if signalType}<p class="hint">{tl(SIGNAL_TYPES.find((t) => t.id === signalType)?.hint)}</p>{/if}
+		{#if errors.signalType}<p class="err">{tl(errors.signalType)}</p>{/if}
 
-		<span class="lbl">Направление</span>
-		<div class="seg" role="radiogroup" aria-label="Направление">
+		<span class="lbl">{tx('Направление', 'Direction')}</span>
+		<div class="seg" role="radiogroup" aria-label={tx('Направление', 'Direction')}>
 			<button type="button" role="radio" aria-checked={direction === 'long'} class:on={direction === 'long'} onclick={() => (direction = 'long')}
-				><ArrowUpRight size={18} /> Рост</button
+				><ArrowUpRight size={18} /> {tx('Рост', 'Up')}</button
 			>
 			<button type="button" role="radio" aria-checked={direction === 'short'} class:on={direction === 'short'} onclick={() => (direction = 'short')}
-				><ArrowDownRight size={18} /> Падение</button
+				><ArrowDownRight size={18} /> {tx('Падение', 'Down')}</button
 			>
 		</div>
-		{#if errors.direction}<p class="err">{errors.direction}</p>{/if}
+		{#if errors.direction}<p class="err">{tl(errors.direction)}</p>{/if}
 		{#if own}
-			<p class="hint">Собственная идея — направление ваше.</p>
+			<p class="hint">{tx('Собственная идея — направление ваше.', 'Own idea — the direction is yours.')}</p>
 		{:else if signalType === 'news'}
-			<p class="hint">Для новости направление — ваше толкование.</p>
+			<p class="hint">{tx('Для новости направление — ваше толкование.', 'For news the direction is your reading.')}</p>
 		{:else}
-			<div class="seg small-seg" role="radiogroup" aria-label="Откуда направление">
-				<button type="button" role="radio" aria-checked={directionSource === 'article'} class:on={directionSource === 'article'} onclick={() => (directionSource = 'article')}>Из статьи</button>
-				<button type="button" role="radio" aria-checked={directionSource === 'mine'} class:on={directionSource === 'mine'} onclick={() => (directionSource = 'mine')}>Моё толкование</button>
+			<div class="seg small-seg" role="radiogroup" aria-label={tx('Откуда направление', 'Where the direction comes from')}>
+				<button type="button" role="radio" aria-checked={directionSource === 'article'} class:on={directionSource === 'article'} onclick={() => (directionSource = 'article')}>{tx('Из статьи', 'From the article')}</button>
+				<button type="button" role="radio" aria-checked={directionSource === 'mine'} class:on={directionSource === 'mine'} onclick={() => (directionSource = 'mine')}>{tx('Моё толкование', 'My reading')}</button>
 			</div>
 		{/if}
 
 		<div class="lbl-row">
-			<span class="lbl">{own ? 'Срок' : 'Срок из статьи'}</span>
-			<HelpIcon topicKey="hypothesis.horizon" label="срок" />
+			<span class="lbl">{own ? tx('Срок', 'Horizon') : tx('Срок из статьи', 'Horizon from the article')}</span>
+			<HelpIcon topicKey="hypothesis.horizon" label={tx('срок', 'horizon')} />
 		</div>
-		<div class="chips" role="radiogroup" aria-label="Срок">
+		<div class="chips" role="radiogroup" aria-label={tx('Срок', 'Horizon')}>
 			{#each HORIZONS as h (h.id)}
 				<button type="button" role="radio" aria-checked={horizon === h.id} class:on={horizon === h.id} onclick={() => (horizon = h.id)}
-					>{own && h.id === 'none' ? 'По умолчанию' : h.label}</button
+					>{own && h.id === 'none' ? tx('По умолчанию', 'Default') : tl(h.label)}</button
 				>
 			{/each}
 		</div>
 		{#if horizon === 'none'}
-			<p class="hint">{own ? 'Срок не выбран' : 'Статья не называет срок'} — 3 месяца по умолчанию. <HelpIcon topicKey="hypothesis.default_horizon" label="срок по умолчанию" /></p>
+			<p class="hint">{own ? tx('Срок не выбран', 'No horizon chosen') : tx('Статья не называет срок', 'The article names no horizon')} — {tx('3 месяца по умолчанию.', '3 months by default.')} <HelpIcon topicKey="hypothesis.default_horizon" label={tx('срок по умолчанию', 'default horizon')} /></p>
 		{:else if horizon === 'date'}
-			<input type="date" aria-label="Дата горизонта" min={today} bind:value={horizonDate} />
-			{#if errors.horizonDate}<p class="err">{errors.horizonDate}</p>{/if}
+			<input type="date" aria-label={tx('Дата горизонта', 'Horizon date')} min={today} bind:value={horizonDate} />
+			{#if errors.horizonDate}<p class="err">{tl(errors.horizonDate)}</p>{/if}
 		{/if}
 
-		<label class="lbl" for="thesis">Тезис — что утверждает источник</label>
-		<textarea id="thesis" rows="2" maxlength="300" placeholder="Одной фразой" bind:value={thesis}></textarea>
-		{#if errors.thesis}<p class="err">{errors.thesis}</p>{/if}
+		<label class="lbl" for="thesis">{tx('Тезис — что утверждает источник', 'Thesis — what the source claims')}</label>
+		<textarea id="thesis" rows="2" maxlength="300" placeholder={tx('Одной фразой', 'In one sentence')} bind:value={thesis}></textarea>
+		{#if errors.thesis}<p class="err">{tl(errors.thesis)}</p>{/if}
 
 		<div class="lbl-row">
-			<label class="lbl" for="inv">Я был неправ, если…</label>
-			<HelpIcon topicKey="hypothesis.invalidation" label="условие провала" />
+			<label class="lbl" for="inv">{tx('Я был неправ, если…', 'I was wrong if…')}</label>
+			<HelpIcon topicKey="hypothesis.invalidation" label={tx('условие провала', 'failure condition')} />
 		</div>
-		<input id="inv" maxlength="300" placeholder="Например, выручка ниже прогноза" bind:value={invalidation} />
-		{#if errors.invalidation}<p class="err">{errors.invalidation}</p>{/if}
+		<input id="inv" maxlength="300" placeholder={tx('Например, выручка ниже прогноза', 'For example, revenue below the forecast')} bind:value={invalidation} />
+		{#if errors.invalidation}<p class="err">{tl(errors.invalidation)}</p>{/if}
 	</section>
 
 	<!-- 4. optional -->
 	<section class="group">
 		<div class="lbl-row">
-			<label class="lbl" for="conf">Уверенность, % <span class="hint">необязательно</span></label>
-			<HelpIcon topicKey="hypothesis.confidence" label="уверенность" />
+			<label class="lbl" for="conf">{tx('Уверенность, %', 'Confidence, %')} <span class="hint">{tx('необязательно', 'optional')}</span></label>
+			<HelpIcon topicKey="hypothesis.confidence" label={tx('уверенность', 'confidence')} />
 		</div>
 		<input id="conf" class="narrow" type="text" inputmode="numeric" placeholder="—" bind:value={confidencePct} />
-		{#if errors.confidencePct}<p class="err">{errors.confidencePct}</p>{/if}
+		{#if errors.confidencePct}<p class="err">{tl(errors.confidencePct)}</p>{/if}
 
 		<div class="lbl-row">
-			<span class="lbl">Режим</span>
-			<HelpIcon topicKey="hypothesis.mode" label="режим" />
+			<span class="lbl">{tx('Режим', 'Mode')}</span>
+			<HelpIcon topicKey="hypothesis.mode" label={tx('режим', 'mode')} />
 		</div>
-		<div class="seg" role="radiogroup" aria-label="Режим">
-			<button type="button" role="radio" aria-checked={mode === 'sim'} class:on={mode === 'sim'} onclick={() => (mode = 'sim')}>Симуляция</button>
-			<button type="button" role="radio" aria-checked={mode === 'real'} class:on={mode === 'real'} onclick={() => (mode = 'real')}>Реальные деньги</button>
+		<div class="seg" role="radiogroup" aria-label={tx('Режим', 'Mode')}>
+			<button type="button" role="radio" aria-checked={mode === 'sim'} class:on={mode === 'sim'} onclick={() => (mode = 'sim')}>{tx('Симуляция', 'Simulation')}</button>
+			<button type="button" role="radio" aria-checked={mode === 'real'} class:on={mode === 'real'} onclick={() => (mode = 'real')}>{tx('Реальные деньги', 'Real money')}</button>
 		</div>
 
 		{#if !more}
-			<button type="button" class="link" onclick={() => (more = true)}>Ещё поля: целевая цена, {mode === 'real' ? 'сумма, ' : ''}теги</button>
+			<button type="button" class="link" onclick={() => (more = true)}>{tx('Ещё поля: целевая цена, ', 'More fields: target price, ')}{mode === 'real' ? tx('сумма, ', 'amount, ') : ''}{tx('теги', 'tags')}</button>
 		{:else}
-			<label class="lbl" for="tp">Целевая цена из статьи{#if unit}, {unit}{/if}</label>
+			<label class="lbl" for="tp">{tx('Целевая цена из статьи', 'Target price from the article')}{#if unit}, {unit}{/if}</label>
 			<input id="tp" class="narrow" type="text" inputmode="decimal" placeholder="—" bind:value={targetPrice} />
-			{#if errors.targetPrice}<p class="err">{errors.targetPrice}</p>{/if}
+			{#if errors.targetPrice}<p class="err">{tl(errors.targetPrice)}</p>{/if}
 			{#if mode === 'real'}
-				<label class="lbl" for="amt">Сумма{#if security}, {security.currency}{/if}</label>
+				<label class="lbl" for="amt">{tx('Сумма', 'Amount')}{#if security}, {security.currency}{/if}</label>
 				<input id="amt" class="narrow" type="text" inputmode="decimal" placeholder="—" bind:value={amount} />
-				{#if errors.amount}<p class="err">{errors.amount}</p>{/if}
+				{#if errors.amount}<p class="err">{tl(errors.amount)}</p>{/if}
 			{/if}
-			<label class="lbl" for="tags">Теги <span class="hint">через запятую</span></label>
-			<input id="tags" autocomplete="off" placeholder="полупроводники, дивиденды" bind:value={tags} />
+			<label class="lbl" for="tags">{tx('Теги', 'Tags')} <span class="hint">{tx('через запятую', 'comma-separated')}</span></label>
+			<input id="tags" autocomplete="off" placeholder={tx('полупроводники, дивиденды', 'semiconductors, dividends')} bind:value={tags} />
 		{/if}
 	</section>
 
 	{#if formError}<p class="err form" role="alert">{formError}</p>{/if}
 	<div class="actions">
-		<button type="submit" class="primary" disabled={saving}>{saving ? 'Сохраняю…' : 'Сохранить'}</button>
-		<button type="button" class="secondary" disabled={saving} onclick={() => save(true)}>Сохранить и добавить ещё по этой статье</button>
+		<button type="submit" class="primary" disabled={saving}>{saving ? tx('Сохраняю…', 'Saving…') : tx('Сохранить', 'Save')}</button>
+		<button type="button" class="secondary" disabled={saving} onclick={() => save(true)}>{tx('Сохранить и добавить ещё по этой статье', 'Save and add another from this article')}</button>
 	</div>
-	<p class="hint center">После сохранения тикер, направление, срок, уверенность и условие «я неправ» не меняются. <HelpIcon topicKey="result.locked" label="почему нельзя менять" /></p>
+	<p class="hint center">{tx('После сохранения тикер, направление, срок, уверенность и условие «я неправ» не меняются.', 'After saving, the ticker, direction, horizon, confidence and the «I was wrong» condition do not change.')} <HelpIcon topicKey="result.locked" label={tx('почему нельзя менять', 'why it cannot change')} /></p>
 </form>
 
 <style>

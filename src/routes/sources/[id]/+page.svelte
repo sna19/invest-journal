@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import TopBar from '#lib/TopBar.svelte';
@@ -43,7 +44,7 @@
 		auto: { id: number; name: string; currency: string; archivedAt: string | null; amount: number }[];
 		articles: { article: { id: number; url: string | null; title: string | null; author: string | null; readAt: string }; hypotheses: Hyp[] }[];
 	}
-	const SIGNAL: Record<string, string> = { recommendation: 'Рекомендация', target: 'Целевая цена', opinion: 'Мнение', news: 'Новость' };
+	const SIGNAL: Record<string, string> = { recommendation: 'Рекомендация', target: 'Целевая цена', opinion: 'Мнение', news: 'Новость' }; // shown through tl()
 
 	let card = $state<Card | null>(null);
 	let noDefault = $state(false);
@@ -52,7 +53,7 @@
 	async function load() {
 		try {
 			const r = await fetch(`/api/sources/${page.params.id}${noDefault ? '?noDefault=1' : ''}`);
-			if (!r.ok) throw new Error(r.status === 404 ? 'Нет такого источника.' : 'Нет связи с сервером.');
+			if (!r.ok) throw new Error(r.status === 404 ? tx('Нет такого источника.', 'No such source.') : tx('Нет связи с сервером.', 'No connection to the server.'));
 			card = await r.json();
 			problem = undefined;
 		} catch (e) {
@@ -70,15 +71,15 @@
 		const on = !autoOn;
 		const r = await fetch(`/api/sources/${card.source.id}/auto`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ on }) });
 		autoBusy = false;
-		if (!r.ok) return (problem = (await r.json().catch(() => ({}))).message ?? 'Не получилось');
+		if (!r.ok) return (problem = (await r.json().catch(() => ({}))).message ?? tx('Не получилось', 'It did not work'));
 		await load();
 	}
-	const date = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', year: 'numeric' });
+	const date = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString(loc(), { day: 'numeric', month: 'short', year: 'numeric' });
 </script>
 
-<svelte:head><title>{card?.source.name ?? 'Источник'} · Журнал гипотез</title></svelte:head>
+<svelte:head><title>{tl(card?.source.name) || tx('Источник', 'Source')} · {tx('Журнал гипотез', 'Hypothesis journal')}</title></svelte:head>
 
-<TopBar title={card?.source.name ?? 'Источник'} back={{ href: '/sources', label: 'Источники' }} subtitle={card?.source.domain ?? undefined} />
+<TopBar title={tl(card?.source.name) || tx('Источник', 'Source')} back={{ href: '/sources', label: tx('Источники', 'Sources') }} subtitle={card?.source.domain ?? undefined} />
 
 {#if problem}<p class="warn" role="alert">{problem}</p>{/if}
 
@@ -86,34 +87,33 @@
 	<section class="card autoport">
 		<label class="toggle">
 			<input type="checkbox" checked={autoOn} disabled={autoBusy} onchange={toggleAuto} />
-			<span>Автоматический портфель</span>
-			<HelpIcon topicKey="portfolio.source_auto" label="автоматический портфель" />
+			<span>{tx('Автоматический портфель', 'Automatic portfolio')}</span>
+			<HelpIcon topicKey="portfolio.source_auto" label={tx('автоматический портфель', 'automatic portfolio')} />
 		</label>
 		<p class="muted small">
 			{#if autoOn}
-				Каждая гипотеза на рост (рекомендация, целевая цена, мнение) покупается по цене входа — бумаги США на 3 000 $, TASE на 10 000 ₪ — и продаётся при
-				закрытии.
+				{tx('Каждая гипотеза на рост (рекомендация, целевая цена, мнение) покупается по цене входа — бумаги США на 3 000 $, TASE на 10 000 ₪ — и продаётся при закрытии.', 'Each hypothesis on a rise (recommendation, target price, opinion) is bought at the entry price — US securities for $3,000, TASE for ₪10,000 — and sold when it closes.')}
 				{#each card.auto.filter((a) => !a.archivedAt) as a (a.id)}<a href="/portfolio?p={a.id}">«{a.name}»</a>{' '}{/each}
 			{:else}
-				Включите, чтобы сравнивать источник в деньгах — рядом с вашим реальным портфелем.
+				{tx('Включите, чтобы сравнивать источник в деньгах — рядом с вашим реальным портфелем.', 'Turn it on to compare the source in money — next to your real portfolio.')}
 			{/if}
 		</p>
 	</section>
 	<section class="card summary">
 		<div class="head">
-			<span class="k">Доля сработавших <HelpIcon topicKey="source.stats" label="доля и интервал" /></span>
+			<span class="k">{tx('Доля сработавших', 'Share that came true')} <HelpIcon topicKey="source.stats" label={tx('доля и интервал', 'share and interval')} /></span>
 			<Rate score={card.score} help />
 		</div>
 		<p class="meta">
-			Закрыто {card.score.n} · открыто {card.open}{#if card.score.n}
-				{' · '}среднее превышение <Pct value={card.score.meanExcess} /> · медиана <Pct value={card.score.medianExcess} /> · лучшее <Pct value={card.score.best} plain /> · худшее <Pct value={card.score.worst} plain />{/if}
+			{tx('Закрыто', 'Closed')} {card.score.n} · {tx('открыто', 'open')} {card.open}{#if card.score.n}
+				{' · '}{tx('среднее превышение', 'mean excess')} <Pct value={card.score.meanExcess} /> · {tx('медиана', 'median')} <Pct value={card.score.medianExcess} /> · {tx('лучшее', 'best')} <Pct value={card.score.best} plain /> · {tx('худшее', 'worst')} <Pct value={card.score.worst} plain />{/if}
 		</p>
-		<p class="meta small">В оценку входят «Рекомендация», «Целевая цена» и «Мнение», закрытые в срок. Отдельно:</p>
+		<p class="meta small">{tx('В оценку входят «Рекомендация», «Целевая цена» и «Мнение», закрытые в срок. Отдельно:', 'The rating counts «Recommendation», «Target price» and «Opinion» closed on time. Apart:')}</p>
 		<div class="apart">
-			<div><span>Новости</span><Rate score={card.news} /></div>
-			<div><span>Закрыты досрочно</span><Rate score={card.early} /></div>
+			<div><span>{tx('Новости', 'News')}</span><Rate score={card.news} /></div>
+			<div><span>{tx('Закрыты досрочно', 'Closed early')}</span><Rate score={card.early} /></div>
 		</div>
-		<button class="chip" class:on={noDefault} aria-pressed={noDefault} onclick={() => ((noDefault = !noDefault), load())}>Без срока по умолчанию</button>
+		<button class="chip" class:on={noDefault} aria-pressed={noDefault} onclick={() => ((noDefault = !noDefault), load())}>{tx('Без срока по умолчанию', 'Without the default term')}</button>
 	</section>
 
 	{#snippet table(title: string, parts: Part[])}
@@ -123,8 +123,8 @@
 				<ul class="parts">
 					{#each parts as p (p.key)}
 						<li>
-							<span class="label">{p.label}{#if p.rated === false}<span class="tag">не в оценке</span>{/if}</span>
-							<span class="nums">закрыто {p.score.n}{p.open ? ` · открыто ${p.open}` : ''}</span>
+							<span class="label">{tl(p.label)}{#if p.rated === false}<span class="tag">{tx('не в оценке', 'not rated')}</span>{/if}</span>
+							<span class="nums">{tx('закрыто', 'closed')} {p.score.n}{p.open ? ` · ${tx('открыто', 'open')} ${p.open}` : ''}</span>
 							<span class="r"><Rate score={p.score} /></span>
 						</li>
 					{/each}
@@ -132,20 +132,20 @@
 			</section>
 		{/if}
 	{/snippet}
-	{@render table('По типу сигнала', card.byType)}
-	{@render table('По автору', card.byAuthor)}
-	{@render table('По сроку', card.byHorizon)}
-	{@render table('По режиму', card.byMode)}
+	{@render table(tx('По типу сигнала', 'By signal type'), card.byType)}
+	{@render table(tx('По автору', 'By author'), card.byAuthor)}
+	{@render table(tx('По сроку', 'By term'), card.byHorizon)}
+	{@render table(tx('По режиму', 'By mode'), card.byMode)}
 
 	<section class="card">
-		<h2>Статьи и гипотезы</h2>
+		<h2>{tx('Статьи и гипотезы', 'Articles and hypotheses')}</h2>
 		{#if !card.articles.length}
-			<p class="meta">Гипотез по этому источнику пока нет.</p>
+			<p class="meta">{tx('Гипотез по этому источнику пока нет.', 'No hypotheses from this source yet.')}</p>
 		{/if}
 		{#each card.articles as a (a.article.id)}
 			<div class="article">
 				<p class="atitle">
-					{#if a.article.url}<a href={a.article.url} target="_blank" rel="noopener noreferrer">{a.article.title || new URL(a.article.url).hostname}</a>{:else}{a.article.title || 'Без ссылки'}{/if}
+					{#if a.article.url}<a href={a.article.url} target="_blank" rel="noopener noreferrer">{a.article.title || new URL(a.article.url).hostname}</a>{:else}{a.article.title || tx('Без ссылки', 'No link')}{/if}
 				</p>
 				<p class="meta small">{date(a.article.readAt)}{a.article.author ? ` · ${a.article.author}` : ''}</p>
 				<ul class="hyps">
@@ -154,15 +154,15 @@
 							<a href="/?open={h.id}">
 								<b>{h.symbol}</b>
 								<span class="dir {h.direction}">{h.direction === 'long' ? '▲' : '▼'}</span>
-								<span class="muted">{SIGNAL[h.signalType]}</span>
+								<span class="muted">{tl(SIGNAL[h.signalType])}</span>
 								<span class="grow"></span>
 								{#if h.status === 'open'}
-									{#if h.entryPrice === null}<span class="muted">ожидает цену</span>{:else}<Pct value={h.currentExcessPct} />{/if}
+									{#if h.entryPrice === null}<span class="muted">{tx('ожидает цену', 'awaits a price')}</span>{:else}<Pct value={h.currentExcessPct} />{/if}
 								{:else}
 									<Pct value={h.excessPct} /><span
 										class="mark {h.outcome}"
-										title={h.status === 'closed_early' ? 'закрыта досрочно' : h.outcome === 'hit' ? 'сработала' : 'не сработала'}
-										aria-label={h.status === 'closed_early' ? 'закрыта досрочно' : h.outcome === 'hit' ? 'сработала' : 'не сработала'}
+										title={h.status === 'closed_early' ? tx('закрыта досрочно', 'closed early') : h.outcome === 'hit' ? tx('сработала', 'came true') : tx('не сработала', 'failed')}
+										aria-label={h.status === 'closed_early' ? tx('закрыта досрочно', 'closed early') : h.outcome === 'hit' ? tx('сработала', 'came true') : tx('не сработала', 'failed')}
 										>{h.status === 'closed_early' ? '⏹' : h.outcome === 'hit' ? '✓' : '✗'}</span
 									>
 								{/if}
