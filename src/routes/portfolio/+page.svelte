@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
 	import Plus from '@lucide/svelte/icons/plus';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Wallet from '@lucide/svelte/icons/wallet';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
+	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import FileJson from '@lucide/svelte/icons/file-json';
 	import TopBar from '#lib/TopBar.svelte';
@@ -51,6 +52,9 @@
 		realizedPc: number;
 		fromTransfer: boolean;
 		eventPrice: boolean;
+		livePrice?: boolean;
+		priceTime?: string | null;
+		lastClose?: string | null;
 		weight?: number;
 		plan: { kind: string; price: number | null; amount: number | null; note: string | null } | null;
 		closedAt: string | null;
@@ -72,6 +76,8 @@
 			taxAccrued: number | null;
 			fxUsd: number;
 			pricesAsOf: string | null;
+			quotesAt?: string | null;
+			fxAt?: string | null;
 			benchmark: { key: string; label: string; returnPct: number | null };
 		};
 		positions: Pos[];
@@ -251,7 +257,43 @@
 		load();
 	}
 
+	/**
+	 * Owner 19.11.2026: the screen stays current — reloaded at the quotes' frequency while visible, and when the
+	 * phone comes back to it; ⟳ fetches quotes now.
+	 */
+	let every = $state(15);
+	let refreshing = $state(false);
+	let autoTimer: ReturnType<typeof setInterval> | undefined;
+	async function refreshNow() {
+		refreshing = true;
+		await fetch('/api/data/run', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ job: 'quotes' }) }).catch(() => null);
+		await load();
+		refreshing = false;
+	}
+	function startAuto() {
+		clearInterval(autoTimer);
+		if (every > 0) autoTimer = setInterval(() => document.visibilityState === 'visible' && load(), every * 60_000);
+	}
+	const onVisible = () => document.visibilityState === 'visible' && load();
+	onDestroy(() => {
+		clearInterval(autoTimer);
+		if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible);
+	});
+	const hm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+	const ago = (iso: string) => {
+		const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
+		return m < 60 ? `${m} мин назад` : `${hm(iso)}${new Date(iso).toDateString() === new Date().toDateString() ? '' : ', ' + d(iso.slice(0, 10))}`;
+	};
+
 	onMount(async () => {
+		fetch('/api/data/schedule')
+			.then((r) => r.json())
+			.then((j) => {
+				every = j.quotesEvery || 0;
+				startAuto();
+			})
+			.catch(() => {});
+		document.addEventListener('visibilitychange', onVisible);
 		try {
 			current = Number(localStorage.getItem(KEY)) || null;
 		} catch {
@@ -505,7 +547,10 @@
 		<p class="sub line">
 			Реализовано {money(s.realizedPc, s.currency, true)} · не реализовано {money(s.unrealizedPc, s.currency, true)}{#if s.balances.some((b) => b.currency !== s.currency) || v.positions.some((p) => p.currency !== s.currency && p.qty > 0)}
 				· $ = {s.fxUsd} ₪ <HelpIcon topicKey="portfolio.fx" label="курс" />{/if}
-			{#if s.pricesAsOf}<br />Цены на {d(s.pricesAsOf)}{/if}
+			<br /><span class="fresh"
+				>{#if s.quotesAt}Котировки: {ago(s.quotesAt)}{:else}Котировок за сегодня нет{/if}{#if s.pricesAsOf} · закрытия на {d(s.pricesAsOf)}{/if}
+				<button class="ref" onclick={refreshNow} disabled={refreshing} aria-label="Обновить котировки"><span class:spin={refreshing}><RefreshCw size={14} /></span></button></span
+			>
 		</p>
 	</section>
 
@@ -552,6 +597,7 @@
 									{#if st === 'holding' || st === 'plan_sell'}
 										<span>{money(p.valuePc, v.summary.currency)}</span>
 										<b class="res"><Pct value={p.unrealizedPct} /></b>
+										<span class="src" class:live={p.livePrice} title={p.livePrice && p.priceTime ? `котировка ${hm(p.priceTime)}` : p.lastClose ? `закрытие ${d(p.lastClose)}` : 'нет цены'}></span>
 									{:else if st === 'closed'}
 										<span class="sub">{p.closedAt ? d(p.closedAt) : ''}</span>
 										{#if p.realizedPc}<b class="res">{money(p.realizedPc, v.summary.currency, true)}</b>{/if}
@@ -979,6 +1025,43 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45</pre>
 		font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
 		white-space: pre;
 		resize: none;
+	}
+	.fresh {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--s1);
+	}
+	.ref {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border: none;
+		background: none;
+		color: var(--muted);
+		cursor: pointer;
+	}
+	.spin {
+		display: inline-flex;
+		animation: spin 1s linear infinite;
+	}
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	.src {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--muted);
+		opacity: 0.5;
+		flex: none;
+	}
+	.src.live {
+		background: var(--up);
+		opacity: 1;
 	}
 	.delete.edit {
 		display: flex;

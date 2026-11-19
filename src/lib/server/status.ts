@@ -5,7 +5,7 @@ import { ring, ringSecurities } from './market/rings.js';
  * Spec sections 5 and 14 — what the «Данные» block shows: the last run of each job, how many securities and
  * price rows, the history queue, open quality issues, the «Нет данных» list; and whether the daily job is late.
  */
-const JOBS = ['prices', 'history', 'fx', 'hypotheses', 'listings', 'gaps', 'backup-app', 'backup-market'];
+const JOBS = ['quotes', 'prices', 'history', 'fx', 'hypotheses', 'listings', 'gaps', 'backup-app', 'backup-market'];
 
 export function dataStatus(market: Database.Database, app: Database.Database, now = new Date()) {
 	const last = market.prepare(

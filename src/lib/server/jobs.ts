@@ -1,7 +1,8 @@
 import cron from 'node-cron';
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { israelDate, PRICES_AT } from '../hypothesis.js';
+import { israelDate } from '../hypothesis.js';
+import { loadQuotes, marketsOpen, readSchedule, type QuotesSummary } from './market/quotes.js';
 import { backupDir, getApp, getMarket, rawDir } from './db.js';
 import { findGaps, enqueueMissingHistory, resetRunning, runQueue, type QueueSummary } from './market/history.js';
 import { makeFetcher } from './market/http.js';
@@ -281,6 +282,54 @@ export function runBackupJob(kind: 'app' | 'market') {
 	});
 }
 
+// ── live quotes ─────────────────────────────────────────────────────────────────
+
+/** Owner's request 19.11.2026: quotes of held securities and the dollar during the day (market/quotes.ts). */
+export function runQuotesJob(): Promise<QuotesSummary> {
+	return single('quotes', async () => {
+		const id = startRun('quotes', 'yahoo');
+		try {
+			const s = await loadQuotes(getMarket().sqlite, getApp().sqlite, makeFetcher({ retries: 1 }));
+			finishRun(id, { status: s.errors.length > s.securities / 2 ? 'error' : s.errors.length ? 'suspicious' : 'ok', received: s.securities, updated: s.updated, error: s.errors.slice(0, 5).join('; ') || null });
+			return s;
+		} catch (e) {
+			finishRun(id, { status: 'error', error: String(e) });
+			throw e;
+		}
+	});
+}
+
+/** whether the quotes are due now by the schedule */
+export function quotesDue(now = new Date()): boolean {
+	const sch = readSchedule(getMarket().sqlite);
+	if (!sch.quotesEvery) return false;
+	if (sch.quotesMarketHours) {
+		const o = marketsOpen(now);
+		if (!o.tase && !o.us) return false;
+	}
+	const last = lastRun('quotes');
+	return !last || now.getTime() - last.getTime() >= sch.quotesEvery * 60_000 - 5_000;
+}
+
+/** when the next loads happen, for the settings screen */
+export function nextRuns(now = new Date()) {
+	const sch = readSchedule(getMarket().sqlite);
+	const [h, m] = sch.pricesAt.split(':').map(Number);
+	const last = lastRun('quotes');
+	const open = marketsOpen(now);
+	return {
+		prices: sch.pricesAt,
+		quotes: !sch.quotesEvery
+			? null
+			: sch.quotesMarketHours && !open.tase && !open.us
+				? 'market-closed'
+				: new Date(Math.max(now.getTime(), (last?.getTime() ?? 0) + sch.quotesEvery * 60_000)).toISOString(),
+		open,
+		h,
+		m
+	};
+}
+
 // ── scheduler ──────────────────────────────────────────────────────────────────
 
 /** When a job last finished with data (ok or suspicious); null — never. */
@@ -306,10 +355,20 @@ export function lastListings(): Date | null {
 
 let started = false;
 const tasks: { stop: () => unknown }[] = [];
+let pricesTask: { stop: () => unknown } | null = null;
+
+/** the morning load of daily closes at the time from the settings; called again when the time changes */
+export function reschedulePrices() {
+	pricesTask?.stop();
+	const [h, m] = readSchedule(getMarket().sqlite).pricesAt.split(':').map(Number);
+	pricesTask = cron.schedule(`${m} ${h} * * *`, () => void runPricesJob().catch((e) => console.error(`prices: ${e}`)), { timezone: TZ, name: 'prices' });
+}
 
 /** Stops the schedule: cron timers keep the process alive, and the container must stop on SIGTERM at once. */
 export function stopScheduler() {
 	for (const t of tasks.splice(0)) t.stop();
+	pricesTask?.stop();
+	pricesTask = null;
 }
 
 export function startScheduler() {
@@ -317,8 +376,10 @@ export function startScheduler() {
 	started = true;
 	const at = (expr: string, name: string, f: () => unknown) =>
 		tasks.push(cron.schedule(expr, () => void Promise.resolve(f()).catch((e) => console.error(`${name}: ${e}`)), { timezone: TZ, name }));
-	// both exchanges are closed by the Israeli morning
-	at(`${PRICES_AT.m} ${PRICES_AT.h} * * *`, 'prices', runPricesJob);
+	// daily closes: both exchanges are closed by the Israeli morning (the time is in the settings)
+	reschedulePrices();
+	// live quotes: checked every minute, run when due by the settings
+	at('* * * * *', 'quotes', () => (quotesDue() ? runQuotesJob() : undefined));
 	at('30 6 * * 0', 'listings', runListingsJob);
 	at('0 9 * * 6', 'gaps', runGapsJob);
 	at('40 3 * * *', 'backup-app', () => runBackupJob('app'));
