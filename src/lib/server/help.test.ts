@@ -107,5 +107,18 @@ describe('help (spec section 8)', () => {
 		expect(t.title).toBe('Поиск тикера');
 		expect(t.html).toContain('<strong>');
 		expect(helpTopic(db, 'nope')).toBeNull();
+		// English (19.11.2026): every topic has its translation, and an English reader gets it
+		expect(helpTopic(db, 'ticker.search', 'en')!.title).toBe('Ticker search');
+		expect(helpTopic(db, 'ticker.search', 'ru')!.title).toBe('Поиск тикера');
+	});
+
+	it('every topic has an English text with a title and a body', () => {
+		const en = readHelpFiles(join(root, 'help', 'en'));
+		expect(en.map((f) => f.key).sort()).toEqual(files.map((f) => f.key).sort());
+		for (const f of en) {
+			expect(f.title, f.key).toBeTruthy();
+			expect(f.bodyMd.length, f.key).toBeGreaterThan(20);
+			expect(/[А-Яа-яЁё]/.test(f.title + f.bodyMd), `${f.key} has Russian`).toBe(false);
+		}
 	});
 });
