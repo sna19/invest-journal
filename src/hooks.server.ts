@@ -73,8 +73,9 @@ export const handle: Handle = ({ event, resolve }) => {
 };
 
 /** A data file is the usual failure on the NAS (volume permissions): say so on screen. */
-export const handleError: HandleServerError = ({ error }) => {
-	console.error(error);
+export const handleError: HandleServerError = ({ error, event, status }) => {
+	// the path too: a 404 alone does not say what was missing
+	console.error(status === 404 ? `404 ${event.request.method} ${event.url.pathname}` : error);
 	if (error instanceof Error && error.name === 'SqliteError') {
 		return { message: `файл данных недоступен (${error.message})` };
 	}
