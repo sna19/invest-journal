@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { israelDate } from '../hypothesis.js';
-import { needSector, universe } from './model/quarterly.js';
+import { dropUniverse, needSector, universe } from './model/quarterly.js';
 import { recordQuarter, VARIANTS } from './model/service.js';
 import { checkMonthlyAgainstDaily, loadMonthly, monthlyDue, type MonthlySummary } from './market/monthly.js';
 import { loadProfiles, staleProfiles, type ProfilesSummary } from './market/profiles.js';
@@ -346,6 +346,8 @@ export function runMonthlyJob(limit = 2500, sectorLimit = 1500): Promise<Monthly
 			const due = monthlyDue(m, new Date(), limit);
 			const s = await loadMonthly(m, due, makeFetcher({ retries: 1 }));
 			const check = s.loaded ? checkMonthlyAgainstDaily(m) : null;
+			// the model reads the new prices on its next request
+			if (s.loaded) dropUniverse();
 			// the model's caps need a sector for every share of its universe
 			const need = needSector(universe(m)).slice(0, sectorLimit);
 			if (need.length) {
