@@ -78,6 +78,7 @@
 			pricesAsOf: string | null;
 			quotesAt?: string | null;
 			fxAt?: string | null;
+			fetchedAt?: string | null;
 			benchmark: { key: string; label: string; returnPct: number | null };
 		};
 		positions: Pos[];
@@ -275,8 +276,23 @@
 		if (every > 0) autoTimer = setInterval(() => document.visibilityState === 'visible' && load(), every * 60_000);
 	}
 	const onVisible = () => document.visibilityState === 'visible' && load();
+	/**
+	 * The refresh button's colour (owner 19.11.2026): yellow — refreshing; green — fetched within two periods of
+	 * the schedule (at least 20 min, an hour when quotes are off); red — longer ago or never.
+	 */
+	let clock = $state(Date.now());
+	const clockTimer = typeof window !== 'undefined' ? setInterval(() => (clock = Date.now()), 30_000) : undefined;
+	const freshness = $derived.by(() => {
+		if (refreshing) return 'busy';
+		const f = v?.summary.fetchedAt;
+		if (!f) return 'stale';
+		const limit = (every ? Math.max(20, every * 2) : 60) * 60_000;
+		return clock - Date.parse(f) <= limit ? 'fresh' : 'stale';
+	});
+	const FRESH_TITLE: Record<string, string> = { busy: 'Обновляется', fresh: 'Обновлено недавно', stale: 'Давно не обновлялось' };
 	onDestroy(() => {
 		clearInterval(autoTimer);
+		clearInterval(clockTimer);
 		if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisible);
 	});
 	const hm = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -547,9 +563,11 @@
 		<p class="sub line">
 			Реализовано {money(s.realizedPc, s.currency, true)} · не реализовано {money(s.unrealizedPc, s.currency, true)}{#if s.balances.some((b) => b.currency !== s.currency) || v.positions.some((p) => p.currency !== s.currency && p.qty > 0)}
 				· $ = {s.fxUsd} ₪ <HelpIcon topicKey="portfolio.fx" label="курс" />{/if}
-			<br /><span class="fresh"
+			<br /><span class="freshline"
 				>{#if s.quotesAt}Котировки: {ago(s.quotesAt)}{:else}Котировок за сегодня нет{/if}{#if s.pricesAsOf} · закрытия на {d(s.pricesAsOf)}{/if}
-				<button class="ref" onclick={refreshNow} disabled={refreshing} aria-label="Обновить котировки"><span class:spin={refreshing}><RefreshCw size={14} /></span></button></span
+				<button class="ref {freshness}" onclick={refreshNow} disabled={refreshing} aria-label="Обновить котировки сейчас" title={FRESH_TITLE[freshness]}
+					><span class:spin={refreshing}><RefreshCw size={13} /></span>{refreshing ? 'Обновляю…' : 'Обновить'}</button
+				></span
 			>
 		</p>
 	</section>
@@ -1026,7 +1044,7 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45</pre>
 		white-space: pre;
 		resize: none;
 	}
-	.fresh {
+	.freshline {
 		display: inline-flex;
 		align-items: center;
 		gap: var(--s1);
@@ -1034,13 +1052,31 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45</pre>
 	.ref {
 		display: inline-flex;
 		align-items: center;
-		justify-content: center;
-		width: 28px;
-		height: 28px;
+		gap: 4px;
+		min-height: 28px;
+		margin-left: var(--s1);
+		padding: 0 10px;
 		border: none;
-		background: none;
-		color: var(--muted);
+		border-radius: 999px;
+		font: inherit;
+		font-size: 12px;
+		font-weight: 600;
+		color: #fff;
 		cursor: pointer;
+		transition: background 0.2s;
+	}
+	.ref.fresh {
+		background: #1f9d55;
+	}
+	.ref.busy {
+		background: #e0a800;
+		color: #1d1d1d;
+	}
+	.ref.stale {
+		background: #d64545;
+	}
+	.ref:disabled {
+		cursor: progress;
 	}
 	.spin {
 		display: inline-flex;

@@ -86,6 +86,8 @@ export function marketView(market: Database.Database): Market & {
 	live(securityId: number): { date: string; price: number; time: string } | null;
 	/** the time of the live dollar rate used for today, if any */
 	liveFxTime: string | null;
+	/** when the app last fetched quotes (not the exchange's time) */
+	fetchedAt: string | null;
 } {
 	const quotes = readQuotes(market);
 	const today = israelDate();
@@ -129,6 +131,7 @@ export function marketView(market: Database.Database): Market & {
 			return !close || date >= close.date ? { date, price: q.price, time: q.marketTime } : null;
 		},
 		liveFxTime: fxLiveToday?.marketTime ?? null,
+		fetchedAt: [...quotes.values()].map((q) => q.fetchedAt).sort().at(-1) ?? null,
 		dividends: (id, after, upTo) => divQ.all(id, after, upTo) as never
 	};
 }
@@ -436,6 +439,8 @@ export function portfolioView(app: Database.Database, market: Database.Database,
 			/** the newest live quote among the positions, and the live dollar's time */
 			quotesAt: positions.filter((x) => x.qty > EPS).map((x) => x.priceTime).filter(Boolean).sort().at(-1) ?? null,
 			fxAt: m.liveFxTime,
+			/** when the app last fetched quotes — the colour of the refresh button */
+			fetchedAt: m.fetchedAt,
 			taxAccrued: p.tax_accrued,
 			benchmark: benchReturn(m, market, pc, t.from, today)
 		},
