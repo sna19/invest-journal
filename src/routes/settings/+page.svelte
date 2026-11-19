@@ -30,6 +30,7 @@
 		noData: { id: number; symbol: string; exchange: string; lastDate: string | null; why: string }[];
 		late: boolean;
 		running: string[];
+		monthly?: { loaded: number; total: number };
 		schedule: Schedule;
 		next: { prices: string; quotes: string | null; open: { tase: boolean; us: boolean } };
 	}
@@ -87,6 +88,8 @@
 	}
 	onMount(async () => {
 		await load();
+		// a load still running (the monthly prices take an hour): follow it
+		if (data?.running.length) poll = setInterval(load, 3000);
 		// a hypothesis card links here: #issue-<id>
 		const hash = page.url.hash;
 		if (hash.startsWith('#issue-')) {
@@ -208,6 +211,17 @@
 				<span class:spin={data.running.includes('prices')}><RefreshCw size={16} /></span>{data.running.includes('prices') ? tx('Загружается…', 'Loading…') : tx('Закрытия сейчас', 'Closes now')}
 			</button>
 		</div>
+		{#if data.monthly}
+			<dl class="state">
+				<dt>{tx('Месячные цены для модели', 'Monthly prices for the model')}</dt>
+				<dd>{tx(`загружено ${data.monthly.loaded} из ${data.monthly.total}`, `${data.monthly.loaded} of ${data.monthly.total} loaded`)}<br /><span class="muted">{tx('по ночам порциями; кнопка — всё сразу, около часа', 'at night in portions; the button — all at once, about an hour')}</span></dd>
+			</dl>
+			<div class="btns">
+				<button class="btn" onclick={() => run('monthly')} disabled={data.running.includes('monthly')}>
+					<span class:spin={data.running.includes('monthly')}><RefreshCw size={16} /></span>{data.running.includes('monthly') ? tx('Загружается…', 'Loading…') : tx('Месячные цены сейчас', 'Monthly prices now')}
+				</button>
+			</div>
+		{/if}
 	{/if}
 </section>
 
