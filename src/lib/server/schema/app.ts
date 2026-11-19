@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 /**
  * app.db — the journal: sources, articles, hypotheses and help texts. Nothing here can be rebuilt from
@@ -130,7 +130,10 @@ export const hypotheses = sqliteTable(
 
 		// written by the user after closing
 		lesson: text(),
-		closeReason: text()
+		closeReason: text(),
+
+		/** the quarterly model's version that recorded it (T-009); null — a hypothesis entered by hand */
+		modelVersionId: integer()
 	},
 	(t) => [index('hypotheses_status').on(t.status, t.horizonDate), index('hypotheses_article').on(t.articleId)]
 );
@@ -251,4 +254,44 @@ export const cashEvents = sqliteTable(
 		createdAt: now()
 	},
 	(t) => [index('cash_events_portfolio').on(t.portfolioId, t.date)]
+);
+
+// ── Spec section 21 — the quarterly model (T-009) ───────────────────────────────────────────────────────────
+
+/** the parameters of each variant as the user set them on the model screen (JSON, see model/quarterly.ts) */
+export const modelSettings = sqliteTable('model_settings', {
+	/** A | B */
+	variant: text().primaryKey(),
+	params: text().notNull(),
+	updatedAt: now()
+});
+
+/**
+ * A set of parameters the model recorded hypotheses with: the hypotheses refer to it, and statistics are kept per
+ * version — a change of parameters is a new version whose results are not mixed with the earlier ones.
+ */
+export const modelVersions = sqliteTable('model_versions', {
+	id: integer().primaryKey({ autoIncrement: true }),
+	variant: text().notNull(),
+	params: text().notNull(),
+	sourceId: integer()
+		.notNull()
+		.references(() => sources.id),
+	createdAt: now()
+});
+
+/** a quarter the model has recorded hypotheses for — once per variant and quarter */
+export const modelQuarters = sqliteTable(
+	'model_quarters',
+	{
+		variant: text().notNull(),
+		/** 2027-Q1 */
+		quarter: text().notNull(),
+		versionId: integer()
+			.notNull()
+			.references(() => modelVersions.id),
+		hypotheses: integer().notNull(),
+		recordedAt: now()
+	},
+	(t) => [primaryKey({ columns: [t.variant, t.quarter] })]
 );

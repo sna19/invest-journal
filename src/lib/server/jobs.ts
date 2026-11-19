@@ -2,6 +2,8 @@ import cron from 'node-cron';
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { israelDate } from '../hypothesis.js';
+import { needSector, universe } from './model/quarterly.js';
+import { recordQuarter, VARIANTS } from './model/service.js';
 import { checkMonthlyAgainstDaily, loadMonthly, monthlyDue, type MonthlySummary } from './market/monthly.js';
 import { loadProfiles, staleProfiles, type ProfilesSummary } from './market/profiles.js';
 import { heldSecurities, loadQuotes, marketsOpen, readSchedule, type QuotesSummary } from './market/quotes.js';
@@ -343,6 +345,12 @@ export function runMonthlyJob(limit = 2500): Promise<MonthlySummary> {
 			const due = monthlyDue(m, new Date(), limit);
 			const s = await loadMonthly(m, due, makeFetcher({ retries: 1 }));
 			const check = s.loaded ? checkMonthlyAgainstDaily(m) : null;
+			// the model's caps need a sector for every share of its universe
+			const need = needSector(universe(m)).slice(0, 1500);
+			if (need.length) {
+				const pr = await loadProfiles(m, need).catch((e) => ({ updated: 0, errors: [String(e)] }));
+				console.log(`monthly: sectors of ${need.length} shares — ${pr.updated} loaded${pr.errors.length ? `, ${pr.errors.length} errors` : ''}`);
+			}
 			if (check) console.log(`monthly: ${s.loaded} loaded, ${s.rows} rows in ${Math.round(s.ms / 1000)} s; agrees with daily ${check.agree}/${check.checked}`);
 			finishRun(id, {
 				status: s.errors.length > s.securities / 2 ? 'error' : s.errors.length ? 'suspicious' : 'ok',
@@ -356,6 +364,22 @@ export function runMonthlyJob(limit = 2500): Promise<MonthlySummary> {
 			finishRun(id, { status: 'error', error: String(e) });
 			throw e;
 		}
+	});
+}
+
+// ── the quarterly model records its hypotheses (T-009) ──────────────────────────────
+
+/** on the first weekday of a quarter each variant of every user records its candidates (model/service.ts) */
+export function runModelJob(now = new Date()) {
+	return single('model', async () => {
+		const out = await forEachUser(() => VARIANTS.map((v) => recordQuarter(getApp().db, getApp().sqlite, getMarket().sqlite, v, now)));
+		const done = out.flat().filter((r) => r.recorded);
+		if (done.length) {
+			const id = startRun('model', 'model');
+			finishRun(id, { status: 'ok', received: done.length, added: done.reduce((n, r) => n + r.recorded, 0) });
+			console.log(`model: ${done.map((r) => `${r.variant} ${r.quarter} ${r.recorded}`).join(', ')}`);
+		}
+		return out.flat();
 	});
 }
 
@@ -473,6 +497,8 @@ export function startScheduler() {
 	at('20 8 * * *', 'profiles', runProfilesJob);
 	// monthly bars for the model: every night hour, a portion each, until all are fresh
 	at('35 0-5 * * *', 'monthly', () => runMonthlyJob());
+	// after the morning closes: the first weekday of a quarter is the model's
+	at('55 9 * * 1-5', 'model', () => runModelJob());
 	at('0 9 * * 6', 'gaps', runGapsJob);
 	at('40 3 * * *', 'backup-app', () => runBackupJob('app'));
 	at('10 4 * * 0', 'backup-market', () => runBackupJob('market'));

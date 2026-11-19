@@ -63,7 +63,10 @@
 		load();
 	}
 
+	// T-009: two weeks before a quarter — «the next quarter's candidates are ready»
+	let upcoming = $state<{ key: string; days: number; ready: boolean } | null>(null);
 	onMount(() => {
+		fetch('/api/model/upcoming').then(async (r) => r.ok && (upcoming = await r.json())).catch(() => {});
 		try {
 			const v = JSON.parse(localStorage.getItem(KEY) ?? 'null');
 			if (v) ({ status, mode, market, defaultOnly } = { status, mode, market, defaultOnly, ...v });
@@ -202,6 +205,9 @@
 
 <div ontouchstart={touchStart} ontouchmove={touchMove} ontouchend={touchEnd} role="presentation">
 	<TopBar title={tx('Гипотезы', 'Hypotheses')} help="hypothesis.list" />
+	{#if upcoming?.ready}
+		<a class="model-banner" href="/model">{tx(`Кандидаты квартальной модели на ${upcoming.key} готовы — до начала квартала ${upcoming.days} дн.`, `Quarterly model candidates for ${upcoming.key} are ready — ${upcoming.days} days to the quarter`)} →</a>
+	{/if}
 
 	<div class="filters">
 		<div class="seg" role="radiogroup" aria-label={tx('Статус', 'Status')}>
@@ -323,6 +329,16 @@
 {/if}
 
 <style>
+	.model-banner {
+		display: block;
+		margin: 0 0 var(--s3);
+		padding: var(--s3);
+		border-radius: var(--r2);
+		background: var(--warn-bg);
+		color: var(--warn-text);
+		font-size: var(--fs-s);
+		text-decoration: none;
+	}
 	.pull {
 		display: flex;
 		align-items: flex-end;

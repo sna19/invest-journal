@@ -4,13 +4,15 @@
 	import Database from '@lucide/svelte/icons/database';
 	import Settings from '@lucide/svelte/icons/settings';
 	import UserRound from '@lucide/svelte/icons/user-round';
-	import { t } from '#lib/i18n.js';
+	import CalendarRange from '@lucide/svelte/icons/calendar-range';
+	import { t, tx } from '#lib/i18n.js';
 </script>
 
 <svelte:head><title>{t('tab.more')} · {t('app.name')}</title></svelte:head>
 
 <TopBar title={t('tab.more')} />
 <ul class="menu">
+	<li><a href="/model"><CalendarRange size={20} /><span>{tx('Квартальная модель', 'Quarterly model')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/tickers"><Database size={20} /><span>{t('more.tickers')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/settings"><Settings size={20} /><span>{t('more.settings')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/account"><UserRound size={20} /><span>{t('more.account')}</span><ChevronRight size={18} /></a></li>
