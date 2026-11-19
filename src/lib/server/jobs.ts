@@ -2,7 +2,8 @@ import cron from 'node-cron';
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { israelDate } from '../hypothesis.js';
-import { loadQuotes, marketsOpen, readSchedule, type QuotesSummary } from './market/quotes.js';
+import { heldSecurities, loadQuotes, marketsOpen, readSchedule, type QuotesSummary } from './market/quotes.js';
+import { asUser, currentUserId, forEachUser, listUsers } from './auth.js';
 import { backupDir, getApp, getMarket, rawDir } from './db.js';
 import { findGaps, enqueueMissingHistory, resetRunning, runQueue, type QueueSummary } from './market/history.js';
 import { makeFetcher } from './market/http.js';
@@ -149,7 +150,7 @@ export function runPricesJob(): Promise<DailySummary> {
 		const app = getApp().sqlite;
 		const m = getMarket().sqlite;
 		const day = israelDate();
-		const ids = ringSecurities(m, app);
+		const ids = await ringOfAll(m);
 		enqueueMissingHistory(m, ids, day);
 		const id = startRun('prices', 'yahoo');
 		const c = ctx(id);
@@ -218,12 +219,39 @@ export function runFxJob(): Promise<FxSummary> {
 	});
 }
 
-/** Entry prices, current results, closing — written as a «hypotheses» run. */
+/** the securities to load for all users together: the union of every journal's ring (owner 19.11.2026) */
+async function ringOfAll(m: import('better-sqlite3').Database): Promise<number[]> {
+	return [...new Set((await forEachUser(() => ringSecurities(m, getApp().sqlite))).flat())];
+}
+
+/** Entry prices, current results, closing — for every user's journal, written as one «hypotheses» run. */
 export function runHypothesesStep(): Summary {
 	const id = startRun('hypotheses', 'app');
 	try {
-		const r = updateHypotheses(getApp().sqlite, getMarket().sqlite);
+		const all: Summary[] = [];
+		for (const u of listUsersSafe()) all.push(asUser(u, () => hypothesesOf()));
+		const r = all.reduce((a, b) => ({ ...a, entries: a.entries + b.entries, updated: a.updated + b.updated, closed: a.closed + b.closed, waiting: [...a.waiting, ...b.waiting] }));
 		finishRun(id, { status: 'ok', received: r.entries + r.updated + r.closed, added: r.closed, updated: r.entries + r.updated });
+		return r;
+	} catch (e) {
+		finishRun(id, { status: 'error', error: String(e) });
+		throw e;
+	}
+}
+
+const listUsersSafe = () => {
+	try {
+		const ids = listUsers().map((u) => u.id);
+		return ids.length ? ids : [1];
+	} catch {
+		return [1];
+	}
+};
+
+/** one user's step: hypotheses, then the automatic portfolios */
+function hypothesesOf(): Summary {
+	{
+		const r = updateHypotheses(getApp().sqlite, getMarket().sqlite);
 		// section 18: automatic portfolios follow their sources' hypotheses (entries, closes, dividends)
 		try {
 			const a = getApp().sqlite;
@@ -233,9 +261,6 @@ export function runHypothesesStep(): Summary {
 			console.error(`auto portfolios: ${e}`);
 		}
 		return r;
-	} catch (e) {
-		finishRun(id, { status: 'error', error: String(e) });
-		throw e;
 	}
 }
 
@@ -244,7 +269,7 @@ export function runHypothesesStep(): Summary {
 export function runGapsJob() {
 	return single('gaps', async () => {
 		const id = startRun('gaps', 'yahoo');
-		const queued = findGaps(getMarket().sqlite, ringSecurities(getMarket().sqlite, getApp().sqlite));
+		const queued = findGaps(getMarket().sqlite, await ringOfAll(getMarket().sqlite));
 		finishRun(id, { status: 'ok', received: queued, added: queued });
 		if (queued) await runHistoryJob();
 		return queued;
@@ -257,6 +282,9 @@ export function runGapsJob() {
 export function backup(kind: 'app' | 'market', keep: number, dir = backupDir) {
 	mkdirSync(dir, { recursive: true });
 	const sqlite = kind === 'app' ? getApp().sqlite : getMarket().sqlite;
+	// a user's journal other than the first: app-u<id>-<time>.db
+	const uid = currentUserId();
+	if (kind === 'app' && uid && uid !== 1) kind = `app-u${uid}` as 'app';
 	const file = join(dir, `${kind}-${new Date().toISOString().replace(/[:.]/g, '-')}.db`);
 	sqlite.prepare('VACUUM INTO ?').run(file);
 	const old = readdirSync(dir)
@@ -271,7 +299,7 @@ export function runBackupJob(kind: 'app' | 'market') {
 	return single(`backup-${kind}`, async () => {
 		const id = startRun(`backup-${kind}`, 'local');
 		try {
-			const file = backup(kind, kind === 'app' ? 30 : 2);
+			const file = kind === 'app' ? (await forEachUser(() => backup('app', 30))).join(', ') : backup(kind, 2);
 			finishRun(id, { status: 'ok', received: 1, added: 1, error: null });
 			console.log(`backup: ${file}`);
 			return file;
@@ -289,7 +317,8 @@ export function runQuotesJob(): Promise<QuotesSummary> {
 	return single('quotes', async () => {
 		const id = startRun('quotes', 'yahoo');
 		try {
-			const s = await loadQuotes(getMarket().sqlite, getApp().sqlite, makeFetcher({ retries: 1 }));
+			const held = new Set((await forEachUser(() => heldSecurities(getApp().sqlite))).flat());
+			const s = await loadQuotes(getMarket().sqlite, [...held], makeFetcher({ retries: 1 }));
 			finishRun(id, { status: s.errors.length > s.securities / 2 ? 'error' : s.errors.length ? 'suspicious' : 'ok', received: s.securities, updated: s.updated, error: s.errors.slice(0, 5).join('; ') || null });
 			return s;
 		} catch (e) {

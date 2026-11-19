@@ -6,14 +6,15 @@
 	import ChartColumn from '@lucide/svelte/icons/chart-column';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Plus from '@lucide/svelte/icons/plus';
+	import { t } from './i18n.js';
 
 	/** Spec sections 13 and 18 — five tabs at the bottom («Портфель» first) and «+» (new hypothesis) above them. */
 	const tabs = [
-		{ href: '/portfolio', label: 'Портфель', icon: Briefcase, match: (p: string) => p.startsWith('/portfolio') },
-		{ href: '/', label: 'Гипотезы', icon: NotebookPen, match: (p: string) => p === '/' || p.startsWith('/hypotheses') },
-		{ href: '/sources', label: 'Источники', icon: Newspaper, match: (p: string) => p.startsWith('/sources') },
-		{ href: '/stats', label: 'Статистика', icon: ChartColumn, match: (p: string) => p.startsWith('/stats') },
-		{ href: '/more', label: 'Ещё', icon: Ellipsis, match: (p: string) => ['/more', '/tickers', '/settings'].some((x) => p.startsWith(x)) }
+		{ href: '/portfolio', label: 'tab.portfolio' as const, icon: Briefcase, match: (p: string) => p.startsWith('/portfolio') },
+		{ href: '/', label: 'tab.hypotheses' as const, icon: NotebookPen, match: (p: string) => p === '/' || p.startsWith('/hypotheses') },
+		{ href: '/sources', label: 'tab.sources' as const, icon: Newspaper, match: (p: string) => p.startsWith('/sources') },
+		{ href: '/stats', label: 'tab.stats' as const, icon: ChartColumn, match: (p: string) => p.startsWith('/stats') },
+		{ href: '/more', label: 'tab.more' as const, icon: Ellipsis, match: (p: string) => ['/more', '/tickers', '/settings', '/account'].some((x) => p.startsWith(x)) }
 	];
 	const path = $derived(page.url.pathname);
 
@@ -31,14 +32,14 @@
 <svelte:window onscroll={onScroll} />
 
 {#if !path.startsWith('/new')}
-	<a class="plus" class:hidden href="/new" aria-label="Новая гипотеза" title="Новая гипотеза"><Plus size={26} strokeWidth={2.4} /></a>
+	<a class="plus" class:hidden href="/new" aria-label={t('tab.new')} title={t('tab.new')}><Plus size={26} strokeWidth={2.4} /></a>
 {/if}
-<nav class="tabbar" aria-label="Разделы">
-	{#each tabs as t (t.href)}
-		{@const on = t.match(path)}
-		<a href={t.href} class:on aria-current={on ? 'page' : undefined}>
-			<t.icon size={24} strokeWidth={on ? 2.3 : 1.8} />
-			<span>{t.label}</span>
+<nav class="tabbar" aria-label={t('tab.sections')}>
+	{#each tabs as tab (tab.href)}
+		{@const on = tab.match(path)}
+		<a href={tab.href} class:on aria-current={on ? 'page' : undefined}>
+			<tab.icon size={24} strokeWidth={on ? 2.3 : 1.8} />
+			<span>{t(tab.label)}</span>
 		</a>
 	{/each}
 </nav>

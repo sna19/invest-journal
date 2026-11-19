@@ -13,7 +13,7 @@ function sources(dir: string): string[] {
 	});
 }
 
-const AREAS = 'hypothesis|result|source|stats|ticker|portfolio|consensus|security';
+const AREAS = 'account|hypothesis|result|source|stats|ticker|portfolio|consensus|security';
 
 /**
  * Every topic key the interface uses: <HelpIcon topicKey="…">, <TopBar help="…"> and keys chosen in an

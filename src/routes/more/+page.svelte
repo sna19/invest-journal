@@ -3,21 +3,24 @@
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Database from '@lucide/svelte/icons/database';
 	import Settings from '@lucide/svelte/icons/settings';
+	import UserRound from '@lucide/svelte/icons/user-round';
+	import { t } from '#lib/i18n.js';
 </script>
 
-<svelte:head><title>Ещё · Журнал гипотез</title></svelte:head>
+<svelte:head><title>{t('tab.more')} · {t('app.name')}</title></svelte:head>
 
-<TopBar title="Ещё" />
+<TopBar title={t('tab.more')} />
 <ul class="menu">
-	<li><a href="/tickers"><Database size={20} /><span>Тикеры</span><ChevronRight size={18} /></a></li>
-	<li><a href="/settings"><Settings size={20} /><span>Настройки</span><ChevronRight size={18} /></a></li>
+	<li><a href="/tickers"><Database size={20} /><span>{t('more.tickers')}</span><ChevronRight size={18} /></a></li>
+	<li><a href="/settings"><Settings size={20} /><span>{t('more.settings')}</span><ChevronRight size={18} /></a></li>
+	<li><a href="/account"><UserRound size={20} /><span>{t('more.account')}</span><ChevronRight size={18} /></a></li>
 </ul>
 
 <!-- the licence of Lightweight Charts (Apache-2.0) asks for this notice and a link to TradingView -->
 <p class="credits">
-	Графики — TradingView Lightweight Charts™, Copyright © 2025 TradingView, Inc.
-	<a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">tradingview.com</a> · лицензия Apache 2.0.
-	Курс доллара — Банк Израиля. Цены — Yahoo Finance; списки бумаг — Nasdaq Trader и TASE.
+	{t('more.credits')}
+	<a href="https://www.tradingview.com/" target="_blank" rel="noopener noreferrer">tradingview.com</a> · {t('more.licence')}
+	{t('more.sources')}
 </p>
 
 <style>

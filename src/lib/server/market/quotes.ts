@@ -117,8 +117,8 @@ export interface QuotesSummary {
 	fx: boolean;
 }
 
-export async function loadQuotes(market: Database.Database, app: Database.Database, get: Fetcher, now = new Date()): Promise<QuotesSummary> {
-	const ids = heldSecurities(app);
+/** `ids` — the securities held in all users' portfolios */
+export async function loadQuotes(market: Database.Database, ids: number[], get: Fetcher, now = new Date()): Promise<QuotesSummary> {
 	const secs: Sec[] = securitiesForPrices(market, ids);
 	const lastClose = market.prepare('select close from market_prices_daily where security_id = ? order by date desc limit 1');
 	const put = market.prepare(
