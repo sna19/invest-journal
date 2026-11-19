@@ -1,7 +1,7 @@
 node_modules/
 .svelte-kit/
-build/
-data/
+/build/
+/data/
 .env
 .env.*
 !.env.example
