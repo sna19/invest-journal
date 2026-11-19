@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tx } from '#lib/i18n.js';
 	import CircleHelp from '@lucide/svelte/icons/circle-help';
 	import X from '@lucide/svelte/icons/x';
 	import Sheet from './Sheet.svelte';
@@ -60,9 +61,9 @@
 	bind:this={btn}
 	class="help"
 	type="button"
-	aria-label="Справка{label ? `: ${label}` : ''}"
+	aria-label={`${tx('Справка', 'Help')}${label ? `: ${label}` : ''}`}
 	aria-expanded={open}
-	title="Справка"
+	title={tx('Справка', 'Help')}
 	onclick={toggle}><CircleHelp size={18} /></button
 >
 
@@ -70,19 +71,19 @@
 	{#if wide}
 		<div bind:this={pop} class="pop" role="dialog" aria-labelledby="{id}-t" style:top="{pos.top}px" style:left="{pos.left}px">
 			<div class="pop-head">
-				<h2 id="{id}-t">{topic?.title ?? 'Справка'}</h2>
-				<button class="x" aria-label="Закрыть" onclick={close}><X size={20} /></button>
+				<h2 id="{id}-t">{topic?.title ?? tx('Справка', 'Help')}</h2>
+				<button class="x" aria-label={tx('Закрыть', 'Close')} onclick={close}><X size={20} /></button>
 			</div>
 			{@render body()}
 		</div>
 	{:else}
-		<Sheet title={topic?.title ?? 'Справка'} onclose={close}>{@render body()}</Sheet>
+		<Sheet title={topic?.title ?? tx('Справка', 'Help')} onclose={close}>{@render body()}</Sheet>
 	{/if}
 {/if}
 
 {#snippet body()}
 	{#if failed}
-		<p class="muted">Справка не загрузилась — проверьте связь.</p>
+		<p class="muted">{tx('Справка не загрузилась — проверьте связь.', 'Help did not load — check the connection.')}</p>
 	{:else if topic}
 		<div class="md">{@html topic.html}</div>
 	{:else}

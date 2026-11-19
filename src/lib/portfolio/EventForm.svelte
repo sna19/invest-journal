@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tl, tx } from '#lib/i18n.js';
 	import { onMount } from 'svelte';
 	import TickerSearch, { rememberSecurity, type Security } from '../TickerSearch.svelte';
 	import { israelDate } from '../hypothesis.js';
@@ -55,7 +56,7 @@
 
 	const trade = $derived(kind === 'buy' || kind === 'sell' || kind === 'opening');
 	const plan = $derived(kind === 'plan_buy' || kind === 'plan_sell');
-	const unitLabel = $derived(sec ? (sec.priceUnit === 'ILA' ? 'агорот' : sec.currency === 'USD' ? '$' : '₪') : '');
+	const unitLabel = $derived(sec ? (sec.priceUnit === 'ILA' ? tx('агорот', 'agorot') : sec.currency === 'USD' ? '$' : '₪') : '');
 
 	async function quote() {
 		if (!sec) return;
@@ -137,7 +138,7 @@
 			}
 			if (!r.ok) {
 				errors = j.errors ?? {};
-				formError = j.message ?? 'Не сохранилось';
+				formError = tl(j.message) || tx('Не сохранилось', 'Not saved');
 				return;
 			}
 			ask = null;
@@ -149,7 +150,7 @@
 			}
 			onsaved(j.positionId ?? position?.id);
 		} catch {
-			formError = 'Нет связи с сервером';
+			formError = tx('Нет связи с сервером', 'No connection to the server');
 		} finally {
 			saving = false;
 		}
@@ -158,7 +159,7 @@
 
 <div class="form">
 	{#if !sec}
-		<TickerSearch onselect={picked} noIndex withManual label="Бумага" autofocus />
+		<TickerSearch onselect={picked} noIndex withManual label={tx('Бумага', 'Security')} autofocus />
 	{:else}
 		<p class="sec"><b>{sec.symbol}</b> <span class="muted">{sec.name}</span></p>
 	{/if}
@@ -166,13 +167,13 @@
 	{#if sec}
 		<div class="row">
 			<label>
-				<span>Дата</span>
+				<span>{tx('Дата', 'Date')}</span>
 				<input type="date" max={today} bind:value={date} onchange={quote} />
 				{#if errors.date}<em class="err">{errors.date}</em>{/if}
 			</label>
 			{#if trade}
 				<label>
-					<span>Количество{#if kind === 'sell' && position}<button type="button" class="all" onclick={() => (qty = String(position!.qty))}>всё: {qtyText(position.qty)}</button>{/if}</span>
+					<span>{tx('Количество', 'Quantity')}{#if kind === 'sell' && position}<button type="button" class="all" onclick={() => (qty = String(position!.qty))}>{tx('всё', 'all')}: {qtyText(position.qty)}</button>{/if}</span>
 					<input inputmode="decimal" bind:value={qty} placeholder="0" />
 					{#if errors.qty}<em class="err">{errors.qty}</em>{/if}
 				</label>
@@ -182,21 +183,21 @@
 		{#if trade || plan}
 			<div class="row">
 				<label>
-					<span>{plan ? 'Желаемая цена' : 'Цена'}, {unitLabel}</span>
-					<input inputmode="decimal" bind:value={price} oninput={() => (priceTouched = true)} placeholder={plan ? 'необязательно' : ''} />
-					{#if quoteDate && !plan}<em class="hint">закрытие {quoteDate.split('-').reverse().join('.')}</em>{/if}
+					<span>{plan ? tx('Желаемая цена', 'Desired price') : tx('Цена', 'Price')}, {unitLabel}</span>
+					<input inputmode="decimal" bind:value={price} oninput={() => (priceTouched = true)} placeholder={plan ? tx('необязательно', 'optional') : ''} />
+					{#if quoteDate && !plan}<em class="hint">{tx('закрытие', 'close')} {quoteDate.split('-').reverse().join('.')}</em>{/if}
 					{#if errors.price}<em class="err">{errors.price}</em>{/if}
 				</label>
 				{#if trade && kind !== 'opening'}
 					<label>
-						<span>Комиссия, {sec.currency === 'USD' ? '$' : '₪'}</span>
+						<span>{tx('Комиссия', 'Fee')}, {sec.currency === 'USD' ? '$' : '₪'}</span>
 						<input inputmode="decimal" bind:value={fee} placeholder="0" />
 						{#if errors.fee}<em class="err">{errors.fee}</em>{/if}
 					</label>
 				{:else if kind === 'plan_buy'}
 					<label>
-						<span>Сумма, {sec.currency === 'USD' ? '$' : '₪'}</span>
-						<input inputmode="decimal" bind:value={amount} placeholder="необязательно" />
+						<span>{tx('Сумма', 'Amount')}, {sec.currency === 'USD' ? '$' : '₪'}</span>
+						<input inputmode="decimal" bind:value={amount} placeholder={tx('необязательно', 'optional')} />
 					</label>
 				{/if}
 			</div>
@@ -204,28 +205,28 @@
 
 		{#if total !== null && kind !== 'opening'}
 			<p class="total">
-				{kind === 'buy' ? 'Списано' : 'Получено'}: <b>{money(total, sec.currency)}</b>
-				{#if sec.currency === 'USD' && fxUsd}<span class="muted"> ≈ {money(total * fxUsd)} по курсу {fxUsd}</span>{/if}
+				{kind === 'buy' ? tx('Списано', 'Paid') : tx('Получено', 'Received')}: <b>{money(total, sec.currency)}</b>
+				{#if sec.currency === 'USD' && fxUsd}<span class="muted"> ≈ {money(total * fxUsd)} {tx('по курсу', 'at the rate')} {fxUsd}</span>{/if}
 			</p>
 		{/if}
 
 		{#if kind === 'basis'}
 			<div class="row">
 				<label>
-					<span>Средняя цена покупки, {unitLabel}</span>
-					<input inputmode="decimal" bind:value={price} placeholder="или справа" />
+					<span>{tx('Средняя цена покупки', 'Average purchase price')}, {unitLabel}</span>
+					<input inputmode="decimal" bind:value={price} placeholder={tx('или справа', 'or on the right')} />
 				</label>
 				<label>
-					<span>Или вся стоимость покупки, {portfolioCurrency === 'USD' ? '$' : '₪'}</span>
-					<input inputmode="decimal" bind:value={costTotal} placeholder="как у брокера" />
+					<span>{tx('Или вся стоимость покупки', 'Or the whole purchase cost')}, {portfolioCurrency === 'USD' ? '$' : '₪'}</span>
+					<input inputmode="decimal" bind:value={costTotal} placeholder={tx('как у брокера', 'as at the broker')} />
 				</label>
 			</div>
 			{#if errors.price}<em class="err">{errors.price}</em>{/if}
-			{#if !edit}<p class="muted small">История не меняется: цена покупки запишется отдельным событием, прибыль будет считаться от неё, а не с даты переноса.</p>{/if}
+			{#if !edit}<p class="muted small">{tx('История не меняется: цена покупки запишется отдельным событием, прибыль будет считаться от неё, а не с даты переноса.', 'History does not change: the purchase price is recorded as a separate event, and profit counts from it, not from the carry-over date.')}</p>{/if}
 		{/if}
 
 		<label>
-			<span>{kind === 'drop' ? 'Почему передумал' : plan ? 'Причина' : kind === 'note' ? 'Заметка' : 'Заметка (необязательно)'}</span>
+			<span>{kind === 'drop' ? tx('Почему передумал', 'Why I changed my mind') : plan ? tx('Причина', 'Reason') : kind === 'note' ? tx('Заметка', 'Note') : tx('Заметка (необязательно)', 'Note (optional)')}</span>
 			<textarea rows="2" bind:value={note}></textarea>
 			{#if errors.note}<em class="err">{errors.note}</em>{/if}
 		</label>
@@ -233,21 +234,21 @@
 		{#if warning}<p class="warnbox" role="status">{warning}</p>{/if}
 		{#if ask}
 			<div class="ask" role="alert">
-				<p>{ask}</p>
+				<p>{tl(ask)}</p>
 				<div class="btns">
-					<button class="primary" disabled={saving} onclick={() => save(true)}>Сохранить всё равно</button>
-					<button class="ghost" onclick={() => (ask = null)}>Исправить</button>
+					<button class="primary" disabled={saving} onclick={() => save(true)}>{tx('Сохранить всё равно', 'Save anyway')}</button>
+					<button class="ghost" onclick={() => (ask = null)}>{tx('Исправить', 'Fix')}</button>
 				</div>
 			</div>
 		{:else}
 			{#if formError}<p class="err">{formError}</p>{/if}
 			<div class="btns">
-				<button class="primary" disabled={saving} onclick={() => save()}>{saving ? 'Сохраняю…' : edit ? 'Сохранить' : EVENT_LABEL[kind]}</button>
-				<button class="ghost" onclick={oncancel}>Отмена</button>
+				<button class="primary" disabled={saving} onclick={() => save()}>{saving ? tx('Сохраняю…', 'Saving…') : edit ? tx('Сохранить', 'Save') : EVENT_LABEL[kind]}</button>
+				<button class="ghost" onclick={oncancel}>{tx('Отмена', 'Cancel')}</button>
 			</div>
 		{/if}
-		{#if position && trade}<p class="muted small">В позиции сейчас {qtyText(position.qty)} · цены в {unitLabel}{sec.priceUnit === 'ILA' ? ' (не в шекелях)' : ''}</p>{/if}
-		{#if !position && sec.priceUnit === 'ILA' && trade}<p class="muted small">Цены бумаг TASE — в агоротах: 65 ₪ = 6 500 аг.</p>{/if}
+		{#if position && trade}<p class="muted small">{tx('В позиции сейчас', 'Position now')} {qtyText(position.qty)} · {tx('цены в', 'prices in')} {unitLabel}{sec.priceUnit === 'ILA' ? tx(' (не в шекелях)', ' (not shekels)') : ''}</p>{/if}
+		{#if !position && sec.priceUnit === 'ILA' && trade}<p class="muted small">{tx('Цены бумаг TASE — в агоротах: 65 ₪ = 6 500 аг.', 'TASE prices are in agorot: ₪65 = 6,500 ag.')}</p>{/if}
 	{/if}
 </div>
 

@@ -1,3 +1,4 @@
+import { loc, tl, tx } from './i18n.js';
 /**
  * Spec section 18 — portfolio arithmetic, pure: the screens, the server and the tests use the same code.
  *
@@ -12,14 +13,18 @@
 
 export type Stage = 'watch' | 'plan_buy' | 'holding' | 'plan_sell' | 'closed';
 export const STAGES: Stage[] = ['holding', 'plan_sell', 'plan_buy', 'watch', 'closed'];
-export const STAGE_LABEL: Record<Stage, string> = {
+/** a label map that answers in the page's language (the Russian stays the key in i18n-en.ts) */
+const localized = <T extends Record<string, string>>(o: T): T =>
+	new Proxy(o, { get: (t, k) => (typeof k === 'string' && k in t ? tl(t[k]) : Reflect.get(t, k)) });
+
+export const STAGE_LABEL: Record<Stage, string> = localized({
 	holding: 'В портфеле',
 	plan_sell: 'Хочу продать',
 	plan_buy: 'Хочу купить',
 	watch: 'Наблюдаю',
 	closed: 'Закрытые'
-};
-export const EVENT_LABEL: Record<string, string> = {
+});
+export const EVENT_LABEL: Record<string, string> = localized({
 	watch: 'Наблюдаю',
 	plan_buy: 'Хочу купить',
 	buy: 'Купил',
@@ -30,8 +35,8 @@ export const EVENT_LABEL: Record<string, string> = {
 	opening: 'Перенесено',
 	basis: 'Цена покупки',
 	reverse: 'Сторно'
-};
-export const CASH_LABEL: Record<string, string> = {
+});
+export const CASH_LABEL: Record<string, string> = localized({
 	deposit: 'Взнос',
 	withdraw: 'Вывод',
 	convert: 'Конвертация',
@@ -39,7 +44,7 @@ export const CASH_LABEL: Record<string, string> = {
 	fee: 'Комиссия',
 	tax: 'Налог',
 	reverse: 'Сторно'
-};
+});
 
 export const unitFactor = (priceUnit: string) => (priceUnit === 'ILA' ? 0.01 : 1);
 const EPS = 1e-9;
@@ -438,16 +443,16 @@ export const curSign = (c: string) => (c === 'USD' ? '$' : '₪');
 /** 12 201 ₪, 4 180,5 $ — whole units from a thousand up. */
 export function money(x: number | null | undefined, currency = 'ILS', signed = false) {
 	if (x === null || x === undefined || !Number.isFinite(x)) return '—';
-	const s = Math.abs(x).toLocaleString('ru-RU', { maximumFractionDigits: Math.abs(x) >= 1000 ? 0 : 2 });
+	const s = Math.abs(x).toLocaleString(loc(), { maximumFractionDigits: Math.abs(x) >= 1000 ? 0 : 2 });
 	return `${signed ? (x > 0 ? '+' : x < 0 ? '−' : '') : x < 0 ? '−' : ''}${s} ${curSign(currency)}`;
 }
 
 /** A price in the position's unit: 6 500 аг., 110,25 $. */
 export function priceText(p: number | null | undefined, priceUnit: string) {
 	if (p === null || p === undefined) return '—';
-	const s = p.toLocaleString('ru-RU', { maximumFractionDigits: priceUnit === 'ILA' ? 1 : 2 });
-	return `${s} ${priceUnit === 'ILA' ? 'аг.' : curSign(priceUnit)}`;
+	const s = p.toLocaleString(loc(), { maximumFractionDigits: priceUnit === 'ILA' ? 1 : 2 });
+	return `${s} ${priceUnit === 'ILA' ? tx('аг.', 'ag.') : curSign(priceUnit)}`;
 }
 
 /** Quantities keep six decimals: Blink holds fractional shares (section 18). */
-export const qtyText = (q: number) => q.toLocaleString('ru-RU', { maximumFractionDigits: 6 });
+export const qtyText = (q: number) => q.toLocaleString(loc(), { maximumFractionDigits: 6 });

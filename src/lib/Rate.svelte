@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tx } from '#lib/i18n.js';
 	import type { Score } from './stats.js';
 	import HelpIcon from './HelpIcon.svelte';
 
@@ -11,16 +12,16 @@
 </script>
 
 {#if score.level === 'none'}
-	<span class="none">нет закрытых</span>
+	<span class="none">{tx('нет закрытых', 'none closed')}</span>
 {:else if score.level === 'few'}
 	<span class="few"
-		>мало данных · {score.hits} из {score.n}{#if help}<HelpIcon topicKey="source.threshold" label="мало данных" />{/if}</span
+		>{tx('мало данных', 'few data')} · {score.hits} {tx('из', 'of')} {score.n}{#if help}<HelpIcon topicKey="source.threshold" label={tx('мало данных', 'few data')} />{/if}</span
 	>
 {:else}
 	<span class="rate">
 		<b>{pct(score.rate!)}%</b>
 		<span class="ci">{pct(score.ci![0])}–{pct(score.ci![1])}%</span>
-		{#if score.level === 'prelim'}<span class="prelim">предварительно</span>{/if}
+		{#if score.level === 'prelim'}<span class="prelim">{tx('предварительно', 'preliminary')}</span>{/if}
 	</span>
 {/if}
 

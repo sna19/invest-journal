@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tl, tx } from '#lib/i18n.js';
 	import { onMount } from 'svelte';
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
 	import TopBar from '#lib/TopBar.svelte';
@@ -46,7 +47,7 @@
 			data = await r.json();
 			problem = undefined;
 		} catch {
-			problem = 'Нет связи с сервером.';
+			problem = tx('Нет связи с сервером.', 'No connection to the server.');
 		}
 	}
 	onMount(() => {
@@ -91,19 +92,19 @@
 	function gap(b: CalBucket) {
 		const d = pct(b.rate!) - Math.round(b.meanConf);
 		if (b.level === 'few') return '';
-		if (Math.abs(d) < 5) return 'сходится';
-		return d < 0 ? `сбывается на ${-d} п.п. реже` : `сбывается на ${d} п.п. чаще`;
+		if (Math.abs(d) < 5) return tx('сходится', 'matches');
+		return d < 0 ? tx(`сбывается на ${-d} п.п. реже`, `comes true ${-d} pp less often`) : tx(`сбывается на ${d} п.п. чаще`, `comes true ${d} pp more often`);
 	}
 </script>
 
-<svelte:head><title>Статистика · Журнал гипотез</title></svelte:head>
+<svelte:head><title>{tx('Статистика', 'Stats')} · {tx('Журнал гипотез', 'Hypothesis journal')}</title></svelte:head>
 
-<TopBar title="Статистика" help="stats.screen" />
+<TopBar title={tx('Статистика', 'Stats')} help="stats.screen" />
 
 <div class="bar">
-	<button class="chip" class:on={noDefault} aria-pressed={noDefault} onclick={toggle}>Без срока по умолчанию</button>
+	<button class="chip" class:on={noDefault} aria-pressed={noDefault} onclick={toggle}>{tx('Без срока по умолчанию', 'Without the default term')}</button>
 	<span class="grow"></span>
-	{#if data && (data.total.closed || data.total.open)}<span class="muted small">закрыто {data.total.closed} · открыто {data.total.open}</span>{/if}
+	{#if data && (data.total.closed || data.total.open)}<span class="muted small">{tx('закрыто', 'closed')} {data.total.closed} · {tx('открыто', 'open')} {data.total.open}</span>{/if}
 </div>
 
 {#if problem}<p class="warn" role="alert">{problem}</p>{/if}
@@ -111,35 +112,34 @@
 {#if data === null}
 	{#each [1, 2, 3] as i (i)}<div class="skeleton"></div>{/each}
 {:else if !data.total.closed && !data.total.open}
-	<Empty title="Калибровка и сравнения">
-		Здесь будет видно, сбывается ли ваша уверенность («ставлю 70% — сбывается ли 70%»), как ваши идеи выглядят рядом с внешними
-		источниками и чем симуляция отличается от реальных денег. Всё считается по закрытым гипотезам.
-		{#snippet action()}<a href="/new">Новая гипотеза</a>{/snippet}
+	<Empty title={tx('Калибровка и сравнения', 'Calibration and comparisons')}>
+		{tx('Здесь будет видно, сбывается ли ваша уверенность («ставлю 70% — сбывается ли 70%»), как ваши идеи выглядят рядом с внешними источниками и чем симуляция отличается от реальных денег. Всё считается по закрытым гипотезам.', 'Here you will see whether your confidence comes true («I put 70% — does 70% come true?»), how your ideas look next to outside sources and how simulation differs from real money. Everything is counted on closed hypotheses.')}
+		{#snippet action()}<a href="/new">{tx('Новая гипотеза', 'New hypothesis')}</a>{/snippet}
 	</Empty>
 {:else}
-	<p class="muted small hint">Блоки можно поменять местами: удерживайте блок или тяните за ≡.</p>
+	<p class="muted small hint">{tx('Блоки можно поменять местами: удерживайте блок или тяните за ≡.', 'Blocks can swap places: hold a block or drag by ≡.')}</p>
 	<ul class="blocks" use:sortable={{ preview: (k) => (preview = k), drop: saveOrder }}>
 		{#each shown as key (key)}
 			<li class="card" data-key={key}>
 				{#if key === 'calibration'}
 					{@const c = data.calibration}
 					<div class="head">
-						<h2>Калибровка</h2>
-						<HelpIcon topicKey="stats.calibration" label="калибровка" />
+						<h2>{tx('Калибровка', 'Calibration')}</h2>
+						<HelpIcon topicKey="stats.calibration" label={tx('калибровка', 'calibration')} />
 						<span class="grow"></span>
-						<button class="handle" data-handle aria-label="Калибровка: перетащить"><GripVertical size={18} /></button>
+						<button class="handle" data-handle aria-label={tx('Калибровка: перетащить', 'Calibration: drag')}><GripVertical size={18} /></button>
 					</div>
 					{#if !c.n}
 						<p class="muted">
-							Появится, когда закроются гипотезы с заполненной уверенностью.{#if c.without}
-								Сейчас закрыто {c.without} без уверенности — они в калибровку не входят.{/if}
+							{tx('Появится, когда закроются гипотезы с заполненной уверенностью.', 'Appears when hypotheses with a confidence filled in close.')}{#if c.without}
+								{tx(`Сейчас закрыто ${c.without} без уверенности — они в калибровку не входят.`, `${c.without} closed without a confidence — they are not in the calibration.`)}{/if}
 						</p>
 					{:else}
 						<p class="lead">
-							В среднем ставите <b>{Math.round(c.meanConf!)}%</b>, сбывается <b>{pct(c.rate!)}%</b>
-							<span class="muted">({c.hits} из {c.n})</span>
+							{tx('В среднем ставите', 'On average you put')} <b>{Math.round(c.meanConf!)}%</b>, {tx('сбывается', 'comes true')} <b>{pct(c.rate!)}%</b>
+							<span class="muted">({c.hits} {tx('из', 'of')} {c.n})</span>
 						</p>
-						<svg viewBox="0 0 {W} {H}" role="img" aria-label="График калибровки: заявленная уверенность против доли сработавших">
+						<svg viewBox="0 0 {W} {H}" role="img" aria-label={tx('График калибровки: заявленная уверенность против доли сработавших', 'Calibration chart: stated confidence against the share that came true')}>
 							{#each TICKS as t (t)}
 								<line class="grid" x1={x(0)} x2={x(100)} y1={y(t)} y2={y(t)} />
 								<text class="tick" x={PAD.l - 6} y={y(t) + 4} text-anchor="end">{t}%</text>
@@ -153,60 +153,60 @@
 								<circle class="dot" class:faint={b.level === 'few'} cx={x(b.meanConf)} cy={y(b.rate! * 100)} r={radius(b.n)} />
 							{/each}
 						</svg>
-						<p class="muted small legend">По горизонтали — какую уверенность ставили, по вертикали — сколько сбылось. Точки на диагонали — уверенность честная; бледные — меньше 10 гипотез.</p>
+						<p class="muted small legend">{tx('По горизонтали — какую уверенность ставили, по вертикали — сколько сбылось. Точки на диагонали — уверенность честная; бледные — меньше 10 гипотез.', 'Across — the confidence you put, up — how much came true. Points on the diagonal — honest confidence; pale ones — fewer than 10 hypotheses.')}</p>
 						<ul class="rows">
 							{#each c.buckets as b (b.from)}
 								<li class="cal">
 									<span class="top">
-										<span class="lbl">{b.label}</span>
+										<span class="lbl">{tl(b.label)}</span>
 										{#if b.level === 'few'}
-											<span class="few">мало данных · {b.hits} из {b.n}</span>
+											<span class="few">{tx('мало данных', 'few data')} · {b.hits} {tx('из', 'of')} {b.n}</span>
 										{:else}
 											<b>{pct(b.rate!)}%</b>
 											<span class="muted small">{pct(b.ci![0])}–{pct(b.ci![1])}%</span>
-											{#if b.level === 'prelim'}<span class="prelim">предварительно</span>{/if}
+											{#if b.level === 'prelim'}<span class="prelim">{tx('предварительно', 'preliminary')}</span>{/if}
 										{/if}
 									</span>
 									{#if b.level !== 'few'}
-										<span class="muted small">ставили в среднем {Math.round(b.meanConf)}%, сработало {b.hits} из {b.n}{gap(b) ? ` — ${gap(b)}` : ''}</span>
+										<span class="muted small">{tx('ставили в среднем', 'put on average')} {Math.round(b.meanConf)}%, {tx('сработало', 'came true')} {b.hits} {tx('из', 'of')} {b.n}{gap(b) ? ` — ${gap(b)}` : ''}</span>
 									{/if}
 								</li>
 							{/each}
 						</ul>
-						{#if c.without}<p class="muted small">Ещё {c.without} закрытых без уверенности — в калибровку не входят.</p>{/if}
+						{#if c.without}<p class="muted small">{tx(`Ещё ${c.without} закрытых без уверенности — в калибровку не входят.`, `${c.without} more closed without a confidence — not in the calibration.`)}</p>{/if}
 					{/if}
 				{:else if key === 'own' || key === 'mode'}
 					{@const sides = key === 'own' ? data.own : data.mode}
 					<div class="head">
-						<h2>{key === 'own' ? 'Свои идеи и внешние источники' : 'Симуляция и реальные деньги'}</h2>
-						<HelpIcon topicKey={key === 'own' ? 'stats.own' : 'stats.mode'} label={key === 'own' ? 'свои идеи' : 'режимы'} />
+						<h2>{key === 'own' ? tx('Свои идеи и внешние источники', 'Own ideas and outside sources') : tx('Симуляция и реальные деньги', 'Simulation and real money')}</h2>
+						<HelpIcon topicKey={key === 'own' ? 'stats.own' : 'stats.mode'} label={key === 'own' ? tx('свои идеи', 'own ideas') : tx('режимы', 'modes')} />
 						<span class="grow"></span>
-						<button class="handle" data-handle aria-label="Блок: перетащить"><GripVertical size={18} /></button>
+						<button class="handle" data-handle aria-label={tx('Блок: перетащить', 'Block: drag')}><GripVertical size={18} /></button>
 					</div>
 					{#if sides.every((s) => !s.score.n && !s.open)}
 						<p class="muted">
 							{key === 'own'
-								? 'Появится, когда закроются гипотезы с источником «Собственная идея» или внешним.'
-								: 'Появится, когда закроются гипотезы в режимах «симуляция» и «реальные деньги».'}
+								? tx('Появится, когда закроются гипотезы с источником «Собственная идея» или внешним.', 'Appears when hypotheses from «Own idea» or an outside source close.')
+								: tx('Появится, когда закроются гипотезы в режимах «симуляция» и «реальные деньги».', 'Appears when hypotheses in «simulation» and «real money» modes close.')}
 						</p>
 					{:else}
 						{@render compare(sides)}
 					{/if}
 				{:else if key === 'tags'}
 					<div class="head">
-						<h2>По тегам</h2>
-						<HelpIcon topicKey="stats.tags" label="теги" />
+						<h2>{tx('По тегам', 'By tags')}</h2>
+						<HelpIcon topicKey="stats.tags" label={tx('теги', 'tags')} />
 						<span class="grow"></span>
-						<button class="handle" data-handle aria-label="По тегам: перетащить"><GripVertical size={18} /></button>
+						<button class="handle" data-handle aria-label={tx('По тегам: перетащить', 'By tags: drag')}><GripVertical size={18} /></button>
 					</div>
 					{#if data.tags.shown.length}
 						{@render compare(data.tags.shown)}
 					{:else}
-						<p class="muted">Тег появляется здесь, когда в нём набирается 10 закрытых гипотез. Теги ставятся в карточке гипотезы.</p>
+						<p class="muted">{tx('Тег появляется здесь, когда в нём набирается 10 закрытых гипотез. Теги ставятся в карточке гипотезы.', 'A tag appears here once it has 10 closed hypotheses. Tags are set in a hypothesis card.')}</p>
 					{/if}
 					{#if data.tags.gathering.length}
 						<p class="muted small gathering">
-							Набирают: {data.tags.gathering.map((t) => `${t.label} (${t.closed} из 10${t.open ? `, открыто ${t.open}` : ''})`).join(', ')}
+							{tx('Набирают', 'Gathering')}: {data.tags.gathering.map((t) => `${t.label} (${t.closed} ${tx('из', 'of')} 10${t.open ? `, ${tx('открыто', 'open')} ${t.open}` : ''})`).join(', ')}
 						</p>
 					{/if}
 				{/if}
@@ -220,14 +220,14 @@
 		{#each sides as s (s.key)}
 			<li class="side">
 				<span class="top">
-					<b>{s.label}</b>
+					<b>{tl(s.label)}</b>
 					<span class="grow"></span>
 					<Rate score={s.score} />
 				</span>
 				<span class="muted small">
-					закрыто {s.score.n} · открыто {s.open}
-					{#if s.score.n}· среднее <Pct value={s.score.meanExcess} plain /> · медиана <Pct value={s.score.medianExcess} plain />{/if}
-					{#if s.news.n}· новости отдельно: {s.news.hits} из {s.news.n}{/if}
+					{tx('закрыто', 'closed')} {s.score.n} · {tx('открыто', 'open')} {s.open}
+					{#if s.score.n}· {tx('среднее', 'mean')} <Pct value={s.score.meanExcess} plain /> · {tx('медиана', 'median')} <Pct value={s.score.medianExcess} plain />{/if}
+					{#if s.news.n}· {tx('новости отдельно', 'news apart')}: {s.news.hits} {tx('из', 'of')} {s.news.n}{/if}
 				</span>
 			</li>
 		{/each}

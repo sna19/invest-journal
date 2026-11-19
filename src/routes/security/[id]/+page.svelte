@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tl, tx } from '#lib/i18n.js';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
@@ -27,12 +28,12 @@
 		positions: { id: number; stage: Stage; portfolioId: number; portfolio: string; kind: string; auto: number | null }[];
 	}
 	const PERIODS = [
-		['1M', '1М'],
-		['3M', '3М'],
-		['6M', '6М'],
-		['1Y', '1Г'],
-		['5Y', '5Л'],
-		['10Y', '10Л']
+		['1M', '1М', '1M'],
+		['3M', '3М', '3M'],
+		['6M', '6М', '6M'],
+		['1Y', '1Г', '1Y'],
+		['5Y', '5Л', '5Y'],
+		['10Y', '10Л', '10Y']
 	] as const;
 	const KEY = 'security-period';
 
@@ -45,7 +46,7 @@
 	async function load() {
 		const t0 = performance.now();
 		const r = await fetch(`/api/securities/${page.params.id}/chart?period=${period}`).catch(() => null);
-		if (!r?.ok) return (problem = r?.status === 404 ? 'Нет такой бумаги.' : 'Нет связи с сервером.');
+		if (!r?.ok) return (problem = r?.status === 404 ? tx('Нет такой бумаги.', 'No such security.') : tx('Нет связи с сервером.', 'No connection to the server.'));
 		c = await r.json();
 		loadMs = Math.round(performance.now() - t0);
 		problem = null;
@@ -73,7 +74,7 @@
 		c
 			? [
 					{ key: 'sec', label: c.security.symbol, points: c.points, main: true },
-					...(c.benchmark && c.bench.length ? [{ key: 'bench', label: c.benchmark.label, points: c.bench, color: css('--muted'), dashed: true }] : [])
+					...(c.benchmark && c.bench.length ? [{ key: 'bench', label: tl(c.benchmark.label), points: c.bench, color: css('--muted'), dashed: true }] : [])
 				]
 			: []
 	);
@@ -101,59 +102,59 @@
 	const sources = $derived([...new Map((c?.markers ?? []).filter((m) => m.sourceId).map((m) => [m.sourceId!, m.label.slice(2)])).entries()]);
 </script>
 
-<svelte:head><title>{c?.security.symbol ?? 'Бумага'} · Журнал гипотез</title></svelte:head>
+<svelte:head><title>{c?.security.symbol ?? tx('Бумага', 'Security')} · {tx('Журнал гипотез', 'Hypothesis journal')}</title></svelte:head>
 
-<TopBar title={c?.security.symbol ?? 'Бумага'} subtitle={c ? `${c.security.name} · ${c.security.exchange.replace('_', ' ')}` : undefined} help="security.chart" />
+<TopBar title={c?.security.symbol ?? tx('Бумага', 'Security')} subtitle={c ? `${c.security.name} · ${c.security.exchange.replace('_', ' ')}` : undefined} help="security.chart" />
 
 {#if problem}<p class="warn" role="alert">{problem}</p>{/if}
 
 {#if c}
 	<div class="head">
 		<b class="price">{priceText(c.last?.close, c.security.priceUnit)}</b>
-		{#if c.last}<span class="muted small">закрытие {short(c.last.date, true)}</span>{/if}
+		{#if c.last}<span class="muted small">{tx('закрытие', 'close')} {short(c.last.date, true)}</span>{/if}
 		<span class="grow"></span>
 		<span class="chg">{PERIODS.find((p) => p[0] === period)?.[1]}: <Pct value={c.change} />{#if c.benchmark && c.benchChange !== null} <span class="muted small">{c.benchmark.label} <Pct value={c.benchChange} plain /></span>{/if}</span>
 	</div>
 
-	<div class="periods" role="radiogroup" aria-label="Период">
-		{#each PERIODS as [k, t] (k)}
-			<button role="radio" aria-checked={period === k} class:on={period === k} onclick={() => setPeriod(k)}>{t}</button>
+	<div class="periods" role="radiogroup" aria-label={tx('Период', 'Period')}>
+		{#each PERIODS as [k, ru, en] (k)}
+			<button role="radio" aria-checked={period === k} class:on={period === k} onclick={() => setPeriod(k)}>{tx(ru, en)}</button>
 		{/each}
 	</div>
 
 	{#if c.points.length < 2}
-		<p class="muted center">За этот период цен нет: бумага не в кругах загрузки или история ещё грузится.</p>
+		<p class="muted center">{tx('За этот период цен нет: бумага не в кругах загрузки или история ещё грузится.', 'No prices for this period: the security is not in the load rings or its history is still loading.')}</p>
 	{:else}
 		<LineChart {lines} {marks} {onmarker} format={(v) => priceText(v, c!.security.priceUnit)} />
 		<p class="muted small keys">
-			● вход гипотезы · ■ выход · <span class="up">▲</span> купил · <span class="down">▼</span> продал{#if sources.length} · {#each sources as [id, name] (id)}<span class="src"><i style:background={colorOf(id)}></i>{name}</span>{/each}{/if}
+			● {tx('вход гипотезы', 'hypothesis entry')} · ■ {tx('выход', 'exit')} · <span class="up">▲</span> {tx('купил', 'bought')} · <span class="down">▼</span> {tx('продал', 'sold')}{#if sources.length} · {#each sources as [id, name] (id)}<span class="src"><i style:background={colorOf(id)}></i>{tl(name)}</span>{/each}{/if}
 		</p>
 	{/if}
 
 	<div class="buttons">
-		<a href="/portfolio?add={c.security.id}&kind=plan_buy">Хочу купить</a>
-		<a href="/portfolio?add={c.security.id}&kind=buy">Купил</a>
-		<a href="/new">Гипотеза</a>
+		<a href="/portfolio?add={c.security.id}&kind=plan_buy">{tx('Хочу купить', 'Want to buy')}</a>
+		<a href="/portfolio?add={c.security.id}&kind=buy">{tx('Купил', 'Bought')}</a>
+		<a href="/new">{tx('Гипотеза', 'Hypothesis')}</a>
 	</div>
 
 	{#if c.hypotheses.length}
-		<h2>Гипотезы</h2>
+		<h2>{tx('Гипотезы', 'Hypotheses')}</h2>
 		<ul class="list">
 			{#each allHyps ? [...c.hypotheses].reverse() : [...c.hypotheses].reverse().slice(0, 10) as h (h.id)}
 				<li>
 					<a href="/?open={h.id}">
-						<span><i class="dot" style:background={colorOf(h.sourceId)}></i>{h.sourceName} · {SIGNAL[h.signalType]} · {h.direction === 'long' ? '▲ рост' : '▼ падение'}</span>
+						<span><i class="dot" style:background={colorOf(h.sourceId)}></i>{tl(h.sourceName)} · {tl(SIGNAL[h.signalType])} · {h.direction === 'long' ? tx('▲ рост', '▲ up') : tx('▼ падение', '▼ down')}</span>
 						<span class="muted small">
-							{h.status === 'open' ? `до ${short(h.horizonDate, true)}` : h.outcome === 'hit' ? 'сработала' : 'не сработала'}{#if h.excessPct !== null} · <Pct value={h.excessPct} />{/if}
+							{h.status === 'open' ? `${tx('до', 'until')} ${short(h.horizonDate, true)}` : h.outcome === 'hit' ? tx('сработала', 'came true') : tx('не сработала', 'failed')}{#if h.excessPct !== null} · <Pct value={h.excessPct} />{/if}
 						</span>
 					</a>
 				</li>
 			{/each}
 		</ul>
-		{#if c.hypotheses.length > 10 && !allHyps}<button class="more" onclick={() => (allHyps = true)}>Показать все — {c.hypotheses.length}</button>{/if}
+		{#if c.hypotheses.length > 10 && !allHyps}<button class="more" onclick={() => (allHyps = true)}>{tx('Показать все', 'Show all')} — {c.hypotheses.length}</button>{/if}
 	{/if}
 	{#if c.positions.length}
-		<h2>В портфелях</h2>
+		<h2>{tx('В портфелях', 'In portfolios')}</h2>
 		<ul class="list">
 			{#each c.positions as p (p.id)}
 				<li>
@@ -162,7 +163,7 @@
 			{/each}
 		</ul>
 	{/if}
-	{#if loadMs !== null}<p class="muted tiny">данные графика — {loadMs} мс</p>{/if}
+	{#if loadMs !== null}<p class="muted tiny">{tx('данные графика', 'chart data')} — {loadMs} {tx('мс', 'ms')}</p>{/if}
 {:else if !problem}
 	<div class="skeleton"></div>
 {/if}

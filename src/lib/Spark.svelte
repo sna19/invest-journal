@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tx } from '#lib/i18n.js';
 	/**
 	 * Spec section 13 — the small chart in a list row: the security (solid) against its benchmark (dashed) over the
 	 * hypothesis's term, both from 100 at the entry.
@@ -18,7 +19,7 @@
 </script>
 
 {#if lines}
-	<svg {width} {height} viewBox="0 0 {width} {height}" role="img" aria-label="Бумага против бенчмарка">
+	<svg {width} {height} viewBox="0 0 {width} {height}" role="img" aria-label={tx('Бумага против бенчмарка', 'Security vs benchmark')}>
 		<polyline points={lines.b} class="b" />
 		<polyline points={lines.s} class="s" />
 	</svg>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { loc, tx } from '#lib/i18n.js';
 	import { onMount } from 'svelte';
 	import TopBar from '#lib/TopBar.svelte';
 	import { money } from '#lib/portfolio.js';
@@ -38,44 +39,44 @@
 		}
 		load();
 	}
-	const d = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+	const d = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString(loc(), { day: 'numeric', month: 'long' });
 </script>
 
-<svelte:head><title>Всё вместе · Журнал гипотез</title></svelte:head>
+<svelte:head><title>{tx('Всё вместе', 'All together')} · {tx('Журнал гипотез', 'Hypothesis journal')}</title></svelte:head>
 
-<TopBar title="Всё вместе" help="portfolio.together" back={{ href: '/portfolio', label: 'Портфель' }} />
+<TopBar title={tx('Всё вместе', 'All together')} help="portfolio.together" back={{ href: '/portfolio', label: tx('Портфель', 'Portfolio') }} />
 
-<div class="seg" role="radiogroup" aria-label="Валюта итога">
-	<button role="radio" aria-checked={cur === 'ILS'} class:on={cur === 'ILS'} onclick={() => set('ILS')}>₪ шекели</button>
-	<button role="radio" aria-checked={cur === 'USD'} class:on={cur === 'USD'} onclick={() => set('USD')}>$ доллары</button>
+<div class="seg" role="radiogroup" aria-label={tx('Валюта итога', 'Total currency')}>
+	<button role="radio" aria-checked={cur === 'ILS'} class:on={cur === 'ILS'} onclick={() => set('ILS')}>₪ {tx('шекели', 'shekels')}</button>
+	<button role="radio" aria-checked={cur === 'USD'} class:on={cur === 'USD'} onclick={() => set('USD')}>$ {tx('доллары', 'dollars')}</button>
 </div>
 
 {#if t}
 	<section class="card">
-		<span class="k">Все реальные портфели</span>
+		<span class="k">{tx('Все реальные портфели', 'All real portfolios')}</span>
 		<b class="big">{money(t.total, t.currency)}</b>
-		<span class="sub">по курсу Банка Израиля на {d(t.date)}: $ = {t.rate} ₪</span>
+		<span class="sub">{tx('по курсу Банка Израиля на', 'at the Bank of Israel rate of')} {d(t.date)}: $ = {t.rate} ₪</span>
 	</section>
 	<ul class="list">
 		{#each t.items as p (p.id)}
 			<li>
 				<a href="/portfolio?p={p.id}">
 					<span class="top"><b>{p.name}</b><span class="grow"></span>{money(p.value, p.currency)}</span>
-					{#if p.currency !== t.currency}<span class="sub">≈ {money(p.inTotal, t.currency)} по курсу на дату</span>{/if}
+					{#if p.currency !== t.currency}<span class="sub">≈ {money(p.inTotal, t.currency)} {tx('по курсу на дату', 'at the rate of the date')}</span>{/if}
 					{#if p.conversions}
 						<span class="sub">
-							в шекелях сейчас {money(p.conversions.valueIlsNow, 'ILS')}; по курсу своих конвертаций ({p.conversions.rate.toFixed(4)} ₪ за $) было бы на
+							{tx('в шекелях сейчас', 'in shekels now')} {money(p.conversions.valueIlsNow, 'ILS')}; {tx('по курсу своих конвертаций', 'at the rate of its own conversions')} ({p.conversions.rate.toFixed(4)} ₪ {tx('за', 'per')} $) {tx('было бы на', 'it would be')}
 							{money(Math.abs(p.conversions.changeIls), 'ILS')}
-							{p.conversions.changeIls >= 0 ? 'меньше' : 'больше'} — это дал курс доллара
+							{p.conversions.changeIls >= 0 ? tx('меньше', 'less') : tx('больше', 'more')} — {tx('это дал курс доллара', 'that is the dollar rate')}
 						</span>
 					{/if}
 				</a>
 			</li>
 		{:else}
-			<li class="muted">Реальных портфелей пока нет.</li>
+			<li class="muted">{tx('Реальных портфелей пока нет.', 'No real portfolios yet.')}</li>
 		{/each}
 	</ul>
-	<p class="muted small">Экран только складывает: в самих портфелях ничего не меняется, их доходность — в их валюте.</p>
+	<p class="muted small">{tx('Экран только складывает: в самих портфелях ничего не меняется, их доходность — в их валюте.', 'This screen only adds up: nothing changes in the portfolios themselves, their return stays in their currency.')}</p>
 {/if}
 
 <style>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tx } from '#lib/i18n.js';
 	import { hideToast, toast } from './toast.svelte.js';
 
 	function undo() {
@@ -11,7 +12,7 @@
 {#if toast.text}
 	<div class="toast" role="status" aria-live="polite">
 		<span>{toast.text}</span>
-		{#if 'undo' in toast && toast.undo}<button onclick={undo}>Отменить</button>{/if}
+		{#if 'undo' in toast && toast.undo}<button onclick={undo}>{tx('Отменить', 'Undo')}</button>{/if}
 	</div>
 {/if}
 

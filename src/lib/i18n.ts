@@ -1,5 +1,6 @@
 import { page } from '$app/state';
 import { invalidateAll } from '$app/navigation';
+import { EN, PATTERNS } from './i18n-en.js';
 
 /**
  * Two languages, Russian and English (owner's request 19.11.2026: Osher reads English). The language belongs to
@@ -10,8 +11,33 @@ export type Lang = 'ru' | 'en';
 export type L10n = { ru: string; en: string };
 
 export function lang(): Lang {
-	return (page.data?.lang as Lang) ?? 'ru';
+	try {
+		return (page.data?.lang as Lang) ?? 'ru';
+	} catch {
+		// outside a page (server code that shares a helper): Russian, as before
+		return 'ru';
+	}
 }
+
+/** a text written in place, in both languages: tx('Портфель', 'Portfolio') */
+export const tx = (ru: string, en: string) => (lang() === 'en' ? en : ru);
+
+/** a text that came as data (a label or a message from the server): its English, when known */
+export function tl(text: string | null | undefined): string {
+	if (!text) return text ?? '';
+	if (lang() !== 'en') return text;
+	const hit = EN[text];
+	if (hit) return hit;
+	// a pattern's parts are looked up too: a message can carry another message inside
+	for (const [re, en] of PATTERNS) {
+		const m = text.match(re);
+		if (m) return en.replace(/\$(\d)/g, (_, i) => tl(m[Number(i)] ?? ''));
+	}
+	return text;
+}
+
+/** the locale for numbers and dates */
+export const loc = () => (lang() === 'en' ? 'en-GB' : 'ru-RU');
 
 /** pick the current language from a pair */
 export function tr(x: L10n | string): string {

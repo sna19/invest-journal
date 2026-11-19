@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { replaceState } from '$app/navigation';
@@ -48,7 +49,7 @@
 			lastPricesAt = j.lastPricesAt;
 			problem = undefined;
 		} catch {
-			problem = 'Нет связи с сервером.';
+			problem = tx('Нет связи с сервером.', 'No connection to the server.');
 		}
 	}
 
@@ -105,8 +106,8 @@
 			body: JSON.stringify({ reason })
 		});
 		const j = await r.json().catch(() => ({}));
-		if (!r.ok) return (closeError = j.message ?? 'Не закрылась');
-		showToast(`${closeFor.h.symbol} закрыта досрочно: превышение ${j.excessPct > 0 ? '+' : ''}${j.excessPct.toFixed(1)}%`);
+		if (!r.ok) return (closeError = tl(j.message) || tx('Не закрылась', 'Did not close'));
+		showToast(`${closeFor.h.symbol} ${tx('закрыта досрочно: превышение', 'closed early: excess')} ${j.excessPct > 0 ? '+' : ''}${j.excessPct.toFixed(1)}%`);
 		closeFor = null;
 		reason = '';
 		load();
@@ -192,7 +193,7 @@
 	const days = (d: string) => Math.round((Date.parse(d + 'T12:00:00') - Date.now()) / 86400000);
 </script>
 
-<svelte:head><title>Гипотезы · Журнал гипотез</title></svelte:head>
+<svelte:head><title>{tx('Гипотезы', 'Hypotheses')} · {tx('Журнал гипотез', 'Hypothesis journal')}</title></svelte:head>
 <svelte:window onpointermove={move} onpointerup={up} onpointercancel={up} />
 
 <div class="pull" style:height="{refreshing ? 40 : pull}px" aria-hidden={!refreshing}>
@@ -200,79 +201,76 @@
 </div>
 
 <div ontouchstart={touchStart} ontouchmove={touchMove} ontouchend={touchEnd} role="presentation">
-	<TopBar title="Гипотезы" help="hypothesis.list" />
+	<TopBar title={tx('Гипотезы', 'Hypotheses')} help="hypothesis.list" />
 
 	<div class="filters">
-		<div class="seg" role="radiogroup" aria-label="Статус">
-			{#each [['open', 'Открытые'], ['closed', 'Закрытые'], ['all', 'Все']] as [v, t] (v)}
+		<div class="seg" role="radiogroup" aria-label={tx('Статус', 'Status')}>
+			{#each [['open', tx('Открытые', 'Open')], ['closed', tx('Закрытые', 'Closed')], ['all', tx('Все', 'All')]] as [v, t] (v)}
 				<button role="radio" aria-checked={status === v} class:on={status === v} onclick={() => setFilter(() => (status = v as Status))}>{t}</button>
 			{/each}
 		</div>
 		<div class="chips">
-			{#each [['all', 'Любой режим'], ['sim', 'Симуляция'], ['real', 'Реальные']] as [v, t] (v)}
+			{#each [['all', tx('Любой режим', 'Any mode')], ['sim', tx('Симуляция', 'Simulation')], ['real', tx('Реальные', 'Real')]] as [v, t] (v)}
 				<button aria-pressed={mode === v} class:on={mode === v} onclick={() => setFilter(() => (mode = v as Mode))}>{t}</button>
 			{/each}
 		</div>
 		<div class="chips">
-			{#each [['all', 'Все рынки'], ['us', 'США'], ['il', 'Израиль']] as [v, t] (v)}
+			{#each [['all', tx('Все рынки', 'All markets')], ['us', tx('США', 'US')], ['il', tx('Израиль', 'Israel')]] as [v, t] (v)}
 				<button aria-pressed={market === v} class:on={market === v} onclick={() => setFilter(() => (market = v as Market))}>{t}</button>
 			{/each}
-			<button aria-pressed={defaultOnly} class:on={defaultOnly} onclick={() => setFilter(() => (defaultOnly = !defaultOnly))}>Срок по умолчанию</button>
+			<button aria-pressed={defaultOnly} class:on={defaultOnly} onclick={() => setFilter(() => (defaultOnly = !defaultOnly))}>{tx('Срок по умолчанию', 'Default term')}</button>
 		</div>
 	</div>
 
 	{#if problem}<p class="warn" role="alert">{problem}</p>{/if}
 	{#if late}
 		<a class="warn late" href="/settings">
-			Цены не обновлялись больше двух дней{lastPricesAt ? ` (последний раз ${new Date(lastPricesAt).toLocaleDateString('ru-RU')})` : ''} — результаты устарели. Подробности в «Настройках».
+			{tx('Цены не обновлялись больше двух дней', 'Prices have not updated for over two days')}{lastPricesAt ? ` (${tx('последний раз', 'last')} ${new Date(lastPricesAt).toLocaleDateString(loc())})` : ''} — {tx('результаты устарели. Подробности в «Настройках».', 'results are stale. Details in «Settings».')}
 		</a>
 	{/if}
 
 	{#if items === null}
 		{#each [1, 2, 3] as i (i)}<div class="skeleton"></div>{/each}
 	{:else if items.length === 0 && !filtered}
-		<Empty title="Записывайте, что утверждает источник">
-			Прочитали статью с проверяемым утверждением — «покупать», целевая цена, ясная позиция или новость — запишите
-			его как гипотезу в тот же день. Приложение зафиксирует цену входа, сравнит бумагу с бенчмарком и закроет гипотезу
-			в срок; по закрытым станет видно, стоит ли действовать после чтения этого источника. Уверенность ставить не
-			обязательно.
-			{#snippet action()}<a href="/new">Новая гипотеза</a>{/snippet}
+		<Empty title={tx('Записывайте, что утверждает источник', 'Record what the source claims')}>
+			{tx('Прочитали статью с проверяемым утверждением — «покупать», целевая цена, ясная позиция или новость — запишите его как гипотезу в тот же день. Приложение зафиксирует цену входа, сравнит бумагу с бенчмарком и закроет гипотезу в срок; по закрытым станет видно, стоит ли действовать после чтения этого источника. Уверенность ставить не обязательно.', 'Read an article with a checkable claim — «buy», a target price, a clear stance or news — record it as a hypothesis the same day. The app fixes the entry price, compares the security with the benchmark and closes the hypothesis on time; closed ones show whether acting on this source pays. Confidence is optional.')}
+			{#snippet action()}<a href="/new">{tx('Новая гипотеза', 'New hypothesis')}</a>{/snippet}
 		</Empty>
 	{:else if items.length === 0}
-		<p class="muted center">Под эти фильтры гипотез нет.</p>
+		<p class="muted center">{tx('Под эти фильтры гипотез нет.', 'No hypotheses match these filters.')}</p>
 	{:else}
 		{#if pricesAsOf}
 			<p class="muted small hint-row prices">
-				<span>Цены на {short(pricesAsOf)} · следующее обновление — {nextPricesRun()}</span>
-				<HelpIcon topicKey="result.prices" label="когда обновляются цены" />
+				<span>{tx('Цены на', 'Prices of')} {short(pricesAsOf)} · {tx('следующее обновление', 'next update')} — {tl(nextPricesRun())}</span>
+				<HelpIcon topicKey="result.prices" label={tx('когда обновляются цены', 'when prices update')} />
 			</p>
 		{/if}
 		<p class="muted small hint-row">
-			<span>Справа — превышение над бенчмарком. Смахните строку вправо — заметка, влево — досрочное закрытие.</span>
-			<HelpIcon topicKey="result.excess" label="превышение" />
+			<span>{tx('Справа — превышение над бенчмарком. Смахните строку вправо — заметка, влево — досрочное закрытие.', 'On the right — excess over the benchmark. Swipe a row right for a note, left to close early.')}</span>
+			<HelpIcon topicKey="result.excess" label={tx('превышение', 'excess')} />
 		</p>
 		<ul class="list">
 			{#each items as r (r.h.id)}
 				{@const h = r.h}
 				{@const dx = swipe?.id === h.id ? swipe.dx : 0}
 				<li class="swipe">
-					<div class="behind left" class:armed={dx > THRESHOLD}><StickyNote size={20} /> Заметка</div>
-					<div class="behind right" class:armed={dx < -THRESHOLD}>Закрыть <Flag size={20} /></div>
+					<div class="behind left" class:armed={dx > THRESHOLD}><StickyNote size={20} /> {tx('Заметка', 'Note')}</div>
+					<div class="behind right" class:armed={dx < -THRESHOLD}>{tx('Закрыть', 'Close')} <Flag size={20} /></div>
 					<button
 						class="row"
 						style:transform={dx ? `translateX(${dx}px)` : undefined}
 						onpointerdown={(e) => down(e, h.id)}
 						onclick={() => tap(h.id)}
-						aria-label="{h.symbol}: открыть карточку"
+						aria-label="{h.symbol}: {tx('открыть карточку', 'open the card')}"
 					>
 						<span class="top">
 							<b class="sym">{h.symbol}</b>
-							<span class="dir {h.direction}">{h.direction === 'long' ? '▲ рост' : '▼ падение'}</span>
+							<span class="dir {h.direction}">{h.direction === 'long' ? tx('▲ рост', '▲ up') : tx('▼ падение', '▼ down')}</span>
 							<span class="grow"></span>
 							{#if h.entryPrice === null}
-								<span class="wait">ожидает цену</span>
+								<span class="wait">{tx('ожидает цену', 'awaits a price')}</span>
 							{:else if noResultYet(h)}
-								<span class="wait">результат {nextPricesRun().startsWith('сегодня') ? 'сегодня' : 'завтра'}</span>
+								<span class="wait">{tx('результат', 'result')} {nextPricesRun().startsWith('сегодня') ? tx('сегодня', 'today') : tx('завтра', 'tomorrow')}</span>
 							{:else}
 								<Spark points={r.spark ?? null} />
 								<b class="res"><Pct value={shown(h).x} /></b>
@@ -280,12 +278,12 @@
 						</span>
 						<span class="mid">{h.securityName}</span>
 						<span class="bottom">
-							<span class="src">{r.sourceName} · {SIGNAL[h.signalType]}{#if h.mode === 'real'}{' · '}<b>реальные</b>{/if}</span>
+							<span class="src">{tl(r.sourceName)} · {tl(SIGNAL[h.signalType])}{#if h.mode === 'real'}{' · '}<b>{tx('реальные', 'real')}</b>{/if}</span>
 							<span class="when">
 								{#if h.status === 'open'}
-									{days(h.horizonDate) > 0 ? `${days(h.horizonDate)} дн.` : 'сегодня'}{#if h.horizonSource === 'default'}&nbsp;·&nbsp;по умолч.{/if}
+									{days(h.horizonDate) > 0 ? `${days(h.horizonDate)} ${tx('дн.', 'd')}` : tx('сегодня', 'today')}{#if h.horizonSource === 'default'}&nbsp;·&nbsp;{tx('по умолч.', 'default')}{/if}
 								{:else}
-									{h.outcome === 'hit' ? 'сработала' : 'не сработала'}{h.status === 'closed_early' ? ', досрочно' : ''} · {short(h.exitDate ?? h.horizonDate)}
+									{h.outcome === 'hit' ? tx('сработала', 'came true') : tx('не сработала', 'failed')}{h.status === 'closed_early' ? `, ${tx('досрочно', 'early')}` : ''} · {short(h.exitDate ?? h.horizonDate)}
 								{/if}
 							</span>
 						</span>
@@ -297,29 +295,29 @@
 </div>
 
 {#if opened}
-	<Sheet title="{opened.h.symbol} {opened.h.direction === 'long' ? '▲ Рост' : '▼ Падение'}" onclose={() => (openId = null)}>
+	<Sheet title="{opened.h.symbol} {opened.h.direction === 'long' ? tx('▲ Рост', '▲ Up') : tx('▼ Падение', '▼ Down')}" onclose={() => (openId = null)}>
 		<HypothesisCard row={opened} onchange={changed} onclose={() => (openId = null)} />
 	</Sheet>
 {/if}
 
 {#if noteFor}
-	<Sheet title="Заметка · {noteFor.h.symbol}" onclose={() => (noteFor = null)}>
+	<Sheet title="{tx('Заметка', 'Note')} · {noteFor.h.symbol}" onclose={() => (noteFor = null)}>
 		<!-- svelte-ignore a11y_autofocus -->
-		<textarea class="note" rows="4" aria-label="Заметка" placeholder="Что заметили по ходу" bind:value={noteText} autofocus></textarea>
-		<button class="primary" onclick={saveNote}>Сохранить заметку</button>
+		<textarea class="note" rows="4" aria-label={tx('Заметка', 'Note')} placeholder={tx('Что заметили по ходу', 'What you noticed along the way')} bind:value={noteText} autofocus></textarea>
+		<button class="primary" onclick={saveNote}>{tx('Сохранить заметку', 'Save the note')}</button>
 	</Sheet>
 {/if}
 
 {#if closeFor}
-	<Sheet title="Досрочно закрыть · {closeFor.h.symbol}" onclose={() => (closeFor = null)}>
+	<Sheet title="{tx('Досрочно закрыть', 'Close early')} · {closeFor.h.symbol}" onclose={() => (closeFor = null)}>
 		{#if closeFor.h.entryPrice === null}
-			<p>Цены входа ещё нет — закрыть можно после первой цены.</p>
+			<p>{tx('Цены входа ещё нет — закрыть можно после первой цены.', 'No entry price yet — it can be closed after the first price.')}</p>
 		{:else}
-			<p class="muted">Результат зафиксируется на последнюю цену; в статистике досрочные закрытия идут отдельной строкой.</p>
+			<p class="muted">{tx('Результат зафиксируется на последнюю цену; в статистике досрочные закрытия идут отдельной строкой.', 'The result is fixed at the last price; early closes are a separate row in the stats.')}</p>
 			<!-- svelte-ignore a11y_autofocus -->
-			<input class="note" aria-label="Причина" placeholder="Причина, например: тезис больше не актуален" bind:value={reason} autofocus />
+			<input class="note" aria-label={tx('Причина', 'Reason')} placeholder={tx('Причина, например: тезис больше не актуален', 'Reason, e.g. the thesis no longer holds')} bind:value={reason} autofocus />
 			{#if closeError}<p class="err">{closeError}</p>{/if}
-			<button class="primary" disabled={!reason.trim()} onclick={closeEarlyNow}>Закрыть досрочно</button>
+			<button class="primary" disabled={!reason.trim()} onclick={closeEarlyNow}>{tx('Закрыть досрочно', 'Close early')}</button>
 		{/if}
 	</Sheet>
 {/if}

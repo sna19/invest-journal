@@ -1,4 +1,5 @@
 <script lang="ts" module>
+	import { loc, tl, tx } from '#lib/i18n.js';
 	export interface Row {
 		h: {
 			id: number;
@@ -59,13 +60,13 @@
 		h.status === 'open'
 			? { r: h.currentReturnPct, rb: h.currentBenchmarkReturnPct, x: h.currentExcessPct, date: h.lastDate, price: h.lastPrice, bench: h.benchmarkLast }
 			: { r: h.returnPct, rb: h.benchmarkReturnPct, x: h.excessPct, date: h.exitDate, price: h.exitPrice, bench: h.benchmarkExit };
-	export const num = (v: number | null, d = 2) => (v === null ? '—' : v.toLocaleString('ru-RU', { maximumFractionDigits: d }));
+	export const num = (v: number | null, d = 2) => (v === null ? '—' : v.toLocaleString(loc(), { maximumFractionDigits: d }));
 	export const short = (d: string | null, year = false) =>
-		d ? new Date(d + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', ...(year ? { year: 'numeric' } : {}) }) : '';
+		d ? new Date(d + 'T12:00:00').toLocaleDateString(loc(), { day: 'numeric', month: 'short', ...(year ? { year: 'numeric' } : {}) }) : '';
 
 	export const SIGNAL: Record<string, string> = { recommendation: 'Рекомендация', target: 'Целевая цена', opinion: 'Мнение', news: 'Новость' };
-	export const unitOf = (h: Row['h']) => (h.priceUnit === 'ILA' ? 'агорот' : h.currency);
-	export const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+	export const unitOf = (h: Row['h']) => (h.priceUnit === 'ILA' ? tx('агорот', 'agorot') : h.currency);
+	export const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString(loc(), { day: 'numeric', month: 'long', year: 'numeric' });
 	export const canCancel = (h: Row['h']) => h.status === 'open' && Date.now() - Date.parse(h.createdAt) < 24 * 3600 * 1000;
 </script>
 
@@ -97,9 +98,9 @@
 		error = null;
 		const r = await fetch(`/api/hypotheses/${h.id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 		const j = await r.json().catch(() => ({}));
-		if (!r.ok) return (error = j.message ?? 'Не сохранилось');
+		if (!r.ok) return (error = tl(j.message) || tx('Не сохранилось', 'Not saved'));
 		onchange(j);
-		saved = 'Сохранено';
+		saved = tx('Сохранено', 'Saved');
 		setTimeout(() => (saved = null), 1500);
 	}
 
@@ -107,7 +108,7 @@
 		const r = await fetch(`/api/hypotheses/${h.id}/${action}`, { method: 'POST' });
 		const j = await r.json().catch(() => ({}));
 		if (!r.ok) {
-			error = j.message ?? 'Не получилось';
+			error = tl(j.message) || tx('Не получилось', 'It did not work');
 			return null;
 		}
 		onchange(j);
@@ -122,17 +123,17 @@
 		const r = await fetch(`/api/hypotheses/${h.id}/close`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ reason }) });
 		const j = await r.json().catch(() => ({}));
 		closing = false;
-		if (!r.ok) return (error = j.message ?? 'Не закрылась');
+		if (!r.ok) return (error = tl(j.message) || tx('Не закрылась', 'Did not close'));
 		const fresh = await fetch(`/api/hypotheses/${h.id}`).then((x) => x.json());
 		onchange(fresh.h);
-		showToast(`${h.symbol} закрыта досрочно: превышение ${j.excessPct > 0 ? '+' : ''}${j.excessPct.toFixed(1)}%`);
+		showToast(`${h.symbol} ${tx('закрыта досрочно: превышение', 'closed early: excess')} ${j.excessPct > 0 ? '+' : ''}${j.excessPct.toFixed(1)}%`);
 	}
 	let lesson = $state(untrack(() => row.h.lesson ?? ''));
 
 	async function cancel() {
 		if (!(await post('cancel'))) return;
 		onclose();
-		showToast(`Запись ${h.symbol} отменена`, () => void post('restore'));
+		showToast(tx(`Запись ${h.symbol} отменена`, `Record ${h.symbol} cancelled`), () => void post('restore'));
 	}
 
 	const res = $derived(shown(row.h));
@@ -142,120 +143,120 @@
 <div class="card">
 	<p class="name">
 		{h.securityName} · {h.exchangeCode === 'TASE' ? 'TASE' : h.exchangeCode.replace('_', ' ')} ·
-		<a href="/security/{h.securityId}">график</a>
+		<a href="/security/{h.securityId}">{tx('график', 'chart')}</a>
 	</p>
 
 	{#if h.entryPrice === null}
 		<div class="price">
 			<div>
-				<span class="k">Вход</span>
-				<span class="wait">ожидает цену</span>
-				<span class="sub">закрытие {fmtDate(h.entryDate)} или ближайшего торгового дня</span>
+				<span class="k">{tx('Вход', 'Entry')}</span>
+				<span class="wait">{tx('ожидает цену', 'awaits a price')}</span>
+				<span class="sub">{tx('закрытие', 'the close of')} {fmtDate(h.entryDate)} {tx('или ближайшего торгового дня', 'or the nearest trading day')}</span>
 			</div>
 			<div>
-				<span class="k">Бенчмарк</span>
+				<span class="k">{tx('Бенчмарк', 'Benchmark')}</span>
 				<b>{h.benchmarkSymbol === 'SPX' ? 'S&P 500' : h.benchmarkSymbol}</b>
 			</div>
 		</div>
 	{:else}
 		<div class="result">
 			<div class="excess">
-				<span class="k">Превышение над бенчмарком <HelpIcon topicKey="result.excess" label="превышение" /></span>
+				<span class="k">{tx('Превышение над бенчмарком', 'Excess over the benchmark')} <HelpIcon topicKey="result.excess" label={tx('превышение', 'excess')} /></span>
 				{#if noResultYet(h)}
-					<span class="first">Первый результат — {nextPricesRun().startsWith('сегодня') ? 'сегодня' : 'завтра'}</span>
-					<span class="sub">цена входа — закрытие {short(h.entryPriceDate)}; следующее обновление цен — {nextPricesRun()}</span>
+					<span class="first">{tx('Первый результат', 'First result')} — {nextPricesRun().startsWith('сегодня') ? tx('сегодня', 'today') : tx('завтра', 'tomorrow')}</span>
+					<span class="sub">{tx('цена входа — закрытие', 'entry price — the close of')} {short(h.entryPriceDate)}; {tx('следующее обновление цен', 'next price update')} — {tl(nextPricesRun())}</span>
 				{:else}
 					<span class="big"><Pct value={res.x} /></span>
 					{#if h.status !== 'open'}
-						<span class="outcome {h.outcome}">{h.outcome === 'hit' ? 'Сработала' : 'Не сработала'}{h.status === 'closed_early' ? ' · досрочно' : ''}</span>
+						<span class="outcome {h.outcome}">{h.outcome === 'hit' ? tx('Сработала', 'Came true') : tx('Не сработала', 'Failed')}{h.status === 'closed_early' ? ` · ${tx('досрочно', 'early')}` : ''}</span>
 					{:else if res.date}
-						<span class="sub">цены на {short(res.date)} · следующее обновление — {nextPricesRun()} <HelpIcon topicKey="result.prices" label="когда обновляются цены" /></span>
+						<span class="sub">{tx('цены на', 'prices of')} {short(res.date)} · {tx('следующее обновление', 'next update')} — {tl(nextPricesRun())} <HelpIcon topicKey="result.prices" label={tx('когда обновляются цены', 'when prices update')} /></span>
 					{/if}
 				{/if}
 			</div>
 			<table>
-				<thead><tr><th></th><th>Вход {short(h.entryPriceDate)}</th><th>{h.status === 'open' ? 'Сейчас' : 'Выход'} {short(res.date)}</th><th>Итог</th></tr></thead>
+				<thead><tr><th></th><th>{tx('Вход', 'Entry')} {short(h.entryPriceDate)}</th><th>{h.status === 'open' ? tx('Сейчас', 'Now') : tx('Выход', 'Exit')} {short(res.date)}</th><th>{tx('Итог', 'Result')}</th></tr></thead>
 				<tbody>
 					<tr><td>{h.symbol}, {unitOf(h)}</td><td>{num(h.entryPrice)}</td><td>{num(res.price)}</td><td><Pct value={noResultYet(h) ? null : res.r} plain /></td></tr>
 					<tr><td>{h.benchmarkSymbol === 'SPX' ? 'S&P 500' : h.benchmarkSymbol}</td><td>{num(h.benchmarkEntry)}</td><td>{num(res.bench)}</td><td><Pct value={noResultYet(h) ? null : res.rb} plain /></td></tr>
 				</tbody>
 			</table>
-			<p class="sub">Доходность — с поправкой на дивиденды{h.direction === 'short' ? '; для «падения» знак обеих доходностей изменён' : ''}.</p>
+			<p class="sub">{tx('Доходность — с поправкой на дивиденды', 'Returns include dividends')}{h.direction === 'short' ? tx('; для «падения» знак обеих доходностей изменён', '; for «down» the sign of both returns is flipped') : ''}.</p>
 		</div>
 	{/if}
 
 	{#if h.status === 'open' && h.waitReason && (h.waitIssueId || h.horizonDate < new Date().toISOString().slice(0, 10))}
 		<p class="waiting" role="status">
-			<b>Не закрыта:</b> {h.waitReason}{#if h.waitIssueId}{' '}<a href="/settings#issue-{h.waitIssueId}">Открыть проблему</a>{/if}
+			<b>{tx('Не закрыта', 'Not closed')}:</b> {tl(h.waitReason)}{#if h.waitIssueId}{' '}<a href="/settings#issue-{h.waitIssueId}">{tx('Открыть проблему', 'Open the issue')}</a>{/if}
 		</p>
 	{/if}
 
 	<div class="locked-head">
-		<Lock size={16} /> <span>Зафиксировано при записи</span>
-		<HelpIcon topicKey="result.locked" label="почему нельзя менять" />
+		<Lock size={16} /> <span>{tx('Зафиксировано при записи', 'Fixed when recorded')}</span>
+		<HelpIcon topicKey="result.locked" label={tx('почему нельзя менять', 'why it cannot change')} />
 	</div>
 	<dl>
-		<dt>Источник</dt>
-		<dd>{row.sourceName}{#if row.author}{' · '}{row.author}{/if}</dd>
+		<dt>{tx('Источник', 'Source')}</dt>
+		<dd>{tl(row.sourceName)}{#if row.author}{' · '}{row.author}{/if}</dd>
 		{#if row.url}
-			<dt>Статья</dt>
+			<dt>{tx('Статья', 'Article')}</dt>
 			<dd><a href={row.url} target="_blank" rel="noopener noreferrer">{row.title || new URL(row.url).hostname}<ExternalLink size={14} /></a></dd>
 		{/if}
-		<dt>Сигнал</dt>
-		<dd>{SIGNAL[h.signalType]}</dd>
-		<dt>Направление</dt>
-		<dd>{h.direction === 'long' ? '▲ Рост' : '▼ Падение'} · {h.directionSource === 'mine' ? 'моё толкование' : 'из статьи'}</dd>
-		<dt>Тезис</dt>
+		<dt>{tx('Сигнал', 'Signal')}</dt>
+		<dd>{tl(SIGNAL[h.signalType])}</dd>
+		<dt>{tx('Направление', 'Direction')}</dt>
+		<dd>{h.direction === 'long' ? tx('▲ Рост', '▲ Up') : tx('▼ Падение', '▼ Down')} · {h.directionSource === 'mine' ? tx('моё толкование', 'my reading') : tx('из статьи', 'from the article')}</dd>
+		<dt>{tx('Тезис', 'Thesis')}</dt>
 		<dd>{h.thesis}</dd>
-		<dt>Неправ, если</dt>
+		<dt>{tx('Неправ, если', 'Wrong if')}</dt>
 		<dd>{h.invalidation}</dd>
-		<dt>Срок</dt>
+		<dt>{tx('Срок', 'Horizon')}</dt>
 		<dd>
-			{fmtDate(h.horizonDate)}{#if h.status === 'open'}{' · '}{days > 0 ? `через ${days} дн.` : 'сегодня'}{/if}
-			<span class="sub">{h.horizonSource === 'default' ? 'по умолчанию, 3 месяца' : 'из статьи'}</span>
+			{fmtDate(h.horizonDate)}{#if h.status === 'open'}{' · '}{days > 0 ? tx(`через ${days} дн.`, `in ${days} d`) : tx('сегодня', 'today')}{/if}
+			<span class="sub">{h.horizonSource === 'default' ? tx('по умолчанию, 3 месяца', 'default, 3 months') : tx('из статьи', 'from the article')}</span>
 		</dd>
-		<dt>Уверенность</dt>
+		<dt>{tx('Уверенность', 'Confidence')}</dt>
 		<dd>{h.confidencePct === null ? '—' : `${h.confidencePct}%`}</dd>
-		<dt>Режим</dt>
-		<dd>{h.mode === 'real' ? 'Реальные деньги' : 'Симуляция'}{#if h.amount}{' · '}{h.amount} {h.currency}{/if}</dd>
+		<dt>{tx('Режим', 'Mode')}</dt>
+		<dd>{h.mode === 'real' ? tx('Реальные деньги', 'Real money') : tx('Симуляция', 'Simulation')}{#if h.amount}{' · '}{h.amount} {h.currency}{/if}</dd>
 		{#if h.targetPrice !== null}
-			<dt>Цель</dt>
+			<dt>{tx('Цель', 'Target')}</dt>
 			<dd>{h.targetPrice} {unitOf(h)}</dd>
 		{/if}
-		<dt>Записано</dt>
-		<dd>{new Date(h.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</dd>
+		<dt>{tx('Записано', 'Recorded')}</dt>
+		<dd>{new Date(h.createdAt).toLocaleString(loc(), { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</dd>
 	</dl>
 
 	{#if h.status !== 'cancelled'}
 		<!-- section 18: from the idea to the portfolio, linked to this hypothesis -->
 		<div class="to-portfolio">
-			<a href="/portfolio?add={h.securityId}&hyp={h.id}&kind=plan_buy">Хочу купить</a>
-			<a href="/portfolio?add={h.securityId}&hyp={h.id}&kind=buy">Купил</a>
+			<a href="/portfolio?add={h.securityId}&hyp={h.id}&kind=plan_buy">{tx('Хочу купить', 'Want to buy')}</a>
+			<a href="/portfolio?add={h.securityId}&hyp={h.id}&kind=buy">{tx('Купил', 'Bought')}</a>
 		</div>
 	{/if}
 
-	<label class="lbl" for="note-{h.id}">Заметка</label>
-	<textarea id="note-{h.id}" rows="3" placeholder="Что заметили по ходу" bind:value={note} onblur={() => note !== (h.note ?? '') && patch({ note })}></textarea>
-	<label class="lbl" for="tags-{h.id}">Теги</label>
-	<input id="tags-{h.id}" placeholder="через запятую" bind:value={tags} onblur={() => tags !== (h.tags ?? '') && patch({ tags })} />
+	<label class="lbl" for="note-{h.id}">{tx('Заметка', 'Note')}</label>
+	<textarea id="note-{h.id}" rows="3" placeholder={tx('Что заметили по ходу', 'What you noticed along the way')} bind:value={note} onblur={() => note !== (h.note ?? '') && patch({ note })}></textarea>
+	<label class="lbl" for="tags-{h.id}">{tx('Теги', 'Tags')}</label>
+	<input id="tags-{h.id}" placeholder={tx('через запятую', 'comma-separated')} bind:value={tags} onblur={() => tags !== (h.tags ?? '') && patch({ tags })} />
 	<p class="status">{#if error}<span class="err">{error}</span>{:else if saved}{saved}{/if}</p>
 
 	{#if h.status === 'open'}
 		<div class="buttons">
 			{#if h.entryPrice !== null}
-				<label class="lbl" for="reason-{h.id}">Закрыть досрочно — причина</label>
-				<input id="reason-{h.id}" placeholder="Например, тезис больше не актуален" bind:value={reason} />
-				<button class="ghost" disabled={!reason.trim() || closing} onclick={closeNow}>{closing ? 'Закрываю…' : 'Закрыть досрочно на последнюю цену'}</button>
+				<label class="lbl" for="reason-{h.id}">{tx('Закрыть досрочно — причина', 'Close early — reason')}</label>
+				<input id="reason-{h.id}" placeholder={tx('Например, тезис больше не актуален', 'For example, the thesis no longer holds')} bind:value={reason} />
+				<button class="ghost" disabled={!reason.trim() || closing} onclick={closeNow}>{closing ? tx('Закрываю…', 'Closing…') : tx('Закрыть досрочно на последнюю цену', 'Close early at the last price')}</button>
 			{/if}
 			{#if canCancel(h)}
-				<button class="danger" onclick={cancel}>Отменить запись — ошибка ввода</button>
-				<p class="sub">Отменить можно в первые 24 часа после записи; потом гипотеза остаётся в статистике.</p>
+				<button class="danger" onclick={cancel}>{tx('Отменить запись — ошибка ввода', 'Cancel the record — input error')}</button>
+				<p class="sub">{tx('Отменить можно в первые 24 часа после записи; потом гипотеза остаётся в статистике.', 'It can be cancelled within 24 hours of recording; after that the hypothesis stays in the stats.')}</p>
 			{/if}
 		</div>
 	{:else}
-		{#if h.closeReason}<p class="sub">Причина досрочного закрытия: {h.closeReason}</p>{/if}
-		<label class="lbl" for="lesson-{h.id}">Вывод</label>
-		<textarea id="lesson-{h.id}" rows="3" placeholder="Что показала эта гипотеза" bind:value={lesson} onblur={() => lesson !== (h.lesson ?? '') && patch({ lesson })}></textarea>
+		{#if h.closeReason}<p class="sub">{tx('Причина досрочного закрытия', 'Reason for closing early')}: {h.closeReason}</p>{/if}
+		<label class="lbl" for="lesson-{h.id}">{tx('Вывод', 'Conclusion')}</label>
+		<textarea id="lesson-{h.id}" rows="3" placeholder={tx('Что показала эта гипотеза', 'What this hypothesis showed')} bind:value={lesson} onblur={() => lesson !== (h.lesson ?? '') && patch({ lesson })}></textarea>
 	{/if}
 </div>
 

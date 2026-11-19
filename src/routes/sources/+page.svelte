@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { tl, tx } from '#lib/i18n.js';
 	import { onMount } from 'svelte';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import TopBar from '#lib/TopBar.svelte';
@@ -31,7 +32,7 @@
 			items = (await r.json()).items;
 			problem = undefined;
 		} catch {
-			problem = 'Нет связи с сервером.';
+			problem = tx('Нет связи с сервером.', 'No connection to the server.');
 		}
 	}
 	onMount(() => {
@@ -56,15 +57,15 @@
 	const idle = $derived(items?.filter((r) => !(r.score.n || r.open || r.news.n || r.early.n)) ?? []);
 </script>
 
-<svelte:head><title>Источники · Журнал гипотез</title></svelte:head>
+<svelte:head><title>{tx('Источники', 'Sources')} · {tx('Журнал гипотез', 'Hypothesis journal')}</title></svelte:head>
 
-<TopBar title="Источники" help="source.usefulness" />
+<TopBar title={tx('Источники', 'Sources')} help="source.usefulness" />
 
 <div class="bar">
-	<button class="chip" class:on={noDefault} aria-pressed={noDefault} onclick={toggle}>Без срока по умолчанию</button>
+	<button class="chip" class:on={noDefault} aria-pressed={noDefault} onclick={toggle}>{tx('Без срока по умолчанию', 'Without the default term')}</button>
 	<span class="grow"></span>
-	<span class="muted small">Как читать</span>
-	<HelpIcon topicKey="source.stats" label="как читать таблицу источников" />
+	<span class="muted small">{tx('Как читать', 'How to read')}</span>
+	<HelpIcon topicKey="source.stats" label={tx('как читать таблицу источников', 'how to read the sources table')} />
 </div>
 
 {#if problem}<p class="warn" role="alert">{problem}</p>{/if}
@@ -72,10 +73,9 @@
 {#if items === null}
 	{#each [1, 2, 3] as i (i)}<div class="skeleton"></div>{/each}
 {:else if !active.length}
-	<Empty title="Каким источникам можно верить">
-		Здесь появится таблица изданий и авторов: сколько их утверждений сработало и с каким интервалом. Оценка появляется после
-		10 закрытых гипотез источника; до этого — только счётчик.
-		{#snippet action()}<a href="/new">Новая гипотеза</a>{/snippet}
+	<Empty title={tx('Каким источникам можно верить', 'Which sources to trust')}>
+		{tx('Здесь появится таблица изданий и авторов: сколько их утверждений сработало и с каким интервалом. Оценка появляется после 10 закрытых гипотез источника; до этого — только счётчик.', 'Here a table of outlets and authors will appear: how many of their claims came true and with what interval. A rating appears after 10 closed hypotheses of a source; before that — only a count.')}
+		{#snippet action()}<a href="/new">{tx('Новая гипотеза', 'New hypothesis')}</a>{/snippet}
 	</Empty>
 {:else}
 	<ul class="list">
@@ -83,19 +83,19 @@
 			<li>
 				<a href="/sources/{r.id}">
 					<span class="top">
-						<b class="name">{r.name}</b>
+						<b class="name">{tl(r.name)}</b>
 						<span class="grow"></span>
 						<Rate score={r.score} help={i === active.findIndex((x) => x.score.level === 'few')} />
 					</span>
 					<span class="meta">
-						закрыто {r.score.n} · открыто {r.open} · статей {r.articles}
+						{tx('закрыто', 'closed')} {r.score.n} · {tx('открыто', 'open')} {r.open} · {tx('статей', 'articles')} {r.articles}
 						{#if r.score.n}
-							· среднее <Pct value={r.score.meanExcess} plain /> · медиана <Pct value={r.score.medianExcess} plain />
+							· {tx('среднее', 'mean')} <Pct value={r.score.meanExcess} plain /> · {tx('медиана', 'median')} <Pct value={r.score.medianExcess} plain />
 						{/if}
 					</span>
 					{#if r.news.n || r.early.n}
 						<span class="meta apart">
-							{#if r.news.n}Новости отдельно: {r.news.hits} из {r.news.n}{/if}{#if r.news.n && r.early.n}{' · '}{/if}{#if r.early.n}досрочно закрыто: {r.early.n}{/if}
+							{#if r.news.n}{tx('Новости отдельно', 'News apart')}: {r.news.hits} {tx('из', 'of')} {r.news.n}{/if}{#if r.news.n && r.early.n}{' · '}{/if}{#if r.early.n}{tx('досрочно закрыто', 'closed early')}: {r.early.n}{/if}
 						</span>
 					{/if}
 					<ChevronRight size={18} />
@@ -106,7 +106,7 @@
 {/if}
 
 {#if idle.length}
-	<p class="muted small idle">Пока без гипотез: {idle.map((r) => r.name).join(', ')}.</p>
+	<p class="muted small idle">{tx('Пока без гипотез', 'No hypotheses yet')}: {idle.map((r) => tl(r.name)).join(', ')}.</p>
 {/if}
 
 <style>
