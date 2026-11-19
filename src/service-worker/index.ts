@@ -4,7 +4,8 @@ import { immutable, assets } from '$app/manifest';
 
 // The app shell opens without network; data come from /api and are not cached yet (stage 2 adds the draft queue).
 const abs = (p: string) => '/' + p.replace(/^\//, '');
-const SHELL = ['/', ...immutable.map((f) => abs(f.path)), ...assets.map((f) => abs(f.path))];
+// not '/': without a login it redirects to /login (users, 19.11.2026)
+const SHELL = [...immutable.map((f) => abs(f.path)), ...assets.map((f) => abs(f.path))];
 // Immutable file names carry content hashes, so their list identifies the build.
 let h = 0;
 for (const ch of SHELL.join('|')) h = (Math.imul(31, h) + ch.charCodeAt(0)) | 0;
@@ -34,8 +35,8 @@ self.addEventListener('fetch', (event) => {
 	if (req.method !== 'GET' || url.origin !== self.location.origin || url.pathname.startsWith('/api/') || url.pathname === '/health') return;
 
 	if (req.mode === 'navigate') {
-		// Network first: the Caddy lock login passes through to the browser.
-		event.respondWith(fetch(req).catch(async () => (await caches.match('/')) ?? Response.error()));
+		// Network only: the Caddy lock and the app's own login pass through to the browser.
+		event.respondWith(fetch(req));
 		return;
 	}
 

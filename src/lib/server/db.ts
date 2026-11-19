@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path';
 import * as appSchema from './schema/app.js';
 import * as marketSchema from './schema/market.js';
 import { seedApp, seedMarket } from './seed.js';
+import { appFileOf, currentUserId } from './auth.js';
 
 /** Volumes (spec section 10): databases in /data, backups in /backups, raw provider answers in /raw. */
 export const dataDir = resolve(process.env.DATA_DIR ?? 'data');
@@ -83,20 +84,33 @@ export function volumeReport(): { ok: boolean; lines: string[] } {
 	return { ok, lines };
 }
 
-let app: ReturnType<typeof openApp> | undefined;
+const apps = new Map<number, ReturnType<typeof openApp>>();
 let market: ReturnType<typeof openMarket> | undefined;
 
 function ensureDir() {
 	mkdirSync(dataDir, { recursive: true });
 }
 
+/**
+ * The journal of the current user (owner's request 19.11.2026: each user has his own): the request's user from
+ * the session, or the user a job runs as (auth.asUser). Outside both — the first user's journal.
+ */
 export function getApp() {
-	if (!app) {
+	const id = currentUserId() ?? 1;
+	let a = apps.get(id);
+	if (!a) {
 		ensureDir();
-		app = openApp(join(dataDir, 'app.db'));
+		a = openApp(join(dataDir, appFileOf(id)));
+		// a new journal gets the help texts at once
+		appOpened?.(a.db);
+		apps.set(id, a);
 	}
-	return app;
+	return a;
 }
+
+/** called when a user's journal is opened for the first time in this process (help texts are loaded into it) */
+let appOpened: ((db: AppDb) => void) | undefined;
+export const onAppOpened = (f: (db: AppDb) => void) => (appOpened = f);
 
 export function getMarket() {
 	if (!market) {
@@ -108,8 +122,9 @@ export function getMarket() {
 
 /** On shutdown: close both files cleanly (the WAL is checkpointed). */
 export function closeAll() {
-	for (const d of [app, market]) d?.sqlite.close();
-	app = market = undefined;
+	for (const d of [...apps.values(), market]) d?.sqlite.close();
+	apps.clear();
+	market = undefined;
 }
 
 export const getAppDb = (): AppDb => getApp().db;

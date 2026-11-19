@@ -2,13 +2,17 @@
 	import '#lib/styles/tokens.css';
 	import TabBar from '#lib/TabBar.svelte';
 	import Toast from '#lib/Toast.svelte';
+	import { page } from '$app/state';
 	import type { LayoutProps } from './$types';
 
-	let { children }: LayoutProps = $props();
+	let { children, data }: LayoutProps = $props();
+	$effect(() => {
+		document.documentElement.lang = data.lang;
+	});
 </script>
 
 <main>{@render children()}</main>
-<TabBar />
+{#if page.url.pathname !== '/login'}<TabBar />{/if}
 <Toast />
 
 <style>
