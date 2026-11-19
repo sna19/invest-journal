@@ -304,3 +304,24 @@ describe('automatic portfolio of a source (section 18)', () => {
 		expect(syncAuto(s.app, s.market, NOW)).toEqual({ bought: 0, sold: 0, dividends: 0, reversed: 0 });
 	});
 });
+
+describe('live quotes in the portfolio (owner 19.11.2026)', () => {
+	it('a quote newer than the last close prices the position; an older one is ignored; the live dollar is today’s rate', () => {
+		const s = setup();
+		const { positionId } = addEvent(s.app, s.market, { portfolioId: s.p.id, securityId: s.us, kind: 'buy', date: '2026-01-05', qty: 10, price: 100 }, NOW);
+		const put = s.market.prepare(`insert or replace into market_quotes (key, security_id, price, prev_close, currency, market_time, fetched_at, provider_code) values (?, ?, ?, ?, 'USD', ?, ?, 'yahoo')`);
+		const now = new Date().toISOString();
+		put.run(`sec:${s.us}`, s.us, 125, 110, now, now);
+		put.run('fx:USD/ILS', null, 3.9, 3.8, now, now);
+		const today = new Date().toISOString().slice(0, 10);
+		let v = positionView(s.app, s.market, positionId, today)!;
+		expect(v.position.lastPrice).toBe(125);
+		expect(v.position.livePrice).toBe(true);
+		expect(v.position.valuePc).toBeCloseTo(10 * 125 * 3.9, 6);
+		// a quote older than the last close is not used
+		put.run(`sec:${s.us}`, s.us, 99, 98, '2026-04-01T15:00:00Z', now);
+		v = positionView(s.app, s.market, positionId, today)!;
+		expect(v.position.lastPrice).toBe(110);
+		expect(v.position.livePrice).toBe(false);
+	});
+});

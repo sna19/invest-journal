@@ -245,3 +245,21 @@ export const fxDaily = sqliteTable(
 	},
 	(t) => [primaryKey({ columns: [t.pair, t.date] })]
 );
+
+/**
+ * Live quotes (owner's request, 19.11.2026): the last price of each security of an open position and the dollar
+ * rate, refreshed during the trading day. Kept apart from market_prices_daily — statistics, hypotheses and the
+ * model use only checked daily closes; the portfolio screen uses a quote when it is newer than the last close.
+ * key: 'sec:<id>' | 'fx:USD/ILS'. Prices in the security's price unit (agorot for TASE shares), like the closes.
+ */
+export const quotes = sqliteTable('market_quotes', {
+	key: text().primaryKey(),
+	securityId: integer(),
+	price: real().notNull(),
+	prevClose: real(),
+	currency: text(),
+	/** when the exchange printed the price, ISO */
+	marketTime: text().notNull(),
+	fetchedAt: text().notNull(),
+	providerCode: text().notNull()
+});

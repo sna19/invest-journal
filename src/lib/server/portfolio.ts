@@ -22,6 +22,7 @@ import { RATED_TYPES } from '../stats.js';
 import { InputError, LockedError } from './journal.js';
 import type { Errors } from '../hypothesis.js';
 import { fxOn } from './market/boi.js';
+import { readQuotes } from './market/quotes.js';
 
 /**
  * Spec section 18 — portfolios on the server: events in, positions and returns out. Plain SQL on both files:
@@ -81,7 +82,15 @@ export function marketView(market: Database.Database): Market & {
 	last(securityId: number): { date: string; close: number; providerCode: string } | null;
 	dividends(securityId: number, after: string, upTo: string): { date: string; amount: number }[];
 	usd(date: string): number;
+	/** the live quote of a security when it is newer than its last daily close (owner's request 19.11.2026) */
+	live(securityId: number): { date: string; price: number; time: string } | null;
+	/** the time of the live dollar rate used for today, if any */
+	liveFxTime: string | null;
 } {
+	const quotes = readQuotes(market);
+	const today = israelDate();
+	const fxLive = quotes.get('fx:USD/ILS');
+	const fxLiveToday = fxLive && israelDate(new Date(fxLive.marketTime)) >= israelDate(new Date(Date.now() - 4 * 86400000)) ? fxLive : null;
 	const priceQ = market.prepare('select close from market_prices_daily where security_id = ? and date <= ? order by date desc limit 1');
 	const dayQ = market.prepare('select date, low, high, close from market_prices_daily where security_id = ? and date <= ? order by date desc limit 1');
 	const lastQ = market.prepare('select date, close, provider_code as providerCode from market_prices_daily where security_id = ? order by date desc limit 1');
@@ -92,6 +101,8 @@ export function marketView(market: Database.Database): Market & {
 	const cache = new Map<string, number | null>();
 	const splitCache = new Map<number, Split[]>();
 	const usd = (date: string) => {
+		// today's value: the live rate when there is one (the bank's rate comes once a day)
+		if (date >= today && fxLiveToday) return fxLiveToday.price;
 		const k = `fx|${date}`;
 		if (!cache.has(k)) cache.set(k, fxOn(market, date) ?? fxOn(market, '9999-12-31'));
 		return cache.get(k) ?? 1;
@@ -110,6 +121,14 @@ export function marketView(market: Database.Database): Market & {
 		},
 		day: (id, date) => (dayQ.get(id, date) as never) ?? null,
 		last: (id) => (lastQ.get(id) as never) ?? null,
+		live(id) {
+			const q = quotes.get(`sec:${id}`);
+			if (!q) return null;
+			const date = israelDate(new Date(q.marketTime));
+			const close = lastQ.get(id) as { date: string } | undefined;
+			return !close || date >= close.date ? { date, price: q.price, time: q.marketTime } : null;
+		},
+		liveFxTime: fxLiveToday?.marketTime ?? null,
 		dividends: (id, after, upTo) => divQ.all(id, after, upTo) as never
 	};
 }
@@ -340,8 +359,11 @@ export function portfolioView(app: Database.Database, market: Database.Database,
 		const fi = fifo(tr, f);
 		// no price in the base yet (a security added by hand): the price of its last trade or transfer stands in
 		const market_ = m.last(r.security_id);
+		const lv = m.live(r.security_id);
 		const lastTrade = tr.at(-1);
-		const last = market_ ?? (lastTrade ? { date: lastTrade.date, close: lastTrade.price, providerCode: 'event' } : null);
+		const last = lv
+			? { date: lv.date, close: lv.price, providerCode: 'live' }
+			: (market_ ?? (lastTrade ? { date: lastTrade.date, close: lastTrade.price, providerCode: 'event' } : null));
 		const h = holding(fi, f, last?.close ?? null, m.conv(r.currency, pc, today));
 		const live = effective(list);
 		const plan = [...live].reverse().find((e) => e.kind === 'plan_buy' || e.kind === 'plan_sell' || e.kind === 'watch');
@@ -362,6 +384,10 @@ export function portfolioView(app: Database.Database, market: Database.Database,
 			lastPrice: last?.close ?? null,
 			lastDate: last?.date ?? null,
 			manualPrice: last?.providerCode === 'manual',
+			/** a live quote of today (not a daily close) and its time */
+			livePrice: !!lv,
+			priceTime: lv?.time ?? null,
+			lastClose: market_?.date ?? null,
 			/** the price is the last trade's: the base has none for this security yet */
 			eventPrice: last?.providerCode === 'event',
 			value: h.value,
@@ -406,7 +432,10 @@ export function portfolioView(app: Database.Database, market: Database.Database,
 			unrealizedPc: positions.reduce((n, x) => n + x.unrealizedPc, 0),
 			fromTransfer: positions.some((x) => x.fromTransfer && x.qty > EPS),
 			fxUsd: r4(m.usd(today)),
-			pricesAsOf: positions.map((x) => x.lastDate).filter(Boolean).sort().at(-1) ?? null,
+			pricesAsOf: positions.map((x) => x.lastClose).filter(Boolean).sort().at(-1) ?? null,
+			/** the newest live quote among the positions, and the live dollar's time */
+			quotesAt: positions.filter((x) => x.qty > EPS).map((x) => x.priceTime).filter(Boolean).sort().at(-1) ?? null,
+			fxAt: m.liveFxTime,
 			taxAccrued: p.tax_accrued,
 			benchmark: benchReturn(m, market, pc, t.from, today)
 		},
