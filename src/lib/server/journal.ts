@@ -92,7 +92,8 @@ function securityAndBenchmark(market: Database.Database, id: number) {
 	return { s, b };
 }
 
-export function createHypothesis(db: AppDb, market: Database.Database, input: HypothesisInput, now = new Date()) {
+/** `opts.modelVersionId` — the quarterly model records its own hypotheses (T-009); never taken from a request */
+export function createHypothesis(db: AppDb, market: Database.Database, input: HypothesisInput, now = new Date(), opts: { modelVersionId?: number } = {}) {
 	const today = israelDate(now);
 	const errors = validate(input, today);
 	const found = input.securityId ? securityAndBenchmark(market, Number(input.securityId)) : null;
@@ -160,7 +161,8 @@ export function createHypothesis(db: AppDb, market: Database.Database, input: Hy
 				// entry: the close of the first trading day from today — filled by the stage 3 job
 				entryDate: today,
 				benchmarkId: b.id,
-				benchmarkSymbol: b.symbol
+				benchmarkSymbol: b.symbol,
+				modelVersionId: opts.modelVersionId ?? null
 			})
 			.returning()
 			.get();

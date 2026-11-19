@@ -14,7 +14,7 @@
 		{ href: '/', label: 'tab.hypotheses' as const, icon: NotebookPen, match: (p: string) => p === '/' || p.startsWith('/hypotheses') },
 		{ href: '/sources', label: 'tab.sources' as const, icon: Newspaper, match: (p: string) => p.startsWith('/sources') },
 		{ href: '/stats', label: 'tab.stats' as const, icon: ChartColumn, match: (p: string) => p.startsWith('/stats') },
-		{ href: '/more', label: 'tab.more' as const, icon: Ellipsis, match: (p: string) => ['/more', '/tickers', '/settings', '/account'].some((x) => p.startsWith(x)) }
+		{ href: '/more', label: 'tab.more' as const, icon: Ellipsis, match: (p: string) => ['/more', '/tickers', '/settings', '/account', '/model'].some((x) => p.startsWith(x)) }
 	];
 	const path = $derived(page.url.pathname);
 
