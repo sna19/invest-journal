@@ -27,9 +27,13 @@ export function readHelpFiles(dir = helpDir): HelpFile[] {
 		});
 }
 
-/** Upserts every file, removes topics whose file is gone. */
+/**
+ * Upserts every file, removes topics whose file is gone. English texts (help/en/<key>.md, 19.11.2026) are kept
+ * beside the Russian ones under the key «en:<key>».
+ */
 export function loadHelp(db: AppDb, dir = helpDir) {
-	const files = readHelpFiles(dir);
+	const ru = readHelpFiles(dir);
+	const files = [...ru, ...readHelpFiles(join(dir, 'en')).map((f) => ({ ...f, key: `en:${f.key}` }))];
 	db.transaction((tx) => {
 		for (const f of files) {
 			tx.insert(helpTopics)
@@ -39,12 +43,14 @@ export function loadHelp(db: AppDb, dir = helpDir) {
 		}
 		if (files.length) tx.delete(helpTopics).where(notInArray(helpTopics.key, files.map((f) => f.key))).run();
 	});
-	return files.length;
+	return ru.length;
 }
 
 /** A topic for the help window: title and the body as HTML (texts come from the repository). */
-export function helpTopic(db: AppDb, key: string) {
-	const t = db.select().from(helpTopics).where(eq(helpTopics.key, key)).get();
+export function helpTopic(db: AppDb, key: string, lang: 'ru' | 'en' = 'ru') {
+	const get = (k: string) => db.select().from(helpTopics).where(eq(helpTopics.key, k)).get();
+	// an English reader gets the English text, the Russian one if there is no translation
+	const t = (lang === 'en' && !key.startsWith('en:') ? get(`en:${key}`) : undefined) ?? get(key);
 	if (!t) return null;
-	return { key: t.key, title: t.title, html: marked.parse(t.bodyMd, { async: false }) as string };
+	return { key, title: t.title, html: marked.parse(t.bodyMd, { async: false }) as string };
 }
