@@ -125,6 +125,7 @@
 	const JOB: Record<string, string> = $derived({
 		quotes: tx('Котировки в течение дня', 'Intraday quotes'),
 		fx: tx('Курс доллара (Банк Израиля)', 'Dollar rate (Bank of Israel)'),
+		profiles: tx('Профили бумаг: сектор, отрасль, страна', 'Security profiles: sector, industry, country'),
 		prices: tx('Дневные цены', 'Daily prices'),
 		history: tx('Историческая загрузка', 'History load'),
 		hypotheses: tx('Гипотезы: вход, результат, закрытие', 'Hypotheses: entry, result, close'),

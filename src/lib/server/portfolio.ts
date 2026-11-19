@@ -1,3 +1,4 @@
+import { readProfiles, type ProfileView } from './market/profiles.js';
 import type Database from 'better-sqlite3';
 import { israelDate } from '../hypothesis.js';
 import {
@@ -407,12 +408,16 @@ export function portfolioView(app: Database.Database, market: Database.Database,
 			plan: plan ? { kind: plan.kind, date: plan.date, price: plan.price, amount: plan.amount, note: plan.note } : null,
 			hypotheses: hyps,
 			lastEventAt: live.at(-1)?.date ?? r.opened_at,
-			weight: 0
+			weight: 0,
+			profile: null as ProfileView | null
 		};
 	});
 	const held = positions.reduce((n, x) => n + x.valuePc, 0);
 	const value = cash + held;
 	for (const x of positions) x.weight = value > EPS ? (x.valuePc / value) * 100 : 0;
+	// what each security is — sector, industry, country, size, a fund's sector weights (the allocation block)
+	const profiles = readProfiles(market, [...new Set(positions.map((x) => x.securityId))], m.usd(today));
+	for (const x of positions) x.profile = profiles.get(x.securityId) ?? null;
 
 	// the last buy or sell fee in this portfolio, per currency — the form starts from it
 	const lastFee: Record<string, number> = {};

@@ -11,6 +11,8 @@
 	import Pencil from '@lucide/svelte/icons/pencil';
 	import FileJson from '@lucide/svelte/icons/file-json';
 	import TopBar from '#lib/TopBar.svelte';
+	import Allocation from '#lib/portfolio/Allocation.svelte';
+	import type { AllocProfile } from '#lib/allocation.js';
 	import Empty from '#lib/Empty.svelte';
 	import Sheet from '#lib/Sheet.svelte';
 	import HelpIcon from '#lib/HelpIcon.svelte';
@@ -37,6 +39,7 @@
 		sourceName?: string | null;
 	}
 	interface Pos {
+		profile: AllocProfile | null;
 		id: number;
 		securityId: number;
 		symbol: string;
@@ -206,48 +209,6 @@
 			.filter((l) => l.main || !hidden.includes(l.key))
 	);
 
-	// section 19 «Распределение»: shares by security, market and currency — bars, not a pie
-	const alloc = $derived.by(() => {
-		if (!v) return null;
-		const held = v.positions.filter((p) => p.valuePc > 0);
-		const total = held.reduce((n, p) => n + p.valuePc, 0) + Math.max(0, v.summary.cash);
-		if (total <= 0) return null;
-		const share = (x: number) => (x / total) * 100;
-		const top = [...held].sort((a, b) => b.valuePc - a.valuePc);
-		const bySec = top.slice(0, 8).map((p) => ({ label: p.symbol, value: p.valuePc }));
-		const rest = top.slice(8).reduce((n, p) => n + p.valuePc, 0);
-		if (rest > 0) bySec.push({ label: tx('остальные', 'others'), value: rest });
-		if (v.summary.cash > 0) bySec.push({ label: tx('деньги', 'cash'), value: v.summary.cash });
-		const sum = (f: (p: Pos) => boolean) => held.filter(f).reduce((n, p) => n + p.valuePc, 0);
-		const us = sum((p) => p.currency === 'USD');
-		const il = sum((p) => p.currency !== 'USD');
-		const cash = Math.max(0, v.summary.cash);
-		return {
-			total,
-			groups: [
-				{ title: tx('По бумагам', 'By security'), rows: bySec.map((r) => ({ ...r, pct: share(r.value) })) },
-				{
-					title: tx('По рынкам', 'By market'),
-					rows: [
-						{ label: tx('США', 'US'), value: us },
-						{ label: tx('Израиль', 'Israel'), value: il },
-						{ label: tx('деньги', 'cash'), value: cash }
-					]
-						.filter((r) => r.value > 0)
-						.map((r) => ({ ...r, pct: share(r.value) }))
-				},
-				{
-					title: tx('По валютам', 'By currency'),
-					rows: [
-						{ label: tx('$ доллар', '$ dollar'), value: us },
-						{ label: tx('₪ шекель', '₪ shekel'), value: il + cash }
-					]
-						.filter((r) => r.value > 0)
-						.map((r) => ({ ...r, pct: share(r.value) }))
-				}
-			]
-		};
-	});
 	function choose(id: number) {
 		current = id;
 		hiddenSet = false;
@@ -653,25 +614,10 @@
 		</section>
 	{/if}
 
-	{#if alloc}
-		<section class="card">
-			<div class="ch-head"><h2>{tx('Распределение', 'Allocation')}</h2><HelpIcon topicKey="portfolio.allocation" label={tx('распределение', 'allocation')} /></div>
-			{#each alloc.groups as g (g.title)}
-				{#if g.rows.length}
-					<h3>{g.title}</h3>
-					<ul class="bars">
-						{#each g.rows as r (r.label)}
-							<li>
-								<span class="bl">{r.label}</span>
-								<span class="bar"><span style:width="{Math.max(1, r.pct)}%"></span></span>
-								<span class="bp">{Math.round(r.pct)}%</span>
-							</li>
-						{/each}
-					</ul>
-				{/if}
-			{/each}
-		</section>
+	{#if v.positions.some((p) => p.valuePc > 0) || v.summary.cash > 0}
+		<Allocation positions={v.positions} cash={v.summary.cash} currency={v.summary.currency} />
 	{/if}
+
 
 	{#if v.cash.length}
 		<details class="stage">
@@ -954,12 +900,6 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45`)}</pre>
 		gap: 4px;
 		margin-bottom: var(--s2);
 	}
-	h3 {
-		margin: var(--s3) 0 var(--s1);
-		font-size: var(--fs-s);
-		color: var(--muted);
-		font-weight: 600;
-	}
 	.toggles {
 		display: flex;
 		flex-wrap: wrap;
@@ -982,43 +922,6 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45`)}</pre>
 	}
 	.sorts {
 		margin: var(--s3) 0 0;
-	}
-	.bars {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-	.bars li {
-		display: grid;
-		grid-template-columns: 84px 1fr 40px;
-		align-items: center;
-		gap: var(--s2);
-		font-size: var(--fs-s);
-	}
-	.bl {
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.bar {
-		height: 10px;
-		border-radius: 5px;
-		background: var(--surface-2);
-		overflow: hidden;
-	}
-	.bar span {
-		display: block;
-		height: 100%;
-		border-radius: 5px;
-		background: var(--accent);
-	}
-	.bp {
-		text-align: right;
-		font-variant-numeric: tabular-nums;
-		color: var(--muted);
 	}
 	.delete {
 		display: block;
