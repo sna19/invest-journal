@@ -284,3 +284,36 @@ export const securityProfiles = sqliteTable('ref_security_profiles', {
 	sectorWeights: text(),
 	fetchedAt: text().notNull()
 });
+
+/**
+ * Monthly prices for the quarterly model (spec section 21): only the quarter borders are needed, so all shares with
+ * a long history get monthly bars instead of daily ones — about 20 times fewer rows. `adjClose` is adjusted for
+ * splits and dividends (Yahoo's adjclose), `close` only for splits, as the daily closes. Only complete months.
+ */
+export const pricesMonthly = sqliteTable(
+	'market_prices_monthly',
+	{
+		securityId: integer().notNull(),
+		/** YYYY-MM */
+		month: text().notNull(),
+		close: real().notNull(),
+		adjClose: real().notNull(),
+		/** shares traded in the month */
+		volume: real(),
+		providerCode: text().notNull(),
+		fetchedAt: text().notNull()
+	},
+	(t) => [primaryKey({ columns: [t.securityId, t.month] })]
+);
+
+/** the last monthly load of each security (also when the provider had nothing: not asked again every night) */
+export const monthlyLoads = sqliteTable('ops_monthly_loads', {
+	securityId: integer().primaryKey(),
+	fetchedAt: text().notNull(),
+	/** ok | none | error */
+	status: text().notNull(),
+	months: integer().notNull().default(0),
+	firstMonth: text(),
+	lastMonth: text(),
+	error: text()
+});
