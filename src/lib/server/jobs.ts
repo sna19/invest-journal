@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { israelDate } from '../hypothesis.js';
+import { checkMonthlyAgainstDaily, loadMonthly, monthlyDue, type MonthlySummary } from './market/monthly.js';
 import { loadProfiles, staleProfiles, type ProfilesSummary } from './market/profiles.js';
 import { heldSecurities, loadQuotes, marketsOpen, readSchedule, type QuotesSummary } from './market/quotes.js';
 import { asUser, currentUserId, forEachUser, listUsers } from './auth.js';
@@ -331,6 +332,33 @@ export function runQuotesJob(): Promise<QuotesSummary> {
 	});
 }
 
+// ── monthly prices (quarterly model, T-009) ─────────────────────────────────────
+
+/** Spec section 21: monthly bars of all shares and the benchmarks, in portions at night (market/monthly.ts). */
+export function runMonthlyJob(limit = 2500): Promise<MonthlySummary> {
+	return single('monthly', async () => {
+		const id = startRun('monthly', 'yahoo');
+		try {
+			const m = getMarket().sqlite;
+			const due = monthlyDue(m, new Date(), limit);
+			const s = await loadMonthly(m, due, makeFetcher({ retries: 1 }));
+			const check = s.loaded ? checkMonthlyAgainstDaily(m) : null;
+			if (check) console.log(`monthly: ${s.loaded} loaded, ${s.rows} rows in ${Math.round(s.ms / 1000)} s; agrees with daily ${check.agree}/${check.checked}`);
+			finishRun(id, {
+				status: s.errors.length > s.securities / 2 ? 'error' : s.errors.length ? 'suspicious' : 'ok',
+				received: s.securities,
+				added: s.rows,
+				updated: s.loaded,
+				error: s.errors.slice(0, 5).join('; ') || null
+			});
+			return s;
+		} catch (e) {
+			finishRun(id, { status: 'error', error: String(e) });
+			throw e;
+		}
+	});
+}
+
 // ── security profiles ───────────────────────────────────────────────────────────
 
 /** Owner's request 19.11.2026: sector, industry, country, size of the held securities (market/profiles.ts). */
@@ -443,6 +471,8 @@ export function startScheduler() {
 	at('* * * * *', 'quotes', () => (quotesDue() ? runQuotesJob() : undefined));
 	at('30 6 * * 0', 'listings', runListingsJob);
 	at('20 8 * * *', 'profiles', runProfilesJob);
+	// monthly bars for the model: every night hour, a portion each, until all are fresh
+	at('35 0-5 * * *', 'monthly', () => runMonthlyJob());
 	at('0 9 * * 6', 'gaps', runGapsJob);
 	at('40 3 * * *', 'backup-app', () => runBackupJob('app'));
 	at('10 4 * * 0', 'backup-market', () => runBackupJob('market'));

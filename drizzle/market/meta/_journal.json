@@ -50,6 +50,13 @@
       "when": 1795091534017,
       "tag": "0006_security_profiles",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1795095158436,
+      "tag": "0007_prices_monthly",
+      "breakpoints": true
     }
   ]
 }
