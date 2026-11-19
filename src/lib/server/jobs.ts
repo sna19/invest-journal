@@ -337,7 +337,8 @@ export function runQuotesJob(): Promise<QuotesSummary> {
 // ── monthly prices (quarterly model, T-009) ─────────────────────────────────────
 
 /** Spec section 21: monthly bars of all shares and the benchmarks, in portions at night (market/monthly.ts). */
-export function runMonthlyJob(limit = 2500): Promise<MonthlySummary> {
+/** `limit` — securities per run (a night hour takes 2 500; the «now» button — all that are due) */
+export function runMonthlyJob(limit = 2500, sectorLimit = 1500): Promise<MonthlySummary> {
 	return single('monthly', async () => {
 		const id = startRun('monthly', 'yahoo');
 		try {
@@ -346,7 +347,7 @@ export function runMonthlyJob(limit = 2500): Promise<MonthlySummary> {
 			const s = await loadMonthly(m, due, makeFetcher({ retries: 1 }));
 			const check = s.loaded ? checkMonthlyAgainstDaily(m) : null;
 			// the model's caps need a sector for every share of its universe
-			const need = needSector(universe(m)).slice(0, 1500);
+			const need = needSector(universe(m)).slice(0, sectorLimit);
 			if (need.length) {
 				const pr = await loadProfiles(m, need).catch((e) => ({ updated: 0, errors: [String(e)] }));
 				console.log(`monthly: sectors of ${need.length} shares — ${pr.updated} loaded${pr.errors.length ? `, ${pr.errors.length} errors` : ''}`);
