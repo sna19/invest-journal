@@ -408,16 +408,26 @@ function walkForward(rows: Row[], ms: number[][], years: number[], p: Params): W
 
 let cached: Universe | null = null;
 let cachedKey = '';
+let cachedAt = 0;
 
-/** the universe, rebuilt when the monthly data or the sectors changed (a cheap check on every request) */
+/**
+ * The universe, rebuilt when the monthly data or the sectors changed. Reading all monthly prices takes seconds
+ * on the NAS and blocks the server, so while a load runs (the key changes every few seconds) a built universe
+ * is kept for 30 minutes; the monthly job drops it when it ends (`dropUniverse`).
+ */
 export function universe(market: Database.Database): Universe {
-	const k = market.prepare(`select (select max(fetched_at) from ops_monthly_loads) || '|' || (select count(*) from ref_security_profiles where sector is not null) as k`).get() as { k: string | null };
+	const k = market.prepare(`select (select count(*) from ops_monthly_loads where status = 'ok') || '|' || (select count(*) from ref_security_profiles where sector is not null) as k`).get() as { k: string | null };
 	const key = k.k ?? '';
-	if (!cached || key !== cachedKey) {
+	if (!cached || (key !== cachedKey && Date.now() - cachedAt > 30 * 60_000)) {
 		cached = loadUniverse(market);
 		cachedKey = key;
+		cachedAt = Date.now();
 	}
 	return cached;
+}
+
+export function dropUniverse() {
+	cached = null;
 }
 
 /** the next calendar quarter after `now` (Israel time): in November 2026 — Q1 2027 */

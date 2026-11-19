@@ -147,22 +147,33 @@ export async function loadMonthly(market: Database.Database, secs: MonthlySec[],
 }
 
 /**
- * The check of the spec: a monthly close agrees with the daily close of the month's last trading day
- * (both split-adjusted) — on the securities that have daily prices. Returns the share that agree within 1%.
+ * The check of the spec: a monthly close agrees with the daily close of the month's last trading day (both
+ * split-adjusted). A sample — some securities that have daily prices, their last 12 months — read by index only:
+ * a check over the whole tables blocked the server for minutes on the NAS (19.11.2026).
  */
-export function checkMonthlyAgainstDaily(market: Database.Database, sample = 200) {
-	const rows = market
-		.prepare(
-			`select m.security_id as id, m.month, m.close as mc,
-			        (select d.close from market_prices_daily d where d.security_id = m.security_id and d.date < date(m.month || '-01', '+1 month')
-			          order by d.date desc limit 1) as dc,
-			        (select max(d.date) from market_prices_daily d where d.security_id = m.security_id and d.date < date(m.month || '-01', '+1 month')) as dd
-			   from market_prices_monthly m
-			  where exists (select 1 from market_prices_daily d where d.security_id = m.security_id and substr(d.date, 1, 7) = m.month)
-			  order by random() limit ?`
-		)
-		.all(sample) as { id: number; month: string; mc: number; dc: number | null; dd: string | null }[];
-	const checked = rows.filter((r) => r.dc && r.dd?.startsWith(r.month));
-	const bad = checked.filter((r) => Math.abs(r.mc / r.dc! - 1) > 0.01);
-	return { checked: checked.length, agree: checked.length - bad.length, bad: bad.slice(0, 10) };
+export function checkMonthlyAgainstDaily(market: Database.Database, securities = 40) {
+	const ids = (
+		market
+			.prepare(
+				`select security_id as id from ops_monthly_loads l where status = 'ok'
+				   and exists (select 1 from market_prices_daily d where d.security_id = l.security_id) order by random() limit ?`
+			)
+			.all(securities) as { id: number }[]
+	).map((r) => r.id);
+	const months = market.prepare('select month, close from market_prices_monthly where security_id = ? order by month desc limit 12');
+	const lastDay = market.prepare('select date, close from market_prices_daily where security_id = ? and date >= ? and date < ? order by date desc limit 1');
+	const next = (m: string) => {
+		const [y, mo] = m.split('-').map(Number);
+		return mo === 12 ? `${y + 1}-01-01` : `${y}-${String(mo + 1).padStart(2, '0')}-01`;
+	};
+	let checked = 0;
+	const bad: { id: number; month: string; mc: number; dc: number }[] = [];
+	for (const id of ids)
+		for (const { month, close } of months.all(id) as { month: string; close: number }[]) {
+			const d = lastDay.get(id, `${month}-01`, next(month)) as { date: string; close: number } | undefined;
+			if (!d) continue;
+			checked++;
+			if (Math.abs(close / d.close - 1) > 0.01) bad.push({ id, month, mc: close, dc: d.close });
+		}
+	return { checked, agree: checked - bad.length, bad: bad.slice(0, 10) };
 }
