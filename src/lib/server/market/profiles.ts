@@ -70,7 +70,7 @@ export const fetchGet: ProfileGet = async (url, cookie) => {
 	return { status: r.status, body: await r.text(), cookies: r.headers.getSetCookie?.() ?? [] };
 };
 
-async function session(get: ProfileGet) {
+export async function session(get: ProfileGet) {
 	const first = await get('https://fc.yahoo.com/');
 	const cookie = first.cookies.map((c) => c.split(';')[0]).join('; ');
 	const c = await get('https://query1.finance.yahoo.com/v1/test/getcrumb', cookie);

@@ -71,6 +71,13 @@
       "when": 1795193865920,
       "tag": "0009_news",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1795217398461,
+      "tag": "0010_security_events",
+      "breakpoints": true
     }
   ]
 }

@@ -393,3 +393,31 @@ export const newsMoves = sqliteTable(
 	},
 	(t) => [primaryKey({ columns: [t.securityId, t.date] })]
 );
+
+// ── T-013: the reason of a seasonality — report and dividend dates ───────────────
+
+/** a company's earnings report or a dividend's ex-date: the calendar the model's reason labels read */
+export const securityEvents = sqliteTable(
+	'ref_security_events',
+	{
+		securityId: integer().notNull(),
+		/** earnings | dividend */
+		kind: text().notNull(),
+		/** YYYY-MM-DD (the report's day in the exchange's time zone; the dividend's ex-date) */
+		date: text().notNull(),
+		/** yahoo-calendar | yahoo-chart | yahoo-next */
+		providerCode: text().notNull()
+	},
+	(t) => [primaryKey({ columns: [t.securityId, t.kind, t.date] })]
+);
+
+/** the last load of a security's events (also when there were none: not asked again for a month) */
+export const eventsLoads = sqliteTable('ops_events_loads', {
+	securityId: integer().primaryKey(),
+	fetchedAt: text().notNull(),
+	/** ok | none | error */
+	status: text().notNull(),
+	earnings: integer().notNull().default(0),
+	dividends: integer().notNull().default(0),
+	error: text()
+});

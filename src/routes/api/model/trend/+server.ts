@@ -11,7 +11,7 @@ const cache = new Map<string, TrendRow[]>();
  */
 export function GET({ url }) {
 	const v = (url.searchParams.get('variant') ?? 'A') as Variant;
-	if (!VARIANTS.includes(v)) error(400, 'variant A | B | C | D');
+	if (!VARIANTS.includes(v)) error(400, 'variant A | B | C | D | G');
 	const q = Number(url.searchParams.get('quarter') ?? nextQuarter().quarter);
 	if (![1, 2, 3, 4].includes(q)) error(400, 'quarter 1–4');
 	const t0 = performance.now();

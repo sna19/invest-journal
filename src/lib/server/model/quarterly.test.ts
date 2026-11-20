@@ -223,6 +223,33 @@ describe('quarterly model 10a', () => {
 		expect(d).toEqual(['S2']);
 	});
 
+	it('T-013: the reason labels and variant G — only shares with a label', async () => {
+		const q = await import('./quarterly.js');
+		const years = [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026];
+		// reports every February, May, August, November; a dividend every March
+		const ev = { earnings: new Set<number>(), dividends: new Set<number>() };
+		for (const y of years) {
+			for (const m of [1, 4, 7, 10]) ev.earnings.add(y * 12 + m);
+			ev.dividends.add(y * 12 + 2);
+		}
+		const a = series(1, (_, m) => (m <= 3 ? 0.01 : 0), { events: ev });
+		expect(q.reasonLabels(a, 1, years, new Set())).toEqual({ earnings: true, dividend: true, sector: false });
+		expect(q.reasonLabels(a, 2, years, new Set())).toEqual({ earnings: true, dividend: false, sector: false });
+		// no calendar loaded: unknown
+		expect(q.reasonLabels(series(2, () => 0), 1, years, new Set(['technology'])).earnings).toBeNull();
+		// the sector: five shares beating a flat market in Q1 every year
+		const sec = [3, 4, 5, 6, 7].map((i) => series(i, (_, m) => (m <= 3 ? 0.01 : 0), { sector: 'energy' }));
+		const rows = sec.map((s) => ({ s, r: years.map((y) => q.quarterReturn(s, y, 1)) }));
+		expect([...q.seasonalSectors(u(sec), rows, years, 1, 9)]).toEqual(['energy']);
+		// G: the same seasonal shares; only the one with a calendar label (or a seasonal sector) stays
+		const lone = series(8, (_, m) => (m <= 3 ? 0.012 : 0), { sector: 'utilities' });
+		const withCal = series(9, (_, m) => (m <= 3 ? 0.011 : 0), { sector: 'industrials', events: ev });
+		const g = runModel(u([lone, withCal]), 'G', 1, DEFAULTS).candidates.map((c) => c.symbol);
+		const c = runModel(u([lone, withCal]), 'C', 1, DEFAULTS).candidates.map((c) => c.symbol);
+		expect(c).toContain('S8');
+		expect(g).toEqual(['S9']);
+	});
+
 	it('funds labelled as shares are not shares', async () => {
 		const { isFund } = await import('./quarterly.js');
 		expect(isFund({ kind: 'etf', industry: null, name: 'Invesco DB Gold Double Long ETN' })).toBe(true);

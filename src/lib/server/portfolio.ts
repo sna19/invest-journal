@@ -736,7 +736,7 @@ export function addEvent(app: Database.Database, market: Database.Database, inpu
 	const hypothesisId = input.hypothesisId ? Number(input.hypothesisId) : null;
 	if (hypothesisId && !app.prepare('select 1 from hypotheses where id = ?').get(hypothesisId)) throw bad({ hypothesisId: 'Гипотезы нет' });
 
-	const modelVersionId = (input.modelVariant === 'A' || input.modelVariant === 'B' || input.modelVariant === 'C' || input.modelVariant === 'D') ? modelVersionNow(app, input.modelVariant) : null;
+	const modelVersionId = (input.modelVariant === 'A' || input.modelVariant === 'B' || input.modelVariant === 'C' || input.modelVariant === 'D' || input.modelVariant === 'G') ? modelVersionNow(app, input.modelVariant) : null;
 	const insert = app.prepare(
 		`insert into position_events (position_id, kind, date, qty, price, currency, fee, fx_rate, amount, cost_total, note, hypothesis_id, auto, model_version_id)
 		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id`

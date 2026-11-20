@@ -2,10 +2,11 @@ import cron from 'node-cron';
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { israelDate } from '../hypothesis.js';
-import { costRun, laggards, monthIndex, ownQuarter, monthReturns, smaMonths, trendTable, windowYears, type TrendStats, type Universe, DEFAULTS, dropUniverse, nextQuarter, runModel, universe, universeIds } from './model/quarterly.js';
+import { costRun, laggards, quarterReturn, reasonLabels, seasonalSectors, monthIndex, ownQuarter, monthReturns, smaMonths, trendTable, windowYears, type TrendStats, type Universe, DEFAULTS, dropUniverse, nextQuarter, runModel, universe, universeIds } from './model/quarterly.js';
 import { recordQuarter, VARIANTS } from './model/service.js';
 import { checkMonthlyAgainstDaily, loadMonthly, monthlyDue, type MonthlySummary } from './market/monthly.js';
 import { loadProfiles, staleProfiles, type ProfilesSummary } from './market/profiles.js';
+import { eventsDue, loadEvents, type EventsSummary } from './market/events.js';
 import { heldSecurities, loadQuotes, marketsOpen, readSchedule, type QuotesSummary } from './market/quotes.js';
 import { asUser, currentUserId, forEachUser, listUsers } from './auth.js';
 import { backupDir, getApp, getMarket, rawDir } from './db.js';
@@ -409,7 +410,7 @@ export function logModel() {
 		const r = runModel(u, 'A', nq.quarter, { ...DEFAULTS, capGroups: groups });
 		return `A Q${r.quarter} ${r.forYear} ${label}: universe ${r.universe}, passed ${r.passed}, by chance ≈ ${r.expected}, placebo ${r.placebo.mean} (${r.placebo.verdict}) — ${r.candidates.map((c) => `${c.symbol} ${c.up}/10 ${c.mean > 0 ? '+' : ''}${c.mean}% (${c.capUsd ? Math.round(c.capUsd / 1e9) + 'B$' : '?'})`).join('; ')}`;
 	};
-	for (const v of ['A', 'B', 'C', 'D'] as const) {
+	for (const v of ['A', 'B', 'C', 'G', 'D'] as const) {
 		const t = performance.now();
 		const r = runModel(u, v, nq.quarter, DEFAULTS);
 		if (v === 'A') out.push(`caps (liquid shares): ${JSON.stringify(r.capCounts)}`);
@@ -451,6 +452,21 @@ export function logModel() {
 	const a1 = runModel(u, 'A', 1, DEFAULTS);
 	out.push(`own quarter, A Q1 ${a1.forYear}: ${a1.candidates.filter((c) => (c.own.mean ?? 0) > 0).length} of ${a1.candidates.length} above their usual quarter — ` + a1.candidates.map((c) => `${c.symbol} ${c.own.mean}pp ${c.own.up}/${c.own.years}`).join('; '));
 	out.push(handCheck(m, u));
+	// T-013: how common each reason label is among the liquid shares with a calendar, by quarter
+	for (let q = 1; q <= 4; q++) {
+		const yrs = windowYears(u.lastMonth, q, DEFAULTS.years);
+		const rows = u.stocks
+			.filter((s) => s.events)
+			.map((s) => ({ s, r: yrs.map((y) => quarterReturn(s, y, q)) }))
+			.filter((x) => x.r.every((v) => Number.isFinite(v)));
+		const sectors = seasonalSectors(u, rows, yrs, q, DEFAULTS.k);
+		const labs = rows.map((x) => reasonLabels(x.s, q, yrs, sectors));
+		const pc = (n: number) => (rows.length ? Math.round((n / rows.length) * 100) : 0);
+		const g = runModel(u, 'G', q, DEFAULTS);
+		out.push(
+			`reasons Q${q}: ${rows.length} shares with a calendar — report ${pc(labs.filter((l) => l.earnings).length)}%, dividend ${pc(labs.filter((l) => l.dividend).length)}%, seasonal sectors [${[...sectors].join(', ')}], none ${pc(labs.filter((l) => !l.earnings && !l.dividend && !l.sector).length)}% | G: passed ${g.passed}, placebo ${g.placebo.mean} (${g.placebo.verdict}) — ${g.candidates.map((c) => c.symbol).join(', ')}`
+		);
+	}
 	for (const l of out) console.log(`model: ${l}`);
 	// T-020: the candidates' cards need daily history — load it now rather than on the first open
 	if (enqueueMissingHistory(m, [...new Set(candidates)], israelDate())) void runHistoryJob().catch((e) => console.error(`history: ${e}`));
@@ -590,6 +606,31 @@ function handCheck(m: import('better-sqlite3').Database, u: Universe) {
 	return `hand check: ${parts.join(' ;; ')}`;
 }
 
+// ── T-013: the calendar of reports and dividends ────────────────────────────────
+
+/** the reports and dividends of the model's universe, a portion a night (three requests a share, with pauses) */
+export function runEventsJob(limit = 1500): Promise<EventsSummary> {
+	return single('events', async () => {
+		const id = startRun('events', 'yahoo');
+		try {
+			const m = getMarket().sqlite;
+			const due = eventsDue(m, universeIds(universe(m))).slice(0, limit);
+			const s = await loadEvents(m, due);
+			finishRun(id, { status: s.errors.length > s.securities / 2 ? 'error' : 'ok', received: s.securities, added: s.loaded, error: s.errors.slice(0, 5).join('; ') || null });
+			if (s.loaded) {
+				dropUniverse();
+				// the labels changed: the report lines again
+				if (s.loaded > 100) logModel();
+			}
+			console.log(`events: ${s.securities} shares, ${s.loaded} with a calendar, ${s.none} without, ${s.errors.length} errors`);
+			return s;
+		} catch (e) {
+			finishRun(id, { status: 'error', error: String(e) });
+			throw e;
+		}
+	});
+}
+
 // ── T-022: strong moves of the securities one follows ───────────────────────────
 
 /** the securities a user follows: positions held, watched or planned, and open hypotheses */
@@ -670,6 +711,8 @@ export function startScheduler() {
 	at('20 8 * * *', 'profiles', runProfilesJob);
 	// monthly bars for the model: every night hour, a portion each, until all are fresh
 	at('35 0-5 * * *', 'monthly', () => runMonthlyJob());
+	// T-013: reports and dividends of the model's universe — after the monthly bars, a portion a night
+	at('50 5 * * *', 'events', () => runEventsJob());
 	// after the morning closes: the first weekday of a quarter is the model's
 	at('55 9 * * 1-5', 'model', () => runModelJob());
 	at('0 9 * * 6', 'gaps', runGapsJob);
@@ -689,6 +732,8 @@ export function startScheduler() {
 		// the dollar rate (section 18): portfolios need it before the next morning's run
 		if (!lastRun('fx')) await runFxJob().catch((e) => console.error(`fx: ${e}`));
 		await runProfilesJob().catch((e) => console.error(`profiles: ${e}`));
+		// T-013: the first fill of the report calendar runs in the background (about half an hour)
+		void runEventsJob().catch((e) => console.error(`events: ${e}`));
 		try {
 			logModel();
 		} catch (e) {
