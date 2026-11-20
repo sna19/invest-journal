@@ -9,8 +9,15 @@ import type Database from 'better-sqlite3';
  * are sorted by the mean (median, worst year) and give 10 candidates with at most 2 per sector and 7 per market.
  */
 
-/** A — the rise (the owner's scheme), B — over the market or sector, C — the score (T-011): no K, ranked by a t-like score */
-export type Variant = 'A' | 'B' | 'C';
+/**
+ * A — the rise (the owner's scheme), B — over the market or sector, C — the score (T-011): no K, ranked by a t-like
+ * score; D — against its own trend (T-018): the quarter over the mean of the same share's quarters of that year
+ */
+export type Variant = 'A' | 'B' | 'C' | 'D';
+
+/** T-018: the trend filter at the choice (monthly closes) and the early exit inside the quarter */
+export type TrendFilter = 'none' | 'price_sma10' | 'sma3_sma10';
+export type TrendExit = 'none' | 'sma3';
 
 /** T-011, variant C: «заметно» from this score up */
 export const SCORE_MIN = 2;
@@ -55,6 +62,12 @@ export interface Params {
 	commissionPct: number;
 	commissionMinUsd: number;
 	taxPct: number;
+	/** T-018: «Цена выше SMA 10 мес.» (≈ SMA200 days, Faber) / «SMA 3 мес. выше SMA 10 мес.» (≈ SMA50 > SMA200) */
+	trendFilter: TrendFilter;
+	/** T-018: sell early inside the quarter if a monthly close is below its SMA 3 months (end of the 1st and 2nd month) */
+	trendExit: TrendExit;
+	/** T-018: «за 2 месяца не выросли» — the result of the first two months at most this, % */
+	lagThreshold: number;
 }
 
 export const CAP_ABS = ['mega', 'large', 'mid', 'small', 'micro'] as const;
@@ -75,11 +88,14 @@ export const DEFAULTS: Params = {
 	capBounds: [200e9, 10e9, 2e9, 0.3e9],
 	commissionPct: 0.1,
 	commissionMinUsd: 5,
-	taxPct: 25
+	taxPct: 25,
+	trendFilter: 'none',
+	trendExit: 'none',
+	lagThreshold: 0
 };
 
 /** the limits a parameter is kept in (the screen's inputs and the API check) */
-export const LIMITS: Record<'years' | 'k' | 'count' | 'perSector' | 'perMarket' | 'minTurnoverUsd' | 'minPriceUsd' | 'commissionPct' | 'commissionMinUsd' | 'taxPct', [number, number]> = {
+export const LIMITS: Record<'years' | 'k' | 'count' | 'perSector' | 'perMarket' | 'minTurnoverUsd' | 'minPriceUsd' | 'commissionPct' | 'commissionMinUsd' | 'taxPct' | 'lagThreshold', [number, number]> = {
 	years: [5, 15],
 	k: [1, 15],
 	count: [1, 30],
@@ -89,11 +105,12 @@ export const LIMITS: Record<'years' | 'k' | 'count' | 'perSector' | 'perMarket' 
 	minPriceUsd: [0, 1000],
 	commissionPct: [0, 2],
 	commissionMinUsd: [0, 50],
-	taxPct: [0, 50]
+	taxPct: [0, 50],
+	lagThreshold: [-20, 20]
 };
 
 /** the parameters with fractions: not rounded to whole numbers */
-const FRACTIONAL = new Set(['minTurnoverUsd', 'minPriceUsd', 'commissionPct', 'commissionMinUsd', 'taxPct']);
+const FRACTIONAL = new Set(['minTurnoverUsd', 'minPriceUsd', 'commissionPct', 'commissionMinUsd', 'taxPct', 'lagThreshold']);
 
 export function cleanParams(input: Partial<Record<keyof Params, unknown>>, base: Params = DEFAULTS): Params {
 	const p: Params = { ...base };
@@ -107,6 +124,8 @@ export function cleanParams(input: Partial<Record<keyof Params, unknown>>, base:
 	if (input.sort === 'mean' || input.sort === 'median' || input.sort === 'worst') p.sort = input.sort;
 	if (input.compareWith === 'market' || input.compareWith === 'sector') p.compareWith = input.compareWith;
 	if (input.capMode === 'abs' || input.capMode === 'rel') p.capMode = input.capMode;
+	if (input.trendFilter === 'none' || input.trendFilter === 'price_sma10' || input.trendFilter === 'sma3_sma10') p.trendFilter = input.trendFilter;
+	if (input.trendExit === 'none' || input.trendExit === 'sma3') p.trendExit = input.trendExit;
 	const list = (x: unknown) => (Array.isArray(x) ? x.map(String) : typeof x === 'string' ? x.split(',').filter(Boolean) : null);
 	const groups = list(input.capGroups);
 	if (groups) {
@@ -160,6 +179,65 @@ const at = (s: Series, i: number, a: Float64Array = s.adj) => {
 	const j = i - s.start;
 	return j >= 0 && j < a.length && a[j] > 0 ? a[j] : NaN;
 };
+
+// ── T-018: the trend by monthly closes ───────────────────────────────────────────
+
+/** the simple average of the `n` monthly closes up to month `i` (split-adjusted, as on a chart); NaN without them */
+export function smaMonths(s: Series, i: number, n: number): number {
+	let sum = 0;
+	for (let k = 0; k < n; k++) {
+		const c = at(s, i - k, s.close);
+		if (!(c > 0)) return NaN;
+		sum += c;
+	}
+	return sum / n;
+}
+
+/** whether the share passes the trend filter at month `i`; without the history a filter is not passed */
+export function trendOk(s: Series, i: number, f: TrendFilter): boolean {
+	if (f === 'none') return true;
+	const sma10 = smaMonths(s, i, 10);
+	if (f === 'price_sma10') return at(s, i, s.close) > sma10;
+	return smaMonths(s, i, 3) > sma10;
+}
+
+/** the close at month `i` against its SMA 10 months, % */
+export function vsSma10(s: Series, i: number): number | null {
+	const x = at(s, i, s.close) / smaMonths(s, i, 10) - 1;
+	return Number.isFinite(x) ? Math.round(x * 10000) / 100 : null;
+}
+
+/**
+ * The quarter held month by month: the value after each month against the start (dividends included), and with the
+ * trend exit the sale at the end of the 1st or 2nd month whose close is below its SMA 3 months.
+ */
+export function quarterPath(s: Series, y: number, q: number, exit: TrendExit = 'none'): { ret: number; path: number[]; exitMonth: number | null } {
+	const e0 = quarterEnd(y, q) - 3;
+	const base = at(s, e0);
+	const path: number[] = [];
+	let exitMonth: number | null = null;
+	for (let k = 1; k <= 3; k++) {
+		if (exitMonth !== null) {
+			path.push(path[k - 2]);
+			continue;
+		}
+		path.push(at(s, e0 + k) / base);
+		if (exit === 'sma3' && k < 3 && at(s, e0 + k, s.close) < smaMonths(s, e0 + k, 3)) exitMonth = k;
+	}
+	return { ret: path[2] - 1, path, exitMonth };
+}
+
+/** the result of each month of a quarter: [m1, m2, m3] */
+export function monthReturns(s: Series, y: number, q: number): number[] {
+	const e0 = quarterEnd(y, q) - 3;
+	return [1, 2, 3].map((k) => at(s, e0 + k) / at(s, e0 + k - 1) - 1);
+}
+
+/** the share's usual quarter of a year: the mean of its quarters complete by `lastMonth` (T-018, 11) */
+export function usualQuarter(s: Series, y: number, lastMonth: number): number {
+	const xs = [1, 2, 3, 4].filter((q) => quarterEnd(y, q) <= lastMonth).map((q) => quarterReturn(s, y, q)).filter((v) => Number.isFinite(v));
+	return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN;
+}
 
 /**
  * Funds the exchange lists label as shares (owner's decision on T-009, 20.11.2026): Yahoo calls them ETF (DGP),
@@ -268,6 +346,13 @@ const median = (xs: number[]) => {
 };
 
 /** P(X ≥ k) for X ~ Binomial(n, p) */
+/** T-018 (11): the quarter against the share's usual quarter of each year of the window */
+export function ownQuarter(s: Series, years: number[], quarter: number, lastMonth: number): OwnQuarter {
+	const xs = years.map((y) => quarterReturn(s, y, quarter) - usualQuarter(s, y, lastMonth)).filter((v) => Number.isFinite(v));
+	const r = (x: number) => Math.round(x * 10000) / 100;
+	return { mean: xs.length ? r(xs.reduce((a, b) => a + b, 0) / xs.length) : null, median: xs.length ? r(median(xs)) : null, up: xs.filter((v) => v > 0).length, years: xs.length };
+}
+
 export function binomTail(n: number, k: number, p: number) {
 	let sum = 0;
 	let c = 1; // C(n, i)
@@ -297,6 +382,19 @@ export interface Candidate {
 	capGroup: string | null;
 	/** variant C: the score */
 	score: number | null;
+	/** T-018 (7): the mean result of the quarter's 1st, 2nd and 3rd month over the window, % */
+	months: (number | null)[];
+	/** T-018 (11): the quarter over the share's usual quarter of the same year — mean, median, years above, % */
+	own: OwnQuarter;
+	/** T-018 (4): the last monthly close against its SMA 10 months, % */
+	sma10: number | null;
+}
+
+export interface OwnQuarter {
+	mean: number | null;
+	median: number | null;
+	up: number;
+	years: number;
 }
 
 export interface Result {
@@ -327,6 +425,9 @@ export interface Result {
 	bench: { US: (number | null)[]; IL: (number | null)[] };
 	walk: Walk[];
 	dataMonth: string;
+	/** T-018: shares the trend filter left out (of those that passed), and the months of all candidates together */
+	trendOut: number;
+	months: (number | null)[];
 }
 
 export interface Placebo {
@@ -415,6 +516,8 @@ function measures(u: Universe, rows: Row[], years: number[], q: number, variant:
 		return b ? quarterReturn(b, y, q) : NaN;
 	};
 	if (variant === 'A') return rows.map((x) => x.r);
+	// D: over the share's own usual quarter of that year — the mean of its quarters complete in the data
+	if (variant === 'D') return rows.map((x) => x.r.map((r, i) => r - usualQuarter(x.s, years[i], u.lastMonth)));
 	// B and C: over the market or the sector
 	if (compareWith === 'market') return rows.map((x) => x.r.map((r, i) => r - bench(x.s.market, years[i])));
 	// over the sector: the mean of the shares of that sector in the universe (at least 5), else over the market
@@ -501,7 +604,14 @@ export function runModel(u: Universe, variant: Variant, quarter: number, input: 
 		} else if (up >= p.k) passed.push({ s: row.s, score: scoreOf(m, p.sort), m, row });
 	});
 	const prob = all ? ups / all : 0;
-	const { chosen, capped } = pick(variant === 'C' ? ranked : passed, p);
+	// T-018: the trend filter at the last month of the data (the choice is redone when the quarter is recorded)
+	const pool = (variant === 'C' ? ranked : passed).filter((x) => trendOk(x.s, u.lastMonth, p.trendFilter));
+	const trendOut = (variant === 'C' ? ranked : passed).length - pool.length;
+	const { chosen, capped } = pick(pool, p);
+	const monthsOf = (x: Series) => [0, 1, 2].map((k) => {
+		const xs = years.map((y) => monthReturns(x, y, quarter)[k]).filter((v) => Number.isFinite(v));
+		return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN;
+	});
 	const pct = (x: number) => Math.round(x * 10000) / 100;
 	const bench = (m: 'US' | 'IL') => years.map((y) => {
 		const b = u.bench[m];
@@ -540,12 +650,20 @@ export function runModel(u: Universe, variant: Variant, quarter: number, input: 
 			priceUsd: Math.round(x.row.priceUsd * 100) / 100,
 			capUsd: x.s.capUsd,
 			capGroup: groupsNow.get(x.row) ?? null,
-			score: variant === 'C' ? Math.round(x.score * 100) / 100 : null
+			score: variant === 'C' ? Math.round(x.score * 100) / 100 : null,
+			months: monthsOf(x.s).map((v) => (Number.isFinite(v) ? pct(v) : null)),
+			own: ownQuarter(x.s, years, quarter, u.lastMonth),
+			sma10: vsSma10(x.s, u.lastMonth)
 		})),
 		capped,
 		bench: { US: bench('US'), IL: bench('IL') },
-		walk: walkForward(rows, ms, years, p, variant, (t) => capGroupMap(rows, p, (r) => capAt(r.s, quarterEnd(years[t], quarter) - 3, u.usdIls))),
-		dataMonth: monthName(u.lastMonth)
+		walk: walkForward(rows, ms, years, p, variant, quarter, (t) => capGroupMap(rows, p, (r) => capAt(r.s, quarterEnd(years[t], quarter) - 3, u.usdIls))),
+		dataMonth: monthName(u.lastMonth),
+		trendOut,
+		months: [0, 1, 2].map((k) => {
+			const xs = chosen.map((x) => monthsOf(x.s)[k]).filter((v) => Number.isFinite(v));
+			return xs.length ? pct(xs.reduce((a, b) => a + b, 0) / xs.length) : null;
+		})
 	};
 }
 
@@ -601,7 +719,14 @@ export function securityResult(u: Universe, id: number, variant: Variant, quarte
 		score: variant === 'C' ? (() => { const sc = tScore(m); return sc === null ? null : Math.round(sc * 100) / 100; })() : null,
 		passed: inUniverse && (variant === 'C' ? (tScore(m) ?? 0) >= SCORE_MIN : ok.filter((v) => v > 0).length >= p.k),
 		rank: run.candidates.findIndex((c) => c.id === id) + 1 || null,
-		params: p
+		params: p,
+		months: [0, 1, 2].map((k) => {
+			const xs = years.map((y) => monthReturns(s, y, quarter)[k]).filter((v) => Number.isFinite(v));
+			return xs.length ? pct(xs.reduce((a, b) => a + b, 0) / xs.length) : null;
+		}),
+		own: ownQuarter(s, years, quarter, u.lastMonth),
+		sma10: vsSma10(s, u.lastMonth),
+		trendOk: trendOk(s, u.lastMonth, p.trendFilter)
 	};
 }
 
@@ -610,7 +735,7 @@ export function securityResult(u: Universe, id: number, variant: Variant, quarte
  * years before it (K lowered by as many years as are dropped) and measured in that year, which the choice did
  * not see. Only for reference: shares that vanished in 10 years are not in the base.
  */
-function walkForward(rows: Row[], ms: number[][], years: number[], p: Params, variant: Variant, groupsAt: (t: number) => Map<Row, string | null>): Walk[] {
+function walkForward(rows: Row[], ms: number[][], years: number[], p: Params, variant: Variant, quarter: number, groupsAt: (t: number) => Map<Row, string | null>): Walk[] {
 	const train = 7;
 	if (years.length < train + 1) return [];
 	const k = Math.max(1, p.k - (p.years - train));
@@ -621,7 +746,15 @@ function walkForward(rows: Row[], ms: number[][], years: number[], p: Params, va
 		const list = rows
 			.map((row, i) => {
 				const m = ms[i].slice(t - train, t);
-				return { s: row.s, m, score: variant === 'C' ? (tScore(m) ?? -Infinity) : scoreOf(m, p.sort), test: ms[i][t], keep: !groups || p.capGroups.includes(groups.get(row) ?? '') };
+				// T-018: the trend exit changes what the quarter brought: the measure moves by the difference
+				const exitGap = p.trendExit === 'none' ? 0 : quarterPath(row.s, years[t], quarter, p.trendExit).ret - row.r[t];
+				return {
+					s: row.s,
+					m,
+					score: variant === 'C' ? (tScore(m) ?? -Infinity) : scoreOf(m, p.sort),
+					test: ms[i][t] + (Number.isFinite(exitGap) ? exitGap : 0),
+					keep: (!groups || p.capGroups.includes(groups.get(row) ?? '')) && trendOk(row.s, quarterEnd(years[t], quarter) - 3, p.trendFilter)
+				};
 			})
 			.filter((x) => x.keep && (variant === 'C' ? Number.isFinite(x.score) : x.m.filter((v) => v > 0).length >= k));
 		const { chosen } = pick(list, p);
@@ -809,7 +942,14 @@ export function costRun(u: Universe, variant: Variant, input: Params, n = 12): C
 		const list = rows
 			.map((row, i) => {
 				const m = ms[i].slice(0, train);
-				return { s: row.s, m, score: variant === 'C' ? (tScore(m) ?? -Infinity) : scoreOf(m, p.sort), r: row.r[train], keep: !groups || p.capGroups.includes(groups.get(row) ?? '') };
+				const r = p.trendExit === 'none' ? row.r[train] : quarterPath(row.s, yy, qq, p.trendExit).ret;
+				return {
+					s: row.s,
+					m,
+					score: variant === 'C' ? (tScore(m) ?? -Infinity) : scoreOf(m, p.sort),
+					r: Number.isFinite(r) ? r : row.r[train],
+					keep: (!groups || p.capGroups.includes(groups.get(row) ?? '')) && trendOk(row.s, quarterEnd(yy, qq) - 3, p.trendFilter)
+				};
 			})
 			.filter((x) => x.keep && (variant === 'C' ? Number.isFinite(x.score) : x.m.filter((v) => v > 0).length >= k));
 		return pick(list, p).chosen.map((x) => ({ id: x.s.id, r: x.r }));
@@ -920,4 +1060,271 @@ export function costRun(u: Universe, variant: Variant, input: Params, n = 12): C
 		};
 	};
 	return { quarters, years, start, gross: pct(gross ** (1 / years) - 1), hold: close(withRule), noHold: close(without) };
+}
+
+// ── T-018 (3): trend filter × trend exit ─────────────────────────────────────────
+
+export interface TrendStats {
+	/** the candidates' mean excess over their market per year, % */
+	excess: number | null;
+	median: number | null;
+	worst: number | null;
+	/** the worst fall of the equal-weighted candidates inside a quarter, month by month, % (≤ 0) */
+	maxDrawdown: number | null;
+	avgCount: number;
+	/** the share of years with fewer than 5 candidates, % */
+	under5: number;
+	years: number;
+}
+
+export interface TrendRow {
+	filter: TrendFilter;
+	exit: TrendExit;
+	/** all years of the window: the candidates as chosen on the whole window (in sample) */
+	all: TrendStats;
+	/** the check without peeking: the last 3 years, chosen on the 7 before each */
+	walk: TrendStats;
+	/** the same with the quarters shuffled inside each year: the share of runs with an excess at least as large */
+	placebo: { runs: number; mean: number | null; share: number; verdict: Placebo['verdict'] };
+}
+
+const FILTERS: TrendFilter[] = ['none', 'price_sma10', 'sma3_sma10'];
+const EXITS: TrendExit[] = ['none', 'sma3'];
+
+/**
+ * The comparison table of T-018: every trend filter with every exit, on the variant's quarter — the excess over the
+ * market, its median and worst year, the worst fall inside a quarter, how many candidates and how often fewer than
+ * five; for each — the check without peeking and the placebo (as T-010: the quarters shuffled inside each year).
+ */
+export function trendTable(u: Universe, variant: Variant, quarter: number, input: Params, runs = 100): TrendRow[] {
+	const p = { ...input, k: Math.min(input.k, input.years) };
+	const years = windowYears(u.lastMonth, quarter, p.years);
+	const rows: Row[] = [];
+	for (const s of u.stocks) {
+		const r = years.map((y) => quarterReturn(s, y, quarter));
+		if (r.some((x) => !Number.isFinite(x))) continue;
+		const l = liquidity(s, u.lastMonth, u.usdIls);
+		if (l.turnoverUsd < p.minTurnoverUsd || l.priceUsd < p.minPriceUsd) continue;
+		rows.push({ s, r, ...l });
+	}
+	const ms = measures(u, rows, years, quarter, variant, p.compareWith);
+	const n = rows.length;
+	const T = years.length;
+	// per share and year: the quarter's result with each exit, its path, the market's quarter, the trend filters
+	const bench = (m: 'US' | 'IL', y: number) => (u.bench[m] ? quarterReturn(u.bench[m]!, y, quarter) : NaN);
+	const paths = EXITS.map((e) => rows.map((row) => years.map((y) => quarterPath(row.s, y, quarter, e))));
+	const bq = rows.map((row) => years.map((y) => bench(row.s.market, y)));
+	const ok = FILTERS.map((f) => rows.map((row) => years.map((y) => trendOk(row.s, quarterEnd(y, quarter) - 3, f))));
+	const groups = p.capGroups.length ? years.map((y) => capGroupMap(rows, p, (r) => capAt(r.s, quarterEnd(y, quarter) - 3, u.usdIls))) : null;
+	const capOk = (i: number, t: number) => !groups || p.capGroups.includes(groups[t].get(rows[i]) ?? '');
+	const score = (m: number[]) => (variant === 'C' ? (tScore(m) ?? -Infinity) : scoreOf(m, p.sort));
+	const passes = (m: number[], k: number) => (variant === 'C' ? Number.isFinite(score(m)) : m.filter((v) => v > 0).length >= k);
+
+	type Pool = { i: number; s: Series; score: number }[];
+	/** one year: the pool filtered by trend and cap, picked; the candidates' excess, path and count */
+	const year = (pool: Pool, t: number, fi: number, ei: number) => {
+		const { chosen } = pick(pool.filter((x) => ok[fi][x.i][t] && capOk(x.i, t)), p);
+		if (!chosen.length) return { excess: NaN, dd: NaN, count: 0 };
+		let ex = 0;
+		const v = [0, 0, 0];
+		for (const c of chosen) {
+			const pa = paths[ei][c.i][t];
+			ex += pa.ret - bq[c.i][t];
+			for (let k = 0; k < 3; k++) v[k] += pa.path[k] / chosen.length;
+		}
+		let peak = 1;
+		let dd = 0;
+		for (const x of v) {
+			peak = Math.max(peak, x);
+			dd = Math.min(dd, x / peak - 1);
+		}
+		return { excess: ex / chosen.length, dd, count: chosen.length };
+	};
+	const stats = (list: { excess: number; dd: number; count: number }[]): TrendStats => {
+		const xs = list.map((x) => x.excess).filter((v) => Number.isFinite(v));
+		const dds = list.map((x) => x.dd).filter((v) => Number.isFinite(v));
+		const r = (x: number) => Math.round(x * 10000) / 100;
+		return {
+			excess: xs.length ? r(xs.reduce((a, b) => a + b, 0) / xs.length) : null,
+			median: xs.length ? r(median(xs)) : null,
+			worst: xs.length ? r(Math.min(...xs)) : null,
+			maxDrawdown: dds.length ? r(Math.min(...dds)) : null,
+			avgCount: list.length ? Math.round((list.reduce((a, b) => a + b.count, 0) / list.length) * 10) / 10 : 0,
+			under5: list.length ? Math.round((list.filter((x) => x.count < 5).length / list.length) * 100) : 0,
+			years: list.length
+		};
+	};
+	// in sample: the pool of the whole window
+	const poolAll: Pool = [];
+	for (let i = 0; i < n; i++) if (passes(ms[i], p.k)) poolAll.push({ i, s: rows[i].s, score: score(ms[i]) });
+	// without peeking: each of the last 3 years on the 7 before it
+	const train = 7;
+	const kw = Math.max(1, p.k - (p.years - train));
+	const walkYears = T >= train + 1 ? Array.from({ length: Math.min(3, T - train) }, (_, j) => T - Math.min(3, T - train) + j) : [];
+	const walkPools = walkYears.map((t) => {
+		const pool: Pool = [];
+		for (let i = 0; i < n; i++) {
+			const m = ms[i].slice(t - train, t);
+			if (passes(m, kw)) pool.push({ i, s: rows[i].s, score: score(m) });
+		}
+		return pool;
+	});
+	// the placebo: the variant's measure of all four quarters; each run draws a quarter per share and year
+	const byQ = [1, 2, 3, 4].map((q) => measures(u, rows.map((r) => ({ ...r, r: years.map((y) => quarterReturn(r.s, y, q)) })), years, q, variant, p.compareWith));
+	const cells = rows.map((_, i) => years.map((_, j) => [0, 1, 2, 3].map((q) => byQ[q][i][j]).filter((v) => Number.isFinite(v))));
+	const rand = rng(quarter * 104_651 + variant.charCodeAt(0) * 7 + p.k * 31 + p.years);
+	const out: TrendRow[] = [];
+	const realMeans: number[] = [];
+	const combos: [number, number][] = [];
+	for (let fi = 0; fi < FILTERS.length; fi++)
+		for (let ei = 0; ei < EXITS.length; ei++) {
+			combos.push([fi, ei]);
+			const all = stats(years.map((_, t) => year(poolAll, t, fi, ei)));
+			out.push({ filter: FILTERS[fi], exit: EXITS[ei], all, walk: stats(walkYears.map((t, j) => year(walkPools[j], t, fi, ei))), placebo: { runs, mean: null, share: 0, verdict: 'chance' } });
+			realMeans.push(all.excess ?? -Infinity);
+		}
+	const sums = combos.map(() => 0);
+	const ge = combos.map(() => 0);
+	const counted = combos.map(() => 0);
+	const m = new Array<number>(T);
+	for (let run = 0; run < runs; run++) {
+		const pool: Pool = [];
+		for (let i = 0; i < n; i++) {
+			for (let j = 0; j < T; j++) {
+				const a = cells[i][j];
+				m[j] = a.length ? a[Math.floor(rand() * a.length)] : NaN;
+			}
+			if (passes(m, p.k)) pool.push({ i, s: rows[i].s, score: score(m) });
+		}
+		combos.forEach(([fi, ei], c) => {
+			const xs = years.map((_, t) => year(pool, t, fi, ei).excess).filter((v) => Number.isFinite(v));
+			if (!xs.length) return;
+			const mean = (xs.reduce((a, b) => a + b, 0) / xs.length) * 100;
+			sums[c] += mean;
+			counted[c]++;
+			if (mean >= realMeans[c]) ge[c]++;
+		});
+	}
+	combos.forEach((_, c) => {
+		const share = runs ? ge[c] / runs : 1;
+		out[c].placebo = {
+			runs,
+			mean: counted[c] ? Math.round((sums[c] / counted[c]) * 100) / 100 : null,
+			share,
+			verdict: share < 0.05 && Number.isFinite(realMeans[c]) ? 'signal' : share < 0.25 ? 'unclear' : 'chance'
+		};
+	});
+	return out;
+}
+
+// ── T-018 (8): do the laggards catch up? ─────────────────────────────────────────
+
+export interface Laggards {
+	/** past candidates of A and B, chosen without peeking (7 years before each), every quarter */
+	n: number;
+	/** the correlation of the first two months' result with the 3rd month's */
+	corr: number | null;
+	all: { mean3: number | null; up3: number | null; excess3: number | null };
+	lag: { n: number; mean3: number | null; up3: number | null; excess3: number | null };
+	/** the same with random shares of the same universe, as many as the candidates: the laggards' excess in the 3rd month */
+	placebo: { runs: number; mean: number | null; share: number };
+	verdict: 'catch_up' | 'no' | 'unclear';
+	threshold: number;
+}
+
+let lagCache: { key: string; v: Laggards } | null = null;
+
+/**
+ * T-018 (8): every past candidate of variants A and B, chosen on the 7 years before its year (so its 3rd month was
+ * not seen by the choice) — the result of months 1–2 against the 3rd; the laggards (months 1–2 at most the threshold)
+ * against all candidates and the market, and against random shares of the same universe (100 runs).
+ */
+export function laggards(u: Universe, input: Params = DEFAULTS, runs = 100): Laggards {
+	const key = `${u.builtAt}|${JSON.stringify(input)}`;
+	if (lagCache?.key === key) return lagCache.v;
+	const p = { ...input };
+	const thr = p.lagThreshold / 100;
+	const train = 7;
+	const k = Math.max(1, p.k - (p.years - train));
+	const liquid = u.stocks.filter((s) => {
+		const l = liquidity(s, u.lastMonth, u.usdIls);
+		return l.turnoverUsd >= p.minTurnoverUsd && l.priceUsd >= p.minPriceUsd;
+	});
+	const first = Math.floor(Math.min(...liquid.map((s) => s.start)) / 12);
+	type Obs = { m12: number; m3: number; b3: number };
+	const real: Obs[] = [];
+	const draws: { pool: Obs[]; count: number }[] = [];
+	for (let q = 1; q <= 4; q++) {
+		let y = Math.floor(u.lastMonth / 12);
+		while (quarterEnd(y, q) > u.lastMonth) y--;
+		for (; y >= first + train + 1; y--) {
+			const yrs = Array.from({ length: train + 1 }, (_, i) => y - train + i);
+			const rows: Row[] = [];
+			for (const s of liquid) {
+				const r = yrs.map((x) => quarterReturn(s, x, q));
+				if (r.every((x) => Number.isFinite(x))) rows.push({ s, r, turnoverUsd: 0, priceUsd: 0 });
+			}
+			if (rows.length < 50) break;
+			const obs = (s: Series): Obs | null => {
+				const [m1, m2, m3] = monthReturns(s, y, q);
+				const b = u.bench[s.market];
+				const b3 = b ? monthReturns(b, y, q)[2] : NaN;
+				return [m1, m2, m3, b3].every((v) => Number.isFinite(v)) ? { m12: (1 + m1) * (1 + m2) - 1, m3, b3 } : null;
+			};
+			const pool = rows.map((r) => obs(r.s)).filter((x): x is Obs => !!x);
+			for (const variant of ['A', 'B'] as const) {
+				const ms = measures(u, rows, yrs, q, variant, 'market');
+				const list = rows
+					.map((row, i) => ({ s: row.s, m: ms[i].slice(0, train), score: scoreOf(ms[i].slice(0, train), p.sort) }))
+					.filter((x) => x.m.filter((v) => v > 0).length >= k);
+				const { chosen } = pick(list, p);
+				let c = 0;
+				for (const x of chosen) {
+					const o = obs(x.s);
+					if (o) (real.push(o), c++);
+				}
+				if (c) draws.push({ pool, count: c });
+			}
+		}
+	}
+	const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
+	const r = (x: number) => (Number.isFinite(x) ? Math.round(x * 10000) / 100 : null);
+	const lag = real.filter((o) => o.m12 <= thr);
+	const lagEx = mean(lag.map((o) => o.m3 - o.b3));
+	const mx = mean(real.map((o) => o.m12));
+	const my = mean(real.map((o) => o.m3));
+	let sxy = 0;
+	let sxx = 0;
+	let syy = 0;
+	for (const o of real) {
+		sxy += (o.m12 - mx) * (o.m3 - my);
+		sxx += (o.m12 - mx) ** 2;
+		syy += (o.m3 - my) ** 2;
+	}
+	const rand = rng(424_242 + Math.round(thr * 1000));
+	let ge = 0;
+	let sum = 0;
+	let counted = 0;
+	for (let run = 0; run < runs; run++) {
+		const picked: Obs[] = [];
+		for (const d of draws) for (let j = 0; j < d.count; j++) picked.push(d.pool[Math.floor(rand() * d.pool.length)]);
+		const l = picked.filter((o) => o.m12 <= thr);
+		const e = mean(l.map((o) => o.m3 - o.b3));
+		if (!Number.isFinite(e)) continue;
+		counted++;
+		sum += e;
+		if (e >= lagEx) ge++;
+	}
+	const share = counted ? ge / counted : 1;
+	const v: Laggards = {
+		n: real.length,
+		corr: sxx > 0 && syy > 0 ? Math.round((sxy / Math.sqrt(sxx * syy)) * 100) / 100 : null,
+		all: { mean3: r(my), up3: real.length ? Math.round((real.filter((o) => o.m3 > 0).length / real.length) * 100) : null, excess3: r(mean(real.map((o) => o.m3 - o.b3))) },
+		lag: { n: lag.length, mean3: r(mean(lag.map((o) => o.m3))), up3: lag.length ? Math.round((lag.filter((o) => o.m3 > 0).length / lag.length) * 100) : null, excess3: r(lagEx) },
+		placebo: { runs: counted, mean: counted ? r(sum / counted) : null, share },
+		verdict: lag.length < 20 ? 'unclear' : lagEx > 0 && share < 0.05 ? 'catch_up' : lagEx <= 0 || share > 0.25 ? 'no' : 'unclear',
+		threshold: p.lagThreshold
+	};
+	lagCache = { key, v };
+	return v;
 }

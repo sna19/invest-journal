@@ -10,7 +10,7 @@ import { body } from '#lib/server/respond.js';
  */
 export function GET({ url }) {
 	const v = (url.searchParams.get('variant') ?? 'A') as Variant;
-	if (!VARIANTS.includes(v)) error(400, 'variant A | B | C');
+	if (!VARIANTS.includes(v)) error(400, 'variant A | B | C | D');
 	const t0 = performance.now();
 	const m = getMarket().sqlite;
 	const u = universe(m);
@@ -38,6 +38,6 @@ export function GET({ url }) {
 export async function PUT({ request }) {
 	const b = await body(request);
 	const v = String(b.variant ?? '') as Variant;
-	if (!VARIANTS.includes(v)) error(400, 'variant A | B | C');
+	if (!VARIANTS.includes(v)) error(400, 'variant A | B | C | D');
 	return json({ saved: writeParams(getApp().sqlite, v, b) });
 }

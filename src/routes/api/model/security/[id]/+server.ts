@@ -6,7 +6,7 @@ import { readParams, VARIANTS } from '#lib/server/model/service.js';
 /** GET ?variant=A&quarter=1[&k=…] — the model block of a security's card (T-020): the saved parameters, or the preview's */
 export function GET({ params, url }) {
 	const v = (url.searchParams.get('variant') ?? 'A') as Variant;
-	if (!VARIANTS.includes(v)) error(400, 'variant A | B | C');
+	if (!VARIANTS.includes(v)) error(400, 'variant A | B | C | D');
 	const q = Number(url.searchParams.get('quarter') ?? nextQuarter().quarter);
 	if (![1, 2, 3, 4].includes(q)) error(400, 'quarter 1–4');
 	const app = getApp().sqlite;

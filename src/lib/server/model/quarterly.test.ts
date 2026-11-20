@@ -179,6 +179,50 @@ describe('quarterly model 10a', () => {
 		expect(free.noHold.cagr).toBeCloseTo(free.gross!, 1);
 	});
 
+	it('T-018: SMA by monthly closes, the trend filter and the exit, the months of a quarter, the usual quarter', async () => {
+		const q = await import('./quarterly.js');
+		// closes 1, 2, …: SMA 10 at month i is the mean of the 10 closes up to it
+		const lin = series(1, () => 0);
+		for (let j = 0; j < lin.close.length; j++) lin.close[j] = lin.adj[j] = j + 1;
+		const i = START + 50;
+		expect(q.smaMonths(lin, i, 10)).toBeCloseTo((51 + 50 + 49 + 48 + 47 + 46 + 45 + 44 + 43 + 42) / 10, 10);
+		expect(q.smaMonths(lin, i, 3)).toBeCloseTo(50, 10);
+		expect(q.trendOk(lin, i, 'price_sma10')).toBe(true);
+		expect(q.trendOk(lin, i, 'sma3_sma10')).toBe(true);
+		expect(q.vsSma10(lin, i)).toBeCloseTo((51 / 46.5 - 1) * 100, 1);
+		// a falling share fails both filters
+		const fall = series(2, () => -0.02);
+		expect(q.trendOk(fall, i, 'price_sma10')).toBe(false);
+		expect(q.trendOk(fall, i, 'none')).toBe(true);
+		// the exit: a close below SMA 3 at the end of the 1st month sells — the 2nd and 3rd months are not held
+		const dip = series(3, (y, m) => (y === 2020 && m === 1 ? -0.1 : y === 2020 && m <= 3 ? 0.2 : 0));
+		const held = q.quarterPath(dip, 2020, 1, 'none');
+		const out = q.quarterPath(dip, 2020, 1, 'sma3');
+		expect(held.ret).toBeCloseTo(0.9 * 1.2 * 1.2 - 1, 10);
+		expect(out.exitMonth).toBe(1);
+		expect(out.ret).toBeCloseTo(-0.1, 10);
+		// the months of a quarter
+		const m = q.monthReturns(dip, 2020, 1);
+		expect(m.map((x) => Math.round(x * 100) / 100)).toEqual([-0.1, 0.2, 0.2]);
+		// the usual quarter: +1% a month in Q1 only → Q1 ≈ 3.03%, the year's mean of four ≈ 0.76%
+		const s1 = series(4, (_, mo) => (mo <= 3 ? 0.01 : 0));
+		const own = q.ownQuarter(s1, [2018, 2019, 2020], 1, LAST);
+		expect(own.mean!).toBeCloseTo((1.01 ** 3 - 1) * 0.75 * 100, 1);
+		expect(own.up).toBe(3);
+		// a share with a steady trend: every quarter alike — no seasonality left
+		const trend = series(5, () => 0.03);
+		expect(Math.abs(q.ownQuarter(trend, [2018, 2019, 2020], 4, LAST).mean!)).toBeLessThan(0.01);
+	});
+
+	it('T-018 variant D picks a quarter better than the share\'s own usual quarter, not a share in a trend', () => {
+		const trend = series(1, () => 0.03);
+		const seasonal = series(2, (_, m) => (m <= 3 ? 0.03 : 0), { sector: 'energy' });
+		const a = runModel(u([trend, seasonal]), 'A', 1, DEFAULTS).candidates.map((c) => c.symbol);
+		const d = runModel(u([trend, seasonal]), 'D', 1, DEFAULTS).candidates.map((c) => c.symbol);
+		expect(a).toContain('S1');
+		expect(d).toEqual(['S2']);
+	});
+
 	it('funds labelled as shares are not shares', async () => {
 		const { isFund } = await import('./quarterly.js');
 		expect(isFund({ kind: 'etf', industry: null, name: 'Invesco DB Gold Double Long ETN' })).toBe(true);

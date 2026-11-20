@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { israelDate } from '../hypothesis.js';
-import { costRun, DEFAULTS, dropUniverse, nextQuarter, runModel, universe, universeIds } from './model/quarterly.js';
+import { costRun, laggards, monthIndex, ownQuarter, monthReturns, smaMonths, trendTable, windowYears, type TrendStats, type Universe, DEFAULTS, dropUniverse, nextQuarter, runModel, universe, universeIds } from './model/quarterly.js';
 import { recordQuarter, VARIANTS } from './model/service.js';
 import { checkMonthlyAgainstDaily, loadMonthly, monthlyDue, type MonthlySummary } from './market/monthly.js';
 import { loadProfiles, staleProfiles, type ProfilesSummary } from './market/profiles.js';
@@ -409,7 +409,7 @@ export function logModel() {
 		const r = runModel(u, 'A', nq.quarter, { ...DEFAULTS, capGroups: groups });
 		return `A Q${r.quarter} ${r.forYear} ${label}: universe ${r.universe}, passed ${r.passed}, by chance ≈ ${r.expected}, placebo ${r.placebo.mean} (${r.placebo.verdict}) — ${r.candidates.map((c) => `${c.symbol} ${c.up}/10 ${c.mean > 0 ? '+' : ''}${c.mean}% (${c.capUsd ? Math.round(c.capUsd / 1e9) + 'B$' : '?'})`).join('; ')}`;
 	};
-	for (const v of ['A', 'B', 'C'] as const) {
+	for (const v of ['A', 'B', 'C', 'D'] as const) {
 		const t = performance.now();
 		const r = runModel(u, v, nq.quarter, DEFAULTS);
 		if (v === 'A') out.push(`caps (liquid shares): ${JSON.stringify(r.capCounts)}`);
@@ -439,6 +439,18 @@ export function logModel() {
 		const c = costRun(u, v, DEFAULTS);
 		out.push(`costs ${v}: gross ${c.gross}%/y; hold ${c.hold.cagr}%/y (fees ${c.hold.fees}$, tax ${c.hold.taxes}$, turnover ${c.hold.turnover}%, kept ${c.hold.kept}); no hold ${c.noHold.cagr}%/y (fees ${c.noHold.fees}$, tax ${c.noHold.taxes}$, turnover ${c.noHold.turnover}%)`);
 	}
+	// T-018 report: the trend table of A and B, the laggards, the usual quarter of A's candidates, a hand check
+	for (const v of ['A', 'B'] as const) {
+		const t = performance.now();
+		const tt = trendTable(u, v, nq.quarter, DEFAULTS);
+		const f = (x: TrendStats) => `${x.excess}% med ${x.median} worst ${x.worst} dd ${x.maxDrawdown} n ${x.avgCount} <5 ${x.under5}%`;
+		out.push(`trend ${v} Q${nq.quarter} (${Math.round(performance.now() - t)} ms): ` + tt.map((r) => `[${r.filter}/${r.exit}] all ${f(r.all)} | walk ${f(r.walk)} | placebo ${r.placebo.verdict} ${Math.round(r.placebo.share * 100)}%`).join(' ;; '));
+	}
+	const lg = laggards(u);
+	out.push(`laggards: ${JSON.stringify(lg)}`);
+	const a1 = runModel(u, 'A', 1, DEFAULTS);
+	out.push(`own quarter, A Q1 ${a1.forYear}: ${a1.candidates.filter((c) => (c.own.mean ?? 0) > 0).length} of ${a1.candidates.length} above their usual quarter — ` + a1.candidates.map((c) => `${c.symbol} ${c.own.mean}pp ${c.own.up}/${c.own.years}`).join('; '));
+	out.push(handCheck(m, u));
 	for (const l of out) console.log(`model: ${l}`);
 	// T-020: the candidates' cards need daily history — load it now rather than on the first open
 	if (enqueueMissingHistory(m, [...new Set(candidates)], israelDate())) void runHistoryJob().catch((e) => console.error(`history: ${e}`));
@@ -541,6 +553,41 @@ export function lastListings(): Date | null {
 		if (d < oldest) oldest = d;
 	}
 	return oldest;
+}
+
+/**
+ * T-018 acceptance: SMA 10 and 3 months, the months of a quarter and the usual quarter of a few shares — the model's
+ * functions against plain SQL over the monthly table
+ */
+function handCheck(m: import('better-sqlite3').Database, u: Universe) {
+	const parts: string[] = [];
+	const month = (i: number) => `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
+	for (const [sym, q] of [['EMBJ', 4], ['MPC', 1], ['ESLT', 1]] as const) {
+		const s = u.stocks.find((x) => x.symbol === sym);
+		if (!s) {
+			parts.push(`${sym}: not in the universe`);
+			continue;
+		}
+		const avg = (n: number) =>
+			(m.prepare(`select avg(close) as a from (select close from market_prices_monthly where security_id = ? and month <= ? order by month desc limit ?)`).get(s.id, month(u.lastMonth), n) as { a: number }).a;
+		const adj = new Map((m.prepare('select month, adj_close as a from market_prices_monthly where security_id = ?').all(s.id) as { month: string; a: number }[]).map((r) => [r.month, r.a]));
+		const ret = (from: number, to: number) => adj.get(month(to))! / adj.get(month(from))! - 1;
+		const years = windowYears(u.lastMonth, q, 10);
+		const hand = [0, 1, 2].map((k) => years.reduce((n, y) => n + ret(y * 12 + (q - 1) * 3 + k - 1, y * 12 + (q - 1) * 3 + k), 0) / years.length);
+		const model = [0, 1, 2].map((k) => years.reduce((n, y) => n + monthReturns(s, y, q)[k], 0) / years.length);
+		const handOwn = years.map((y) => {
+			const qs = [1, 2, 3, 4].filter((x) => y * 12 + x * 3 - 1 <= u.lastMonth).map((x) => ret(y * 12 + (x - 1) * 3 - 1, y * 12 + x * 3 - 1));
+			return ret(y * 12 + (q - 1) * 3 - 1, y * 12 + q * 3 - 1) - qs.reduce((a, b) => a + b, 0) / qs.length;
+		});
+		const own = ownQuarter(s, years, q, u.lastMonth);
+		const r2 = (x: number) => Math.round(x * 10000) / 100;
+		parts.push(
+			`${sym}: sma10 model ${smaMonths(s, u.lastMonth, 10).toFixed(4)} sql ${avg(10).toFixed(4)}; sma3 model ${smaMonths(s, u.lastMonth, 3).toFixed(4)} sql ${avg(3).toFixed(4)}; ` +
+				`Q${q} months model ${model.map(r2).join('/')} hand ${hand.map(r2).join('/')}; own model ${own.mean}pp ${own.up}/${own.years} hand ${r2(handOwn.reduce((a, b) => a + b, 0) / handOwn.length)}pp ${handOwn.filter((x) => x > 0).length}/${handOwn.length}`
+		);
+	}
+	void monthIndex;
+	return `hand check: ${parts.join(' ;; ')}`;
 }
 
 // ── T-022: strong moves of the securities one follows ───────────────────────────
