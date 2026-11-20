@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { israelDate } from '../hypothesis.js';
-import { dropUniverse, needSector, universe } from './model/quarterly.js';
+import { DEFAULTS, dropUniverse, needSector, nextQuarter, runModel, universe } from './model/quarterly.js';
 import { recordQuarter, VARIANTS } from './model/service.js';
 import { checkMonthlyAgainstDaily, loadMonthly, monthlyDue, type MonthlySummary } from './market/monthly.js';
 import { loadProfiles, staleProfiles, type ProfilesSummary } from './market/profiles.js';
@@ -346,8 +346,8 @@ export function runMonthlyJob(limit = 2500, sectorLimit = 1500): Promise<Monthly
 			const due = monthlyDue(m, new Date(), limit);
 			const s = await loadMonthly(m, due, makeFetcher({ retries: 1 }));
 			const check = s.loaded ? checkMonthlyAgainstDaily(m) : null;
-			// the model reads the new prices on its next request
-			if (s.loaded) dropUniverse();
+			// the model reads the new prices: the report line, and its next request gets them
+			if (s.loaded) logModel();
 			// the model's caps need a sector for every share of its universe
 			const need = needSector(universe(m)).slice(0, sectorLimit);
 			if (need.length) {
@@ -368,6 +368,34 @@ export function runMonthlyJob(limit = 2500, sectorLimit = 1500): Promise<Monthly
 			throw e;
 		}
 	});
+}
+
+/**
+ * T-009 report: the model's universe and the next quarter's candidates with the default parameters, with the
+ * time and memory it takes on the NAS — written to the log at start and after a monthly load.
+ */
+export function logModel() {
+	const m = getMarket().sqlite;
+	dropUniverse();
+	const rss0 = process.memoryUsage().rss;
+	const t0 = performance.now();
+	const u = universe(m);
+	const build = Math.round(performance.now() - t0);
+	const rss = Math.round((process.memoryUsage().rss - rss0) / 1e6);
+	if (u.stocks.length < 500) return console.log(`model: ${u.stocks.length} shares with monthly prices — too few yet`);
+	const nq = nextQuarter();
+	const out: string[] = [];
+	for (const v of ['A', 'B'] as const) {
+		const t = performance.now();
+		const r = runModel(u, v, nq.quarter, DEFAULTS);
+		out.push(
+			`${v} Q${r.quarter} ${r.forYear}: universe ${r.universe} (no history ${r.noHistory}, illiquid ${r.illiquid}), passed ${r.passed}, by chance ≈ ${r.expected}, p ${r.p}, ${Math.round(performance.now() - t)} ms — ` +
+				r.candidates.map((c) => `${c.symbol}${c.market === 'IL' ? '.TA' : ''} ${c.up}/10 ${c.mean > 0 ? '+' : ''}${c.mean}% (med ${c.median}, worst ${c.worst}, ${c.sector ?? '?'})`).join('; ') +
+				` | walk ${r.walk.map((w) => `${w.year}: ${w.pickedMean}% vs ${w.allMean}%`).join(', ')}`
+		);
+	}
+	console.log(`model: ${u.stocks.length} shares, data to ${u.lastMonth % 12 + 1}/${Math.floor(u.lastMonth / 12)}, built in ${build} ms, +${rss} MB rss (heap ${Math.round(process.memoryUsage().heapUsed / 1e6)} MB)`);
+	for (const l of out) console.log(`model: ${l}`);
 }
 
 // ── the quarterly model records its hypotheses (T-009) ──────────────────────────────
@@ -519,6 +547,11 @@ export function startScheduler() {
 		// the dollar rate (section 18): portfolios need it before the next morning's run
 		if (!lastRun('fx')) await runFxJob().catch((e) => console.error(`fx: ${e}`));
 		await runProfilesJob().catch((e) => console.error(`profiles: ${e}`));
+		try {
+			logModel();
+		} catch (e) {
+			console.error(`model: ${e}`);
+		}
 		const bApp = lastRun('backup-app');
 		if (!bApp || Date.now() - bApp.getTime() > 26 * 3600 * 1000) await runBackupJob('app');
 		const bMarket = lastRun('backup-market');

@@ -53,6 +53,9 @@ export function openApp(path: string) {
 
 export function openMarket(path: string) {
 	const m = open(path, marketSchema, join(migrationsDir, 'market')) as { sqlite: Database.Database; db: MarketDb };
+	// market data can always be fetched again: no fsync on every commit (safe with WAL; a power cut can lose only
+	// the last commits). The monthly load wrote a security in 1–2 s on the NAS and held the server (20.11.2026).
+	m.sqlite.pragma('synchronous = NORMAL');
 	seedMarket(m.db);
 	return m;
 }
