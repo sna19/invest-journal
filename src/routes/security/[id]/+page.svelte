@@ -18,7 +18,7 @@
 	 * 1М…10Л. A tap on a mark opens the hypothesis or the position.
 	 */
 	interface ModelBlock {
-		variant: 'A' | 'B';
+		variant: 'A' | 'B' | 'C';
 		quarter: number;
 		forYear: number;
 		years: number[];
@@ -31,6 +31,7 @@
 		worst: number | null;
 		inUniverse: boolean;
 		passed: boolean;
+		score: number | null;
 		rank: number | null;
 		params: { k: number; years: number; compareWith: string };
 		versionId: number | null;
@@ -68,7 +69,7 @@
 	let loadMs = $state<number | null>(null);
 	let allHyps = $state(false);
 	// T-020: opened from the quarterly model — its block on top, the trade linked to the model
-	const modelVariant = $derived((page.url.searchParams.get('model') === 'B' ? 'B' : page.url.searchParams.get('model') === 'A' ? 'A' : null) as 'A' | 'B' | null);
+	const modelVariant = $derived(((['A', 'B', 'C'] as const).find((v) => v === page.url.searchParams.get('model')) ?? null) as 'A' | 'B' | 'C' | null);
 	let model = $state<ModelBlock | null>(null);
 	let highlight = $state<number | null>(null);
 	async function loadModel() {
@@ -218,11 +219,11 @@
 	{#if model}
 		<section class="model">
 			<h2>
-				{tx('Квартальная модель', 'Quarterly model')} · {model.variant === 'A' ? tx('А. Рост цены', 'A. Price rise') : tx('Б. Против рынка', 'B. Against the market')} · Q{model.quarter} {model.forYear}
+				{tx('Квартальная модель', 'Quarterly model')} · {model.variant === 'A' ? tx('А. Рост цены', 'A. Price rise') : model.variant === 'B' ? tx('Б. Против рынка', 'B. Against the market') : tx('В. Оценка', 'C. Score')} · Q{model.quarter} {model.forYear}
 				<HelpIcon topicKey="model.quarterly" label={tx('как считается', 'how it is computed')} />
 			</h2>
 			<p class="muted small">
-				{#if model.rank}{tx(`Кандидат №${model.rank}`, `Candidate №${model.rank}`)}{:else if model.passed}{tx('Прошла фильтр, но не вошла из-за ограничений по сектору и рынку', 'Passed the filter but left out by the sector and market caps')}{:else if model.inUniverse}{tx(`Не прошла фильтр: ${model.up} из ${model.years.length} лет при K = ${model.params.k}`, `Did not pass: ${model.up} of ${model.years.length} years at K = ${model.params.k}`)}{:else}{tx('Не в выборке модели: нет 10 лет истории, мало оборота или цена ниже порога', 'Not in the model universe: no 10-year history, little turnover or the price below the threshold')}{/if}
+				{#if model.rank}{tx(`Кандидат №${model.rank}`, `Candidate №${model.rank}`)}{:else if model.passed}{tx('Прошла фильтр, но не вошла из-за ограничений по сектору и рынку', 'Passed the filter but left out by the sector and market caps')}{:else if model.inUniverse && model.variant === 'C'}{tx(`Не вошла в первые по баллу: балл ${model.score?.toFixed(1) ?? '—'}`, `Not among the top by score: score ${model.score?.toFixed(1) ?? '—'}`)}{:else if model.inUniverse}{tx(`Не прошла фильтр: ${model.up} из ${model.years.length} лет при K = ${model.params.k}`, `Did not pass: ${model.up} of ${model.years.length} years at K = ${model.params.k}`)}{:else}{tx('Не в выборке модели: нет 10 лет истории, мало оборота или цена ниже порога', 'Not in the model universe: no 10-year history, little turnover or the price below the threshold')}{/if}
 				· {model.preview ? tx('параметры предпросмотра, не сохранены', 'preview parameters, not saved') : model.versionId ? tx(`версия параметров №${model.versionId}`, `parameters version №${model.versionId}`) : tx('параметры ещё не записаны версией', 'the parameters are not a version yet')}
 			</p>
 			<div class="yr head2 muted small"><span></span><span></span><span class="v">{c.security.symbol}</span><span class="v">{tx('рынок', 'market')}</span></div>
@@ -241,7 +242,7 @@
 				</div>
 			{/each}
 			<p class="sum small">
-				{tx(model.variant === 'A' ? 'Рост' : 'Сверх рынка', model.variant === 'A' ? 'Rise' : 'Over the market')}: {tx('лет', 'years')} {model.up}/{model.years.length} · {tx('среднее', 'mean')} <b>{pctText(model.mean)}</b> · {tx('медиана', 'median')} {pctText(model.median)} · {tx('худший год', 'worst year')} {pctText(model.worst)}
+				{#if model.score !== null}{tx('Балл', 'Score')} <b>{model.score.toFixed(1)}</b> <HelpIcon topicKey="model.score" label={tx('балл', 'score')} /> · {/if}{tx(model.variant === 'A' ? 'Рост' : 'Сверх рынка', model.variant === 'A' ? 'Rise' : 'Over the market')}: {tx('лет', 'years')} {model.up}/{model.years.length} · {tx('среднее', 'mean')} <b>{pctText(model.mean)}</b> · {tx('медиана', 'median')} {pctText(model.median)} · {tx('худший год', 'worst year')} {pctText(model.worst)}
 			</p>
 		</section>
 	{/if}

@@ -9,7 +9,7 @@
 	import { sectorName } from '#lib/allocation.js';
 
 	/** Spec section 21, T-009 — the quarterly model: parameters with «?», a live preview, the candidates. */
-	type Variant = 'A' | 'B';
+	type Variant = 'A' | 'B' | 'C';
 	interface Params {
 		years: number;
 		k: number;
@@ -38,6 +38,7 @@
 		worst: number;
 		capUsd: number | null;
 		capGroup: string | null;
+		score: number | null;
 	}
 	interface Data {
 		variant: Variant;
@@ -122,7 +123,7 @@
 		} catch {
 			kept = {};
 		}
-		variant = kept.variant ?? (read('model-variant', 'A') === 'B' ? 'B' : 'A');
+		variant = kept.variant ?? ((['A', 'B', 'C'] as const).find((v) => v === read('model-variant', 'A')) ?? 'A');
 		if (kept.quarter && [1, 2, 3, 4].includes(kept.quarter)) quarter = kept.quarter;
 		open(variant);
 	});
@@ -248,6 +249,7 @@
 <div class="seg" role="radiogroup" aria-label={tx('Вариант', 'Variant')}>
 	<button role="radio" aria-checked={variant === 'A'} class:on={variant === 'A'} onclick={() => setVariant('A')}>{tx('А. Рост цены', 'A. Price rise')}</button>
 	<button role="radio" aria-checked={variant === 'B'} class:on={variant === 'B'} onclick={() => setVariant('B')}>{tx('Б. Против рынка', 'B. Against the market')}</button>
+	<button role="radio" aria-checked={variant === 'C'} class:on={variant === 'C'} onclick={() => setVariant('C')}>{tx('В. Оценка', 'C. Score')}</button>
 	<HelpIcon topicKey="model.variants" label={tx('варианты', 'variants')} />
 </div>
 
@@ -260,7 +262,7 @@
 {#if params}
 	<section class="card params">
 		<h2>{tx('Параметры', 'Parameters')} {#if busy}<span class="muted small">· {tx('считаю…', 'computing…')}</span>{/if}</h2>
-		{#each PARAMS as f (f.key)}
+		{#each PARAMS.filter((f) => variant !== 'C' || f.key !== 'k') as f (f.key)}
 			<div class="prow">
 				<span class="pl">{tx(f.ru, f.en)} <HelpIcon topicKey={f.help} label={tx(f.ru, f.en)} /></span>
 				<span class="stepper">
@@ -276,14 +278,14 @@
 				{#each TURNOVER as t (t)}<option value={t}>{t ? money(t) : tx('без порога', 'no threshold')}</option>{/each}
 			</select>
 		</div>
-		<div class="prow">
+		{#if variant !== 'C'}<div class="prow">
 			<span class="pl">{tx('Сортировка', 'Sort by')} <HelpIcon topicKey="model.param.sort" label={tx('сортировка', 'sort')} /></span>
 			<select value={params.sort} onchange={(e) => set('sort', e.currentTarget.value as Params['sort'])}>
 				<option value="mean">{tx('по среднему', 'mean')}</option>
 				<option value="median">{tx('по медиане', 'median')}</option>
 				<option value="worst">{tx('по худшему году', 'worst year')}</option>
 			</select>
-		</div>
+		</div>{/if}
 		<div class="prow caprow">
 			<span class="pl">{tx('Капитализация', 'Market cap')} <HelpIcon topicKey="model.param.market_cap" label={tx('капитализация', 'market cap')} /></span>
 			<div class="seg2" role="radiogroup" aria-label={tx('Как делить', 'How to split')}>
@@ -307,7 +309,7 @@
 				{/each}
 			</div>
 		{/if}
-		{#if variant === 'B'}
+		{#if variant !== 'A'}
 			<div class="prow">
 				<span class="pl">{tx('Сравнивать', 'Compare with')} <HelpIcon topicKey="model.param.compare_with" label={tx('сравнение', 'comparison')} /></span>
 				<select value={params.compareWith} onchange={(e) => set('compareWith', e.currentTarget.value as Params['compareWith'])}>
@@ -333,7 +335,7 @@
 			<HelpIcon topicKey="model.quarterly" label={tx('как считается', 'how it is computed')} />
 		</h2>
 		<p class="sum">
-			{tx('Выборка', 'Universe')} <b>{res.universe}</b> {tx('акций', 'shares')} · {tx('прошли фильтр', 'passed')} <b>{res.passed}</b>
+			{tx('Выборка', 'Universe')} <b>{res.universe}</b> {tx('акций', 'shares')} · {variant === 'C' ? tx('балл ≥ 2', 'score ≥ 2') : tx('прошли фильтр', 'passed')} <b>{res.passed}</b>{#if variant === 'C'} <HelpIcon topicKey="model.score" label={tx('балл', 'score')} />{/if}
 		</p>
 		<p class="placebo {res.placebo.verdict}">
 			<span class="badge">{res.placebo.verdict === 'signal' ? tx('сигнал', 'signal') : res.placebo.verdict === 'unclear' ? tx('неясно', 'unclear') : tx('похоже на случайность', 'looks like chance')}</span>
@@ -350,7 +352,7 @@
 		{#if verdict === 'chance'}
 			<p class="warn">{tx('Пустышка находит столько же: кандидаты этого варианта не лучше случайных.', 'The placebo finds as many: these candidates are no better than random ones.')}</p>
 		{:else if verdict === 'none'}
-			<p class="warn">{tx('Фильтр не прошла ни одна бумага — ослабьте K или пороги.', 'No share passed — lower K or the thresholds.')}</p>
+			<p class="warn">{variant === 'C' ? tx('Ни у одной бумаги балл не выше 2 — кандидаты ниже показаны по баллу, но уверенности нет.', 'No share has a score of 2 or more — the candidates below are ranked by score, without confidence.') : tx('Фильтр не прошла ни одна бумага — ослабьте K или пороги.', 'No share passed — lower K or the thresholds.')}</p>
 		{/if}
 		{#if res.capOut}<p class="muted small">{tx(`Вне выбранной капитализации — ${res.capOut} акций.`, `${res.capOut} shares outside the chosen market cap.`)}</p>{/if}
 		{#if res.capped}<p class="muted small">{tx(`Ещё ${res.capped} прошли, но не вошли из-за ограничений по сектору и рынку.`, `${res.capped} more passed but were left out by the sector and market caps.`)}</p>{/if}
@@ -360,7 +362,7 @@
 					<button class="crow" onclick={() => goto(`/security/${c.id}?model=${variant}&q=${res.quarter}&${previewQuery()}`)}>
 						<span class="n">{i + 1}</span>
 						<span class="who"><b>{c.symbol}</b><span class="muted small block name">{c.name}</span><span class="muted small block">{c.market === 'US' ? tx('США', 'US') : tx('Израиль', 'Israel')} {' · '}{c.sector ? sectorName(c.sector, tx) : tx('сектор неизвестен', 'sector unknown')}{#if c.capUsd}{' · '}{capText(c.capUsd)}, {capName(c.capGroup)}{/if}{' · '}{c.up}/{res.years.length}</span></span>
-						<span class="nums"><b class:up={c.mean > 0}>{pct(c.mean)}</b><span class="muted small block">{tx('мед.', 'med.')} {pct(c.median)}</span><span class="muted small block">{tx('худш.', 'worst')} {pct(c.worst)}</span></span>
+						<span class="nums">{#if c.score !== null}<span class="score">{tx('балл', 'score')} {c.score.toFixed(1)}</span>{/if}<b class:up={c.mean > 0}>{pct(c.mean)}</b><span class="muted small block">{tx('мед.', 'med.')} {pct(c.median)}</span><span class="muted small block">{tx('худш.', 'worst')} {pct(c.worst)}</span></span>
 					</button>
 					<span class="tvpos"><TvLink exchange={c.exchange} symbol={c.symbol} /></span>
 				</li>
@@ -390,7 +392,7 @@
 		<h2>{tx('Записанные кварталы', 'Recorded quarters')}</h2>
 		<ul class="plain">
 			{#each data.recorded as r (r.variant + r.quarter)}
-				<li>{r.quarter} · {r.variant === 'A' ? tx('А. Рост цены', 'A. Price rise') : tx('Б. Против рынка', 'B. Against the market')} · {tx('гипотез', 'hypotheses')} {r.hypotheses}</li>
+				<li>{r.quarter} · {r.variant === 'A' ? tx('А. Рост цены', 'A. Price rise') : r.variant === 'B' ? tx('Б. Против рынка', 'B. Against the market') : tx('В. Оценка', 'C. Score')} · {tx('гипотез', 'hypotheses')} {r.hypotheses}</li>
 			{/each}
 		</ul>
 		<p class="muted small"><a href="/sources">{tx('Статистика вариантов — в «Источниках»', 'Variant stats — in «Sources»')}</a></p>
@@ -679,6 +681,11 @@
 	}
 	.up {
 		color: var(--up);
+	}
+	.score {
+		display: block;
+		font-size: 0.75rem;
+		color: var(--muted);
 	}
 	.walk {
 		width: 100%;

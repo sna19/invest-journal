@@ -135,6 +135,25 @@ describe('quarterly model 10a', () => {
 		expect(runModel(u(seasonal), 'A', 1, { ...DEFAULTS, k: 8 }).placebo).toEqual(r.placebo);
 	});
 
+	it('variant C (T-011): «+3% every year» stands above «+40% once and about zero otherwise»', async () => {
+		const { tScore } = await import('./quarterly.js');
+		// a Q1 of +3% is +0.99%/month; +40% once is +11.87%/month in Q1 of 2020
+		const steady = series(1, (y, m) => (m <= 3 ? 1.03 ** (1 / 3) - 1 + (y % 2 ? 0.001 : -0.001) : 0));
+		const once = series(2, (y, m) => (m <= 3 ? (y === 2020 ? 1.4 ** (1 / 3) - 1 : y % 2 ? 0.001 : -0.001) : 0), { sector: 'energy' });
+		const r = runModel(u([steady, once]), 'C', 1, DEFAULTS);
+		expect(r.candidates.map((c) => c.symbol)).toEqual(['S1', 'S2']);
+		expect(r.candidates[0].score!).toBeGreaterThan(2);
+		expect(r.candidates[1].score!).toBeLessThan(1);
+		// the mean of «once» is larger — the score is not the mean
+		expect(r.candidates[1].mean).toBeGreaterThan(r.candidates[0].mean);
+		expect(r.passed).toBe(1);
+		// shrunk towards zero for few years: the same steady excess scores less over 4 years than over 10
+		expect(tScore([0.03, 0.02, 0.04, 0.03])!).toBeLessThan(tScore([0.03, 0.02, 0.04, 0.03, 0.03, 0.02, 0.04, 0.03, 0.03, 0.03])!);
+		expect(tScore([0.03, 0.03])).toBeNull();
+		// the placebo runs for C as well, with its own seed
+		expect(r.placebo.runs).toBe(100);
+	});
+
 	it('funds labelled as shares are not shares', async () => {
 		const { isFund } = await import('./quarterly.js');
 		expect(isFund({ kind: 'etf', industry: null, name: 'Invesco DB Gold Double Long ETN' })).toBe(true);

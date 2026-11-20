@@ -138,7 +138,7 @@
 		}
 	}
 	let createError = $state<string | null>(null);
-	let adding = $state<{ kind: string; securityId: number | null; hypothesisId: number | null; model?: 'A' | 'B' | null } | null>(null);
+	let adding = $state<{ kind: string; securityId: number | null; hypothesisId: number | null; model?: 'A' | 'B' | 'C' | null } | null>(null);
 	let opened = $state<number | null>(null);
 	let cashing = $state(false);
 	// deleting a portfolio whole (owner's request): the name is typed back, the app copies the journal first
@@ -298,7 +298,7 @@
 			const kind = k === 'buy' || k === 'watch' ? k : 'plan_buy';
 			// T-020: from a model's candidate card — the trade is linked to the model and its version
 			const mv = page.url.searchParams.get('model');
-			adding = { kind, securityId: add, hypothesisId: Number(page.url.searchParams.get('hyp')) || null, model: mv === 'A' || mv === 'B' ? mv : null };
+			adding = { kind, securityId: add, hypothesisId: Number(page.url.searchParams.get('hyp')) || null, model: mv === 'A' || mv === 'B' || mv === 'C' ? mv : null };
 			replaceState('/portfolio', {});
 			if (!real) creating = true;
 		}

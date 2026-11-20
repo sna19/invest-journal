@@ -9,7 +9,25 @@ import type Database from 'better-sqlite3';
  * are sorted by the mean (median, worst year) and give 10 candidates with at most 2 per sector and 7 per market.
  */
 
-export type Variant = 'A' | 'B';
+/** A — the rise (the owner's scheme), B — over the market or sector, C — the score (T-011): no K, ranked by a t-like score */
+export type Variant = 'A' | 'B' | 'C';
+
+/** T-011, variant C: «заметно» from this score up */
+export const SCORE_MIN = 2;
+
+/**
+ * The score of variant C: the mean quarterly excess divided by its spread over the years (a t-statistic), shrunk
+ * towards zero for few years (× n / (n + 2)). The spread has a floor of 1 pp: «+3% every year» is high, not
+ * infinite. «+3% every year» stands above «+40% once and about zero otherwise».
+ */
+export function tScore(m: number[]): number | null {
+	const x = m.filter((v) => Number.isFinite(v));
+	const n = x.length;
+	if (n < 3) return null;
+	const mean = x.reduce((a, b) => a + b, 0) / n;
+	const sd = Math.sqrt(x.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1));
+	return (mean / (Math.max(sd, 0.01) / Math.sqrt(n))) * (n / (n + 2));
+}
 
 export interface Params {
 	years: number;
@@ -264,6 +282,8 @@ export interface Candidate {
 	priceUsd: number;
 	capUsd: number | null;
 	capGroup: string | null;
+	/** variant C: the score */
+	score: number | null;
 }
 
 export interface Result {
@@ -330,16 +350,24 @@ export function placebo(u: Universe, rows: Row[], years: number[], quarter: numb
 		const rq = rows.map((r) => ({ ...r, r: years.map((y) => quarterReturn(r.s, y, q)) }));
 		return measures(u, rq, years, q, variant, p.compareWith);
 	});
-	const rand = rng(quarter * 7919 + (variant === 'B' ? 104729 : 0) + p.k * 31 + p.years);
-	// for each share and year: whether each available quarter rose — drawn from in every run
-	const cells: boolean[][][] = rows.map((_, i) => years.map((_, j) => [0, 1, 2, 3].filter((q) => Number.isFinite(byQ[q][i][j])).map((q) => byQ[q][i][j] > 0)));
+	const rand = rng(quarter * 7919 + (variant === 'B' ? 104729 : variant === 'C' ? 209459 : 0) + p.k * 31 + p.years);
+	// for each share and year: the measures of the quarters available — drawn from in every run
+	const cells: number[][][] = rows.map((_, i) => years.map((_, j) => [0, 1, 2, 3].map((q) => byQ[q][i][j]).filter((v) => Number.isFinite(v))));
 	let ge = 0;
 	let sum = 0;
+	const drawn: number[] = [];
 	for (let run = 0; run < runs; run++) {
 		let passed = 0;
 		for (const share of cells) {
+			if (variant === 'C') {
+				// variant C passes by its score, not by K
+				drawn.length = 0;
+				for (const avail of share) if (avail.length) drawn.push(avail[Math.floor(rand() * avail.length)]);
+				if ((tScore(drawn) ?? 0) >= SCORE_MIN) passed++;
+				continue;
+			}
 			let up = 0;
-			for (const avail of share) if (avail.length && avail[Math.floor(rand() * avail.length)]) up++;
+			for (const avail of share) if (avail.length && avail[Math.floor(rand() * avail.length)] > 0) up++;
 			if (up >= p.k) passed++;
 		}
 		sum += passed;
@@ -374,6 +402,7 @@ function measures(u: Universe, rows: Row[], years: number[], q: number, variant:
 		return b ? quarterReturn(b, y, q) : NaN;
 	};
 	if (variant === 'A') return rows.map((x) => x.r);
+	// B and C: over the market or the sector
 	if (compareWith === 'market') return rows.map((x) => x.r.map((r, i) => r - bench(x.s.market, years[i])));
 	// over the sector: the mean of the shares of that sector in the universe (at least 5), else over the market
 	const bySector = new Map<string, number[][]>();
@@ -443,6 +472,7 @@ export function runModel(u: Universe, variant: Variant, quarter: number, input: 
 	let ups = 0;
 	let all = 0;
 	const passed: { s: Series; score: number; m: number[]; row: Row }[] = [];
+	const ranked: { s: Series; score: number; m: number[]; row: Row }[] = [];
 	rows.forEach((row, i) => {
 		if (!kept(row)) return void capOut++;
 		universeN++;
@@ -450,10 +480,15 @@ export function runModel(u: Universe, variant: Variant, quarter: number, input: 
 		const up = m.filter((x) => x > 0).length;
 		ups += up;
 		all += m.length;
-		if (up >= p.k) passed.push({ s: row.s, score: scoreOf(m, p.sort), m, row });
+		// C: no K — every share is ranked by its score; «passed» are those with a score of at least SCORE_MIN
+		if (variant === 'C') {
+			const sc = tScore(m);
+			if (sc !== null) ranked.push({ s: row.s, score: sc, m, row });
+			if (sc !== null && sc >= SCORE_MIN) passed.push({ s: row.s, score: sc, m, row });
+		} else if (up >= p.k) passed.push({ s: row.s, score: scoreOf(m, p.sort), m, row });
 	});
 	const prob = all ? ups / all : 0;
-	const { chosen, capped } = pick(passed, p);
+	const { chosen, capped } = pick(variant === 'C' ? ranked : passed, p);
 	const pct = (x: number) => Math.round(x * 10000) / 100;
 	const bench = (m: 'US' | 'IL') => years.map((y) => {
 		const b = u.bench[m];
@@ -491,11 +526,12 @@ export function runModel(u: Universe, variant: Variant, quarter: number, input: 
 			turnoverUsd: Math.round(x.row.turnoverUsd),
 			priceUsd: Math.round(x.row.priceUsd * 100) / 100,
 			capUsd: x.s.capUsd,
-			capGroup: groupsNow.get(x.row) ?? null
+			capGroup: groupsNow.get(x.row) ?? null,
+			score: variant === 'C' ? Math.round(x.score * 100) / 100 : null
 		})),
 		capped,
 		bench: { US: bench('US'), IL: bench('IL') },
-		walk: walkForward(rows, ms, years, p, (t) => capGroupMap(rows, p, (r) => capAt(r.s, quarterEnd(years[t], quarter) - 3, u.usdIls))),
+		walk: walkForward(rows, ms, years, p, variant, (t) => capGroupMap(rows, p, (r) => capAt(r.s, quarterEnd(years[t], quarter) - 3, u.usdIls))),
 		dataMonth: monthName(u.lastMonth)
 	};
 }
@@ -549,7 +585,8 @@ export function securityResult(u: Universe, id: number, variant: Variant, quarte
 		inUniverse,
 		capUsd: s.capUsd,
 		capGroup: capGroupMap(all, p, (r) => r.s.capUsd).get(target) ?? null,
-		passed: inUniverse && ok.filter((v) => v > 0).length >= p.k,
+		score: variant === 'C' ? (() => { const sc = tScore(m); return sc === null ? null : Math.round(sc * 100) / 100; })() : null,
+		passed: inUniverse && (variant === 'C' ? (tScore(m) ?? 0) >= SCORE_MIN : ok.filter((v) => v > 0).length >= p.k),
 		rank: run.candidates.findIndex((c) => c.id === id) + 1 || null,
 		params: p
 	};
@@ -560,7 +597,7 @@ export function securityResult(u: Universe, id: number, variant: Variant, quarte
  * years before it (K lowered by as many years as are dropped) and measured in that year, which the choice did
  * not see. Only for reference: shares that vanished in 10 years are not in the base.
  */
-function walkForward(rows: Row[], ms: number[][], years: number[], p: Params, groupsAt: (t: number) => Map<Row, string | null>): Walk[] {
+function walkForward(rows: Row[], ms: number[][], years: number[], p: Params, variant: Variant, groupsAt: (t: number) => Map<Row, string | null>): Walk[] {
 	const train = 7;
 	if (years.length < train + 1) return [];
 	const k = Math.max(1, p.k - (p.years - train));
@@ -571,9 +608,9 @@ function walkForward(rows: Row[], ms: number[][], years: number[], p: Params, gr
 		const list = rows
 			.map((row, i) => {
 				const m = ms[i].slice(t - train, t);
-				return { s: row.s, m, score: scoreOf(m, p.sort), test: ms[i][t], keep: !groups || p.capGroups.includes(groups.get(row) ?? '') };
+				return { s: row.s, m, score: variant === 'C' ? (tScore(m) ?? -Infinity) : scoreOf(m, p.sort), test: ms[i][t], keep: !groups || p.capGroups.includes(groups.get(row) ?? '') };
 			})
-			.filter((x) => x.keep && x.m.filter((v) => v > 0).length >= k);
+			.filter((x) => x.keep && (variant === 'C' ? Number.isFinite(x.score) : x.m.filter((v) => v > 0).length >= k));
 		const { chosen } = pick(list, p);
 		const avg = (xs: number[]) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10000) / 100 : null);
 		out.push({

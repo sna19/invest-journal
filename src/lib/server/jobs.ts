@@ -390,7 +390,7 @@ export function logModel() {
 		const r = runModel(u, 'A', nq.quarter, { ...DEFAULTS, capGroups: groups });
 		return `A Q${r.quarter} ${r.forYear} ${label}: universe ${r.universe}, passed ${r.passed}, by chance ≈ ${r.expected}, placebo ${r.placebo.mean} (${r.placebo.verdict}) — ${r.candidates.map((c) => `${c.symbol} ${c.up}/10 ${c.mean > 0 ? '+' : ''}${c.mean}% (${c.capUsd ? Math.round(c.capUsd / 1e9) + 'B$' : '?'})`).join('; ')}`;
 	};
-	for (const v of ['A', 'B'] as const) {
+	for (const v of ['A', 'B', 'C'] as const) {
 		const t = performance.now();
 		const r = runModel(u, v, nq.quarter, DEFAULTS);
 		if (v === 'A') out.push(`caps (liquid shares): ${JSON.stringify(r.capCounts)}`);
@@ -405,7 +405,7 @@ export function logModel() {
 	// T-021 report: large + mega and small + micro apart
 	out.push(capLine('large+mega', ['mega', 'large']), capLine('small+micro', ['small', 'micro']));
 	// T-010 report: the placebo of both variants in every quarter
-	for (const v of ['A', 'B'] as const)
+	for (const v of ['A', 'B', 'C'] as const)
 		out.push(
 			`placebo ${v}: ` +
 				[1, 2, 3, 4]
