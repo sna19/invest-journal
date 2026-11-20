@@ -99,6 +99,44 @@
 	const maxAbs = $derived(model ? Math.max(5, ...model.price.map((x) => Math.abs(x ?? 0)), ...model.bench.map((x) => Math.abs(x ?? 0))) : 5);
 	const mq = $derived(modelVariant ? `&model=${modelVariant}` : '');
 
+	// «С чем сравнить» (20.11.2026): the sector, industry and index ETFs, their returns, lines on the chart
+	interface CmpRef {
+		role: 'sector' | 'industry' | 'index';
+		label: string;
+		id: number;
+		symbol: string;
+		name: string;
+		exchange: string;
+		returns: Record<string, number | null>;
+		loaded: boolean;
+	}
+	let cmp = $state<{ periods: string[]; security: Record<string, number | null>; refs: CmpRef[] } | null>(null);
+	let shown = $state<number[]>([]);
+	let refLines = $state<Record<number, { date: string; value: number }[]>>({});
+	async function loadCompare() {
+		const r = await fetch(`/api/securities/${page.params.id}/compare`).catch(() => null);
+		if (r?.ok) cmp = await r.json();
+	}
+	async function loadRefLine(id: number) {
+		const r = await fetch(`/api/securities/${id}/chart?period=${period}`).catch(() => null);
+		if (!r?.ok) return;
+		const j = await r.json();
+		refLines = { ...refLines, [id]: j.points };
+	}
+	function toggleRef(id: number) {
+		shown = shown.includes(id) ? shown.filter((x) => x !== id) : [...shown, id];
+		if (shown.includes(id)) void loadRefLine(id);
+	}
+	const ROLE: Record<CmpRef['role'], [string, string]> = { sector: ['Сектор', 'Sector'], industry: ['Отрасль', 'Industry'], index: ['Индекс', 'Index'] };
+	const refLabel = (r: CmpRef) => (r.role === 'sector' ? sectorName(r.label, tx) : r.label);
+	/** a reference line brought to the security's first close of the period: both start at one point */
+	function scaled(points: { date: string; value: number }[]) {
+		if (!c?.points.length || !points.length) return [];
+		const start = c.points[0];
+		const base = [...points].reverse().find((p) => p.date <= start.date) ?? points[0];
+		return points.filter((p) => p.date >= start.date).map((p) => ({ date: p.date, value: Math.round((p.value / base.value) * start.value * 10000) / 10000 }));
+	}
+
 	async function load() {
 		const t0 = performance.now();
 		const r = await fetch(`/api/securities/${page.params.id}/chart?period=${period}`).catch(() => null);
@@ -120,9 +158,12 @@
 		}
 		load();
 		loadModel();
+		loadCompare();
 	});
 	function setPeriod(p: string) {
 		period = p;
+		refLines = {};
+		for (const id of shown) void loadRefLine(id);
 		try {
 			localStorage.setItem(KEY, p);
 		} catch {
@@ -136,7 +177,10 @@
 		c
 			? [
 					{ key: 'sec', label: c.security.symbol, points: c.points, main: true },
-					...(c.benchmark && c.bench.length ? [{ key: 'bench', label: tl(c.benchmark.label), points: c.bench, color: css('--muted'), dashed: true }] : [])
+					...(c.benchmark && c.bench.length ? [{ key: 'bench', label: tl(c.benchmark.label), points: c.bench, color: css('--muted'), dashed: true }] : []),
+					...(cmp?.refs ?? [])
+						.filter((r) => shown.includes(r.id) && refLines[r.id]?.length && !c!.monthly)
+						.map((r, i) => ({ key: `ref${r.id}`, label: r.symbol, points: scaled(refLines[r.id]), color: css(`--series-${(i % 6) + 2}`), dashed: true }))
 				]
 			: []
 	);
@@ -234,6 +278,40 @@
 		</p>
 	{/if}
 
+	{#if cmp && cmp.refs.length}
+		<section class="cmp">
+			<h2>{tx('С чем сравнить', 'Compare with')} <HelpIcon topicKey="security.compare" label={tx('сравнение', 'comparison')} /></h2>
+			<div class="scroll"><table>
+				<thead><tr><th></th>{#each cmp.periods as p (p)}<th>{tx(PERIODS.find((x) => x[0] === p)?.[1] ?? p, p)}</th>{/each}</tr></thead>
+				<tbody>
+					<tr class="me"><td><b>{c.security.symbol}</b></td>{#each cmp.periods as p (p)}<td>{pctText(cmp.security[p])}</td>{/each}</tr>
+					{#each cmp.refs as r (r.id)}
+						<tr>
+							<td>
+								<label class="refname">
+									<input type="checkbox" checked={shown.includes(r.id)} disabled={!r.loaded || c.monthly} onchange={() => toggleRef(r.id)} aria-label={tx('на график', 'on the chart')} />
+									<span><span class="muted small">{tx(...ROLE[r.role])}</span><br />{refLabel(r)} · <a href="/security/{r.id}">{r.symbol}</a></span>
+								</label>
+							</td>
+							{#each cmp.periods as p (p)}
+								{@const me = cmp.security[p]}
+								{@const x = r.returns[p]}
+								<td>
+									{pctText(x)}
+									{#if me !== null && x !== null}<br /><small class:pos={me - x > 0} class:neg={me - x < 0}>{me - x > 0 ? '+' : me - x < 0 ? '−' : ''}{Math.abs(me - x).toFixed(1)}</small>{/if}
+								</td>
+							{/each}
+						</tr>
+					{/each}
+				</tbody>
+			</table></div>
+			<p class="muted small">
+				{tx(`Под доходностью ориентира — на сколько п.п. ${c.security.symbol} была лучше (+) или хуже (−). Галочка — линия на графике.`, `Under a reference's return — by how many pp ${c.security.symbol} did better (+) or worse (−). The tick puts its line on the chart.`)}
+				{#if cmp.refs.some((r) => !r.loaded)}{tx(' Часть ориентиров ещё загружается — откройте карточку позже.', ' Some references are still loading — open the card later.')}{/if}
+			</p>
+		</section>
+	{/if}
+
 	<div class="buttons">
 		<a href="/portfolio?add={c.security.id}&kind=watch{mq}">{tx('Наблюдаю', 'Watching')}</a>
 		<a href="/portfolio?add={c.security.id}&kind=plan_buy{mq}">{tx('Хочу купить', 'Want to buy')}</a>
@@ -273,6 +351,57 @@
 {/if}
 
 <style>
+	.cmp {
+		margin: var(--s4) 0;
+		padding: var(--s3) var(--s4);
+		border-radius: var(--r3);
+		background: var(--surface);
+	}
+	.cmp h2 {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		margin: 0 0 var(--s2);
+		font-size: var(--fs-m);
+	}
+	.cmp .scroll {
+		overflow-x: auto;
+	}
+	.cmp table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: var(--fs-xs);
+		font-variant-numeric: tabular-nums;
+	}
+	.cmp th,
+	.cmp td {
+		padding: 6px 3px;
+		border-bottom: 1px solid var(--line);
+		text-align: right;
+		vertical-align: top;
+	}
+	.cmp th:first-child,
+	.cmp td:first-child {
+		text-align: left;
+	}
+	.cmp tr.me td {
+		font-weight: 600;
+	}
+	.refname {
+		min-width: 120px;
+		display: flex;
+		gap: 6px;
+		align-items: flex-start;
+	}
+	.refname input {
+		margin-top: 2px;
+	}
+	.cmp small.pos {
+		color: var(--up);
+	}
+	.cmp small.neg {
+		color: var(--down);
+	}
 	.model {
 		margin: 0 0 var(--s4);
 		padding: var(--s3) var(--s4);
