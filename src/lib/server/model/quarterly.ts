@@ -100,16 +100,23 @@ const at = (s: Series, i: number, a: Float64Array = s.adj) => {
 	return j >= 0 && j < a.length && a[j] > 0 ? a[j] : NaN;
 };
 
+/**
+ * Funds the exchange lists label as shares (owner's decision on T-009, 20.11.2026): Yahoo calls them ETF (DGP),
+ * or a closed-end fund shows as a share of «Asset Management» with «Fund» or «Trust» in its name (DHY).
+ */
+export const isFund = (m: { kind: string | null; industry: string | null; name: string }) =>
+	m.kind === 'etf' || (m.industry === 'Asset Management' && /\b(fund|trust)\b/i.test(m.name));
+
 /** reads all monthly prices once into compact arrays (about 10 MB for 6 500 shares × 15 years) */
 export function loadUniverse(market: Database.Database): Universe {
 	const meta = market
 		.prepare(
-			`select s.id, s.symbol, s.name_en as name, e.country, s.price_unit as unit, s.type, s.is_benchmark as bench, p.sector
+			`select s.id, s.symbol, s.name_en as name, e.country, s.price_unit as unit, s.type, s.is_benchmark as bench, p.sector, p.kind, p.industry
 			   from ref_securities s join ref_exchanges e on e.code = s.exchange_code
 			   left join ref_security_profiles p on p.security_id = s.id
 			  where s.id in (select security_id from ops_monthly_loads where status = 'ok')`
 		)
-		.all() as { id: number; symbol: string; name: string; country: string; unit: string; type: string; bench: number; sector: string | null }[];
+		.all() as { id: number; symbol: string; name: string; country: string; unit: string; type: string; bench: number; sector: string | null; kind: string | null; industry: string | null }[];
 	const byId = new Map<number, { rows: [number, number, number, number][] }>();
 	for (const m of meta) byId.set(m.id, { rows: [] });
 	const it = market.prepare('select security_id, month, adj_close, close, volume from market_prices_monthly order by security_id, month').raw().iterate() as Iterable<[number, string, number, number, number | null]>;
@@ -145,7 +152,7 @@ export function loadUniverse(market: Database.Database): Universe {
 		if (m.bench) {
 			if (m.country === 'IL') IL = s;
 			else US = s;
-		} else if (m.type === 'stock') stocks.push(s);
+		} else if (m.type === 'stock' && !isFund(m)) stocks.push(s);
 	}
 	const fx = market.prepare(`select rate from market_fx_daily where pair = 'USD/ILS' order by date desc limit 1`).get() as { rate: number } | undefined;
 	return { stocks, bench: { US, IL }, lastMonth: last, usdIls: fx?.rate ?? 3.7, builtAt: new Date().toISOString() };
