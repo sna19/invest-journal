@@ -219,6 +219,46 @@ export function fifo(list: Trade[], f: number, until?: string): Fifo {
 	return { lots, qty: lots.reduce((n, l) => n + l.qty, 0), realized, realizedPc, cost, costPc, bought, sold, fromTransfer: lots.some((l) => l.fromTransfer) };
 }
 
+/** One sale matched with the lot it took (FIFO): what the report of closed trades is made of. */
+export interface Match {
+	buyId: number;
+	sellId: number;
+	buyDate: string;
+	sellDate: string;
+	qty: number;
+	/** per share in the position's currency: the purchase with its fee, the sale less its fee */
+	cost: number;
+	proceeds: number;
+	fxBuy: number;
+	fxSell: number;
+	/** the lot came by «Перенесено» without a purchase price: its cost is the transfer day's */
+	fromTransfer: boolean;
+	opening: boolean;
+}
+
+export function matches(list: Trade[], f: number): Match[] {
+	type L = { id: number; date: string; qty: number; cost: number; fx: number; fromTransfer: boolean; opening: boolean };
+	const lots: L[] = [];
+	const out: Match[] = [];
+	for (const t of [...list].sort((a, b) => a.date.localeCompare(b.date) || (IN(a.kind) === IN(b.kind) ? a.id - b.id : IN(a.kind) ? -1 : 1))) {
+		if (IN(t.kind)) {
+			lots.push({ id: t.id, date: t.date, qty: t.qty, cost: (t.basis ?? t.price) * f + (t.qty ? t.fee / t.qty : 0), fx: t.fx, fromTransfer: t.kind === 'opening' && t.basis === undefined, opening: t.kind === 'opening' });
+			continue;
+		}
+		let left = t.qty;
+		const net = t.price * f - (t.qty ? t.fee / t.qty : 0);
+		while (left > EPS && lots.length) {
+			const lot = lots[0];
+			const q = Math.min(lot.qty, left);
+			out.push({ buyId: lot.id, sellId: t.id, buyDate: lot.date, sellDate: t.date, qty: q, cost: lot.cost, proceeds: net, fxBuy: lot.fx, fxSell: t.fx, fromTransfer: lot.fromTransfer, opening: lot.opening });
+			lot.qty -= q;
+			left -= q;
+			if (lot.qty <= EPS) lots.shift();
+		}
+	}
+	return out;
+}
+
 export interface Holding {
 	qty: number;
 	/** average price of what is held, in the price unit (fees not included) */
@@ -418,10 +458,11 @@ export interface Twr {
  * first day starts from the money itself (its first buy at its price, valued at the close). The pieces multiply;
  * the result does not depend on when or how much money came.
  */
-export function twr(book: Book, m: Market, end: string): Twr {
+/** `marks` — more days to put in the series (month ends for the report): the chain-linked growth does not change */
+export function twr(book: Book, m: Market, end: string, marks: string[] = []): Twr {
 	const { flows, history } = cashFlow(book, m);
 	if (!flows.length) return { twr: null, from: null, series: [], invested: 0 };
-	const days = [...new Set([...flows.map((f) => f.date), end])].filter((d) => d <= end).sort();
+	const days = [...new Set([...flows.map((f) => f.date), end, ...marks.filter((d) => d >= flows[0].date)])].filter((d) => d <= end).sort();
 	let growth = 1;
 	let last = 0;
 	const series: Twr['series'] = [];

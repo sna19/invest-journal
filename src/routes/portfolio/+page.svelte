@@ -565,6 +565,7 @@
 			<button onclick={() => (cashing = true)}><Wallet size={18} /> {tx('Деньги', 'Cash')}</button>
 			<button onclick={() => ((transferring = true), (transferPreview = null), (transferError = null))}>{tx('Перенос позиций', 'Carry over positions')}</button>
 			<a class="together" href="/portfolio/together">{tx('Всё вместе', 'All together')}</a>
+			<a class="together" href="/portfolio/report?p={v.portfolio.id}">{tx('Отчёт', 'Report')}</a>
 		</div>
 	{/if}
 

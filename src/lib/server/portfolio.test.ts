@@ -360,3 +360,38 @@ describe('the day change (T-019)', () => {
 		expect(us.dayPc).toBeCloseTo(10 * (112 - 110) * 3.8, 6);
 	});
 });
+
+describe('the report (owner\'s request 20.11.2026)', async () => {
+	const { portfolioReport } = await import('./report.js');
+	it('months: the return and the gain split into realized, dividends, costs and the rest; flows apart', () => {
+		const s = setup();
+		const usd = createPortfolio(s.app, { name: 'USD', kind: 'real', currency: 'USD' });
+		addCash(s.app, s.market, usd.id, { kind: 'deposit', date: '2026-01-05', amount: 2000, currency: 'USD' }, NOW);
+		addEvent(s.app, s.market, { portfolioId: usd.id, securityId: s.us, kind: 'buy', date: '2026-01-05', qty: 10, price: 100, fee: 0 }, NOW);
+		addEvent(s.app, s.market, { portfolioId: usd.id, securityId: s.us, kind: 'sell', date: '2026-04-01', qty: 4, price: 120, fee: 0 }, NOW);
+		const r = portfolioReport(s.app, s.market, usd.id, '2026-04-30')!;
+		expect(r.months.map((x) => x.month)).toEqual(['2026-01', '2026-02', '2026-03', '2026-04']);
+		const jan = r.months[0];
+		expect(jan.flows).toBe(2000);
+		const apr = r.months[3];
+		// the sale: 4 × (120 − 100) realized in April
+		expect(apr.realized).toBeCloseTo(80, 6);
+		for (const x of r.months) expect(x.realized + x.dividends - x.costs + x.unrealized).toBeCloseTo(x.gain, 6);
+		// the months chain to the whole return
+		const chained = r.months.reduce((g, x) => g * (1 + (x.pct ?? 0) / 100), 1);
+		expect((chained - 1) * 100).toBeCloseTo(r.total.pct!, 1);
+	});
+
+	it('closed trades: each sale against the market over the same days, what came after', () => {
+		const s = setup();
+		const usd = createPortfolio(s.app, { name: 'USD', kind: 'real', currency: 'USD' });
+		addEvent(s.app, s.market, { portfolioId: usd.id, securityId: s.us, kind: 'buy', date: '2026-01-05', qty: 10, price: 100, fee: 0 }, NOW);
+		addEvent(s.app, s.market, { portfolioId: usd.id, securityId: s.us, kind: 'sell', date: '2026-04-01', qty: 4, price: 120, fee: 0 }, NOW);
+		const r = portfolioReport(s.app, s.market, usd.id, '2026-04-30')!;
+		expect(r.trades).toHaveLength(1);
+		expect(r.trades[0]).toMatchObject({ symbol: 'UUU', qty: 4, returnPct: 20, profitPc: 80, kind: 'own', days: 86 });
+		// the price now 110 against the sale's 120
+		expect(r.trades[0].afterPct).toBeCloseTo((110 / 120 - 1) * 100, 1);
+		expect(r.summary).toMatchObject({ n: 1, wins: 1, profitPc: 80 });
+	});
+});
