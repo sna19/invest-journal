@@ -18,6 +18,10 @@ export interface Lev {
 	level: 'stock' | 'industry' | 'sector' | 'index';
 	/** what it follows: the share's symbol, «Semiconductors», «S&P 500» */
 	label: string;
+	/** the fund's annual fee, a fraction (0.0105 = 1,05% a year); null — not known or not loaded yet */
+	expenseRatio: number | null;
+	/** the fund's profile is loaded (otherwise the fee is coming) */
+	profiled: boolean;
 }
 
 const NOT_LEVERAGED = /covered call|income|yield|option|buffer|premium|hedged|weeklypay|target outcome/i;
@@ -73,6 +77,8 @@ const COMMON = new Set(
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 let cache: { at: number; rows: { id: number; symbol: string; name: string; exchange: string; lev: { dir: 'long' | 'short'; x: number } }[] } | null = null;
+/** the list of funds is rebuilt at the next request (after a list update) */
+export const dropLeveragedCache = () => void (cache = null);
 function leveragedFunds(market: Database.Database) {
 	if (cache && Date.now() - cache.at < 3600_000) return cache.rows;
 	const rows = (
@@ -97,7 +103,7 @@ export function leveragedFor(market: Database.Database, id: number): Lev[] {
 	const funds = leveragedFunds(market);
 	const out: Lev[] = [];
 	const add = (f: (typeof funds)[number], level: Lev['level'], label: string) => {
-		if (f.id !== id && !out.some((x) => x.id === f.id)) out.push({ id: f.id, symbol: f.symbol, name: f.name, exchange: f.exchange, ...f.lev, level, label });
+		if (f.id !== id && !out.some((x) => x.id === f.id)) out.push({ id: f.id, symbol: f.symbol, name: f.name, exchange: f.exchange, ...f.lev, level, label, expenseRatio: null, profiled: false });
 	};
 	// on the share itself: its symbol as a word of the fund's name, or its company's own first word
 	if (s.type === 'stock') {
@@ -116,6 +122,17 @@ export function leveragedFor(market: Database.Database, id: number): Lev[] {
 		if (s.exchange === 'NASDAQ') put(NDX, 'index', 'Nasdaq 100');
 		if (s.cap !== null && s.cap < 5e9 && s.cur === 'USD') put(R2K, 'index', 'Russell 2000');
 		put(SP500, 'index', 'S&P 500');
+	}
+	// the funds' fees — from their profiles
+	if (out.length) {
+		const fees = new Map(
+			(market.prepare(`select security_id as id, expense_ratio as er, kind from ref_security_profiles where security_id in (${out.map((x) => x.id).join(',')})`).all() as { id: number; er: number | null; kind: string }[]).map((r) => [r.id, r])
+		);
+		for (const x of out) {
+			const f = fees.get(x.id);
+			x.expenseRatio = f?.er ?? null;
+			x.profiled = !!f;
+		}
 	}
 	return out;
 }

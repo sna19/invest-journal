@@ -124,6 +124,24 @@ export function runHistoryJob(): Promise<QueueSummary> {
 }
 
 /** A new hypothesis's security joins ring 1 at once: its history is queued and loaded in the background. */
+/** profiles of some securities (the funds of a card: their fees) — in the background, one load at a time */
+const profileQueue = new Set<number>();
+export function queueProfiles(ids: number[]) {
+	for (const id of ids) profileQueue.add(id);
+	void single('profiles-queue', async () => {
+		while (profileQueue.size) {
+			const batch = [...profileQueue];
+			profileQueue.clear();
+			try {
+				await loadProfiles(getMarket().sqlite, batch);
+			} catch (e) {
+				console.error(`profiles queue: ${e}`);
+				return;
+			}
+		}
+	});
+}
+
 export function queueSecurity(securityId: number) {
 	const m = getMarket().sqlite;
 	if (enqueueMissingHistory(m, [securityId], israelDate())) void runHistoryJob().then(() => runHypothesesStep());

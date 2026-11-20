@@ -57,6 +57,13 @@
       "when": 1795095158436,
       "tag": "0007_prices_monthly",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1795191665988,
+      "tag": "0008_fund_expense_ratio",
+      "breakpoints": true
     }
   ]
 }
