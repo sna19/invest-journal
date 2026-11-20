@@ -79,7 +79,7 @@
 {#if problem}<p class="warn" role="alert">{problem}</p>{/if}
 
 <section class="search">
-	<TickerSearch includeInactive label={tx('Найти бумагу', 'Find a security')} onselect={(s) => (picked = s)} />
+	<TickerSearch includeInactive filters label={tx('Найти бумагу', 'Find a security')} onselect={(s) => (picked = s)} />
 </section>
 
 

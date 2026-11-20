@@ -8,7 +8,7 @@ import { providerSymbols, rawFiles, securities, securitySymbols } from '../schem
 import { httpsGet, makeFetcher, viaFetch } from './http.js';
 import { cleanName, nasdaqTrader } from './nasdaqtrader.js';
 import { checkListings, isSuspicious, runListings } from './pipeline.js';
-import { searchSecurities } from './search.js';
+import { isCommodity, searchSecurities } from './search.js';
 import { tase } from './tase.js';
 import type { Fetcher, ListingAdapter } from './types.js';
 
@@ -212,5 +212,31 @@ describe('TASE foreign ETF names (20.11.2026)', async () => {
 		expect(foreignEtfName('IN.FF1', 'INV.FRFS&P 500', 'אינבסקו.חוץ')).toBe('Invesco S&P 500 UCITS ETF');
 		expect(foreignEtfName('IS.FFIND', 'ISHARE.F INDIA', 'איישרס.חוץ הודו INDIA')).toBe('iShares INDIA UCITS ETF');
 		expect(foreignEtfName('KSM.F208', 'KSM ETF', 'קסם')).toBe('KSM ETF');
+	});
+	it('filters by kind and sector; with a filter, lists without a query by market cap', async () => {
+		const { db, sqlite, rawDir } = setup();
+		for (const a of [nasdaqTrader, tase] as ListingAdapter[]) await runListings(db, a, { get: files, rawDir });
+		const sym = (q: string, o: Parameters<typeof searchSecurities>[2]) => searchSecurities(sqlite, q, o).map((h) => h.symbol);
+		expect(sym('spy', { kind: 'etf' })[0]).toBe('SPY');
+		expect(sym('spy', { kind: 'stock' })).not.toContain('SPY');
+		const id = (s: string) => (sqlite.prepare('select id from ref_securities where symbol = ? order by id limit 1').get(s) as { id: number }).id;
+		const put = sqlite.prepare(`insert into ref_security_profiles (security_id, kind, sector, market_cap, cap_currency, fetched_at) values (?, 'stock', ?, ?, ?, '2026-11-20')`);
+		put.run(id('AMAT'), 'technology', 2e11, 'USD');
+		put.run(id('NVDA'), 'technology', 4e12, 'USD');
+		put.run(id('TEVA'), 'healthcare', 2e10, 'USD');
+		expect(sym('', { sector: 'technology' })).toEqual(['NVDA', 'AMAT']);
+		expect(sym('', { sector: 'technology', limit: 1, offset: 1 })).toEqual(['AMAT']);
+		expect(sym('', {})).toEqual([]);
+	});
+	it('a commodity fund: gold or oil, not the miners', () => {
+		expect(isCommodity('etf', 'SPDR Gold Trust', null, null)).toBe(true);
+		expect(isCommodity('etf', 'United States Oil Fund', null, null)).toBe(true);
+		expect(isCommodity('stock', 'Invesco DB Gold Double Long ETN', null, null)).toBe(true);
+		expect(isCommodity('etf', 'VanEck Gold Miners ETF', null, null)).toBe(false);
+		expect(isCommodity('etf', 'Goldman Sachs ActiveBeta US Large Cap Equity ETF', null, null)).toBe(false);
+		expect(isCommodity('stock', 'Exxon Mobil Corporation', null, null)).toBe(false);
+		expect(isCommodity('etf', 'KSM ETF', 'קסם זהב', null)).toBe(true);
+		expect(isCommodity('etf', 'Some Fund', null, 'Commodities Focused')).toBe(true);
+		expect(isCommodity('etf', 'iShares Gold Trust', null, 'Equity Precious Metals')).toBe(false);
 	});
 });

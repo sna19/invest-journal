@@ -40,7 +40,7 @@ export const METRIC_LABEL = (t: Tx): Record<Metric, string> => ({
 	result: t('Результат', 'Result')
 });
 
-const SECTORS: Record<string, [string, string]> = {
+export const SECTORS: Record<string, [string, string]> = {
 	technology: ['Технологии', 'Technology'],
 	financial_services: ['Финансы', 'Financial services'],
 	healthcare: ['Здравоохранение', 'Healthcare'],

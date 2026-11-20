@@ -4,6 +4,35 @@ import type Database from 'better-sqlite3';
 
 export type Market = 'us' | 'il' | 'all';
 
+/** the «Тикеры» screen's filter (owner's request 20.11.2026): stocks, ETFs or commodities — each without the others */
+export type Kind = 'stock' | 'etf' | 'commodity';
+
+const COMMODITY = /\b(gold|silver|platinum|palladium|precious metals?|crude|oil|brent|wti|natural gas|commodit(y|ies)|copper|agricultur\w*|grains?|wheat|corn|soybeans?|sugar|coffee|cocoa|cotton|livestock|base metals?)\b/i;
+const NOT_COMMODITY = /\boil\s*(&|and)\s*gas\b|\brefiner|\bbig oil\b|\b(drinks|power|turbines|infrastructure|electrification|industry|depositary|royality|miners?|mining|producers?|explor\w*|royalt\w*|equit(y|ies)|stocks?|compan(y|ies)|services|equipment|corp(oration)?|inc|ltd)\b/i;
+const FUND_WORD = /\b(etf|etn|etc|etp|trust|fund|shares|ishares|spdr|invesco|proshares|direxion|ipath)\b/i;
+const COMMODITY_HE = /זהב|נפט|סחורות|כסף פיזי|גז טבעי/;
+
+/**
+ * A commodity fund: an ETF (or an ETN listed as a share) on gold, oil, grains… — not the miners. By the Yahoo fund
+ * category where there is one, else by the name (English or Hebrew).
+ */
+export function isCommodity(type: string, nameEn: string, nameHe: string | null, category: string | null): boolean {
+	if (type === 'index') return false;
+	if (category) return /^commodit/i.test(category);
+	if (type !== 'etf' && !FUND_WORD.test(nameEn)) return false;
+	if (NOT_COMMODITY.test(nameEn)) return false;
+	return COMMODITY.test(nameEn) || (!!nameHe && COMMODITY_HE.test(nameHe));
+}
+
+const registered = new WeakSet<Database.Database>();
+function withFunctions(sqlite: Database.Database) {
+	if (registered.has(sqlite)) return;
+	sqlite.function('is_commodity', { deterministic: true }, (t: unknown, en: unknown, he: unknown, cat: unknown) =>
+		isCommodity(String(t), String(en ?? ''), (he as string | null) ?? null, (cat as string | null) ?? null) ? 1 : 0
+	);
+	registered.add(sqlite);
+}
+
 export interface SecurityHit {
 	id: number;
 	symbol: string;
@@ -15,6 +44,10 @@ export interface SecurityHit {
 	currency: string;
 	priceUnit: string;
 	active: boolean;
+	/** from the Yahoo profile, where loaded */
+	sector: string | null;
+	/** the market cap in dollars (TASE's in shekels at 3.7) — the order of the list without a query */
+	capUsd: number | null;
 }
 
 export const MIN_QUERY = 2;
@@ -38,38 +71,51 @@ function prepare(sqlite: Database.Database, key: string, sql: string) {
 export function searchSecurities(
 	sqlite: Database.Database,
 	q: string,
-	opts: { market?: Market; includeInactive?: boolean; noIndex?: boolean; limit?: number; withManual?: boolean } = {}
+	opts: { market?: Market; includeInactive?: boolean; noIndex?: boolean; limit?: number; offset?: number; withManual?: boolean; kind?: Kind; sector?: string } = {}
 ): SecurityHit[] {
 	const query = q.trim().toLowerCase();
-	if (query.length < MIN_QUERY) return [];
+	// with a filter the list is shown without a query too: browsing by kind or sector
+	const browse = query.length < MIN_QUERY && !!(opts.kind || opts.sector);
+	if (query.length < MIN_QUERY && !browse) return [];
+	withFunctions(sqlite);
 	const market = opts.market ?? 'all';
+	const commodity = `is_commodity(s.type, s.name_en, s.name_he, p.fund_category)`;
 	const where = [
-		"s.search like ? escape '\\'",
-		opts.includeInactive ? '1 = 1' : 's.active = 1',
+		browse ? '1 = 1' : "s.search like ? escape '\\'",
+		opts.includeInactive && !browse ? '1 = 1' : 's.active = 1',
 		market === 'us' ? "e.country = 'US'" : market === 'il' ? "e.country = 'IL'" : '1 = 1',
-		opts.noIndex ? "s.type <> 'index'" : '1 = 1',
+		opts.noIndex || opts.kind ? "s.type <> 'index'" : '1 = 1',
 		// securities added by hand for a portfolio (ETF UCITS) are found only where a portfolio asks
-		opts.withManual ? '1 = 1' : 's.manual = 0'
+		opts.withManual ? '1 = 1' : 's.manual = 0',
+		opts.kind === 'commodity' ? `${commodity} = 1` : opts.kind ? `s.type = '${opts.kind}' and ${commodity} = 0` : '1 = 1',
+		opts.sector ? 'p.sector = ?' : '1 = 1'
 	].join(' and ');
-	const st = prepare(
-		sqlite,
-		`search:${market}:${!!opts.includeInactive}:${!!opts.noIndex}:${!!opts.withManual}`,
-		`select s.id, s.symbol, s.name_en as nameEn, s.name_he as nameHe, s.exchange_code as exchangeCode,
-		        e.name as exchangeName, s.type, s.currency, s.price_unit as priceUnit, s.active
-		   from ref_securities s join ref_exchanges e on e.code = s.exchange_code
-		  where ${where}
-		  order by case
+	const cap = `case p.cap_currency when 'ILS' then p.market_cap / 3.7 when 'ILA' then p.market_cap / 370 else p.market_cap end`;
+	const order = browse
+		? `${cap} is null, ${cap} desc, s.symbol`
+		: `case
 		             when lower(s.symbol) = ? then 0
 		             when lower(s.symbol) like ? escape '\\' then 1
 		             when lower(s.name_en) like ? escape '\\' or s.name_he like ? escape '\\' then 2
 		             when s.search like ? escape '\\' then 3
 		             else 4
 		           end,
-		           s.active desc, case s.type when 'stock' then 0 when 'etf' then 1 else 2 end, length(s.symbol), s.symbol
-		  limit ?`
+		           s.active desc, case s.type when 'stock' then 0 when 'etf' then 1 else 2 end, length(s.symbol), s.symbol`;
+	const st = prepare(
+		sqlite,
+		`search:${market}:${!!opts.includeInactive}:${!!opts.noIndex}:${!!opts.withManual}:${opts.kind ?? ''}:${!!opts.sector}:${browse}`,
+		`select s.id, s.symbol, s.name_en as nameEn, s.name_he as nameHe, s.exchange_code as exchangeCode,
+		        e.name as exchangeName, s.type, s.currency, s.price_unit as priceUnit, s.active, p.sector, ${cap} as capUsd
+		   from ref_securities s join ref_exchanges e on e.code = s.exchange_code
+		   left join ref_security_profiles p on p.security_id = s.id
+		  where ${where}
+		  order by ${order}
+		  limit ? offset ?`
 	);
 	const like = escapeLike(query);
-	const rows = st.all(`%${like}%`, query, `${like}%`, `${like}%`, `${like}%`, `% ${like}%`, opts.limit ?? 20) as (Omit<SecurityHit, 'active'> & { active: number })[];
+	const sector = opts.sector ? [opts.sector] : [];
+	const args = browse ? [...sector] : [`%${like}%`, ...sector, query, `${like}%`, `${like}%`, `${like}%`, `% ${like}%`];
+	const rows = st.all(...args, opts.limit ?? 20, opts.offset ?? 0) as (Omit<SecurityHit, 'active'> & { active: number })[];
 	return rows.map((r) => ({ ...r, active: !!r.active }));
 }
 
