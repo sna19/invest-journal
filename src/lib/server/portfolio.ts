@@ -227,12 +227,14 @@ export interface EventRow extends BasisEv {
 	amount: number | null;
 	note: string | null;
 	hypothesisId: number | null;
+	/** T-020: a trade from a model's candidate card */
+	modelVersionId?: number | null;
 	auto: number;
 	createdAt: string;
 }
 
 const EVENT_COLS = `id, position_id as positionId, kind, date, qty, price, currency, fee, fx_rate as fxRate, amount, cost_total as costTotal, note,
-	hypothesis_id as hypothesisId, reverses_event_id as reversesEventId, auto, cancelled_at as cancelledAt, created_at as createdAt`;
+	hypothesis_id as hypothesisId, model_version_id as modelVersionId, reverses_event_id as reversesEventId, auto, cancelled_at as cancelledAt, created_at as createdAt`;
 const CASH_COLS = `id, portfolio_id as portfolioId, kind, date, amount, currency, to_amount as toAmount, to_currency as toCurrency, fx_rate as fxRate,
 	note, position_id as positionId, reverses_event_id as reversesEventId, auto, cancelled_at as cancelledAt, created_at as createdAt`;
 
@@ -275,7 +277,7 @@ export interface PortfolioRow {
 	sourceName?: string | null;
 }
 
-const portfolioRow = (app: Database.Database, id: number) =>
+export const portfolioRow = (app: Database.Database, id: number) =>
 	app.prepare('select p.*, s.name as sourceName from portfolios p left join sources s on s.id = p.auto_source_id where p.id = ?').get(id) as
 		| PortfolioRow
 		| undefined;
