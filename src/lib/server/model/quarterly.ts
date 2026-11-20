@@ -75,6 +75,7 @@ export interface Series {
 	symbol: string;
 	name: string;
 	market: 'US' | 'IL';
+	exchange: string;
 	sector: string | null;
 	/** price unit of the closes: USD | ILA | ILS */
 	unit: string;
@@ -111,12 +112,12 @@ export const isFund = (m: { kind: string | null; industry: string | null; name: 
 export function loadUniverse(market: Database.Database): Universe {
 	const meta = market
 		.prepare(
-			`select s.id, s.symbol, s.name_en as name, e.country, s.price_unit as unit, s.type, s.is_benchmark as bench, p.sector, p.kind, p.industry
+			`select s.id, s.symbol, s.name_en as name, s.exchange_code as exchange, e.country, s.price_unit as unit, s.type, s.is_benchmark as bench, p.sector, p.kind, p.industry
 			   from ref_securities s join ref_exchanges e on e.code = s.exchange_code
 			   left join ref_security_profiles p on p.security_id = s.id
 			  where s.id in (select security_id from ops_monthly_loads where status = 'ok')`
 		)
-		.all() as { id: number; symbol: string; name: string; country: string; unit: string; type: string; bench: number; sector: string | null; kind: string | null; industry: string | null }[];
+		.all() as { id: number; symbol: string; name: string; exchange: string; country: string; unit: string; type: string; bench: number; sector: string | null; kind: string | null; industry: string | null }[];
 	const byId = new Map<number, { rows: [number, number, number, number][] }>();
 	for (const m of meta) byId.set(m.id, { rows: [] });
 	const it = market.prepare('select security_id, month, adj_close, close, volume from market_prices_monthly order by security_id, month').raw().iterate() as Iterable<[number, string, number, number, number | null]>;
@@ -141,7 +142,7 @@ export function loadUniverse(market: Database.Database): Universe {
 			close[i - start] = c;
 			volume[i - start] = v;
 		}
-		return { id: m.id, symbol: m.symbol, name: m.name, market: m.country === 'IL' ? 'IL' : 'US', sector: m.sector, unit: m.unit, start, adj, close, volume };
+		return { id: m.id, symbol: m.symbol, name: m.name, market: m.country === 'IL' ? 'IL' : 'US', exchange: m.exchange, sector: m.sector, unit: m.unit, start, adj, close, volume };
 	};
 	const stocks: Series[] = [];
 	let US: Series | null = null;
@@ -213,6 +214,7 @@ export interface Candidate {
 	id: number;
 	symbol: string;
 	name: string;
+	exchange: string;
 	market: 'US' | 'IL';
 	sector: string | null;
 	/** the measure of each year of the window (variant A — the change, B — the change over the market or sector), % */
@@ -364,6 +366,7 @@ export function runModel(u: Universe, variant: Variant, quarter: number, input: 
 			id: x.s.id,
 			symbol: x.s.symbol,
 			name: x.s.name,
+			exchange: x.s.exchange,
 			market: x.s.market,
 			sector: x.s.sector,
 			results: x.m.map(pct),

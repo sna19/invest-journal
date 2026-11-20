@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import TopBar from '#lib/TopBar.svelte';
 	import HelpIcon from '#lib/HelpIcon.svelte';
+	import TvLink from '#lib/TvLink.svelte';
 	import { showToast } from '#lib/toast.svelte.js';
 	import { tx } from '#lib/i18n.js';
 	import { sectorName } from '#lib/allocation.js';
@@ -24,6 +25,7 @@
 		id: number;
 		symbol: string;
 		name: string;
+		exchange: string;
 		market: 'US' | 'IL';
 		sector: string | null;
 		results: (number | null)[];
@@ -88,9 +90,33 @@
 		if (!withParams) params = { ...data!.saved };
 		if (!quarter && data!.result) quarter = data!.result.quarter;
 	}
+	// the screen is remembered on this device (owner's request 20.11.2026): the variant, the quarter and the
+	// parameters tried but not saved — coming back from a card or another tab, nothing is set again
+	type Kept = { variant?: Variant; quarter?: number; preview?: Partial<Record<Variant, Params>> };
+	let kept: Kept = {};
+	const keep = () => {
+		try {
+			localStorage.setItem('model-screen', JSON.stringify(kept));
+		} catch {
+			/* private mode */
+		}
+	};
+	function open(v: Variant) {
+		const pv = kept.preview?.[v];
+		if (pv) {
+			params = { ...pv };
+			void load(true);
+		} else void load(false);
+	}
 	onMount(() => {
-		variant = read('model-variant', 'A') === 'B' ? 'B' : 'A';
-		void load(false);
+		try {
+			kept = JSON.parse(localStorage.getItem('model-screen') ?? '{}') ?? {};
+		} catch {
+			kept = {};
+		}
+		variant = kept.variant ?? (read('model-variant', 'A') === 'B' ? 'B' : 'A');
+		if (kept.quarter && [1, 2, 3, 4].includes(kept.quarter)) quarter = kept.quarter;
+		open(variant);
 	});
 	onDestroy(() => clearTimeout(timer));
 
@@ -99,21 +125,26 @@
 		if (!params) return;
 		params = { ...params, [k]: v };
 		if (k === 'years' && params.k > params.years) params.k = params.years;
+		kept.preview = { ...kept.preview, [variant]: params };
+		keep();
 		clearTimeout(timer);
 		timer = setTimeout(() => void load(true), 200);
 	}
 	function setVariant(v: Variant) {
 		variant = v;
-		try {
-			localStorage.setItem('model-variant', v);
-		} catch {
-			/* private mode */
-		}
-		void load(false);
+		kept.variant = v;
+		keep();
+		open(v);
 	}
 	function setQuarter(q: number) {
 		quarter = q;
+		kept.quarter = q;
+		keep();
 		void load(true);
+	}
+	function forget() {
+		if (kept.preview) delete kept.preview[variant];
+		keep();
 	}
 	/** the parameters on screen, for the card: it shows the candidate as the preview found it */
 	const previewQuery = () => new URLSearchParams(Object.entries(params ?? {}).map(([k, v]) => [k, String(v)])).toString();
@@ -122,6 +153,7 @@
 		const r = await fetch('/api/model', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ variant, ...params }) }).catch(() => null);
 		if (!r?.ok) return showToast(tx('Не сохранилось', 'Not saved'));
 		data = { ...data!, saved: (await r.json()).saved };
+		forget();
 		showToast(tx('Параметры сохранены — по ним модель запишет гипотезы квартала', 'Parameters saved — the model records the quarter by them'));
 	}
 
@@ -217,7 +249,7 @@
 		{#if changed}
 			<div class="save">
 				<button class="primary" onclick={save}>{tx('Сохранить параметры', 'Save the parameters')}</button>
-				<button class="ghost" onclick={() => ((params = { ...data!.saved }), load(false))}>{tx('Вернуть сохранённые', 'Back to the saved')}</button>
+				<button class="ghost" onclick={() => (forget(), (params = { ...data!.saved }), load(false))}>{tx('Вернуть сохранённые', 'Back to the saved')}</button>
 			</div>
 			<p class="muted small">{tx('Меняйте параметры не чаще раза в квартал и до его начала: новая версия параметров — новая строка в статистике.', 'Change the parameters at most once a quarter and before it starts: a new version is a new row in the stats.')}</p>
 		{/if}
@@ -252,6 +284,7 @@
 						<span class="who"><b>{c.symbol}</b><span class="muted small block name">{c.name}</span><span class="muted small block">{c.market === 'US' ? tx('США', 'US') : tx('Израиль', 'Israel')} · {c.sector ? sectorName(c.sector, tx) : tx('сектор неизвестен', 'sector unknown')} · {c.up}/{res.years.length}</span></span>
 						<span class="nums"><b class:up={c.mean > 0}>{pct(c.mean)}</b><span class="muted small block">{tx('мед.', 'med.')} {pct(c.median)}</span><span class="muted small block">{tx('худш.', 'worst')} {pct(c.worst)}</span></span>
 					</button>
+					<span class="tvpos"><TvLink exchange={c.exchange} symbol={c.symbol} /></span>
 				</li>
 			{/each}
 		</ul>
@@ -431,7 +464,17 @@
 		padding: 0;
 	}
 	.cands li {
+		position: relative;
 		border-top: 1px solid var(--line);
+	}
+	/* «TV ↗» under the name, outside the row's button */
+	.tvpos {
+		position: absolute;
+		left: 30px;
+		bottom: 6px;
+	}
+	.cands .crow {
+		padding-bottom: 32px;
 	}
 	.crow {
 		display: grid;

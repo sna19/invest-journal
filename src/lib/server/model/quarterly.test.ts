@@ -14,7 +14,7 @@ function series(id: number, f: (y: number, m: number) => number, o: Partial<Seri
 		if (j > 0) p *= 1 + f(Math.floor(i / 12), (i % 12) + 1);
 		adj[j] = p;
 	}
-	return { id, symbol: `S${id}`, name: `Share ${id}`, market: 'US', sector: 'technology', unit: 'USD', start: START, adj, close: adj.slice(), volume: new Float64Array(n).fill(1e6), ...o };
+	return { id, symbol: `S${id}`, name: `Share ${id}`, market: 'US', exchange: 'NASDAQ', sector: 'technology', unit: 'USD', start: START, adj, close: adj.slice(), volume: new Float64Array(n).fill(1e6), ...o };
 }
 
 const flat = series(100, () => 0);

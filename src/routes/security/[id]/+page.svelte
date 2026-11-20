@@ -6,6 +6,7 @@
 	import TopBar from '#lib/TopBar.svelte';
 	import HelpIcon from '#lib/HelpIcon.svelte';
 	import Pct from '#lib/Pct.svelte';
+	import TvLink from '#lib/TvLink.svelte';
 	import LineChart, { colorOf, type Line, type Mark } from '#lib/charts/LineChart.svelte';
 	import { SIGNAL, short } from '#lib/HypothesisCard.svelte';
 	import { priceText, STAGE_LABEL, type Stage } from '#lib/portfolio.js';
@@ -203,6 +204,7 @@
 
 	<div class="head">
 		<b class="price">{priceText(c.today?.price ?? c.last?.close, c.security.priceUnit)}</b>
+		<TvLink exchange={c.security.exchange} symbol={c.security.symbol} />
 		{#if c.today}<span class="day"><Pct value={c.today.dayPct} /> <span class="muted small">{c.today.date >= new Date().toISOString().slice(0, 10) ? tx('за день', 'today') : `${tx('за', 'on')} ${short(c.today.date, true)}`}</span></span>
 		{:else if c.last}<span class="muted small">{tx('закрытие', 'close')} {short(c.last.date, true)}</span>{/if}
 		<span class="grow"></span>

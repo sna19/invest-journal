@@ -1,4 +1,5 @@
 <script lang="ts">
+	import TvLink from '../TvLink.svelte';
 	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onMount, tick } from 'svelte';
 	import Undo2 from '@lucide/svelte/icons/undo-2';
@@ -151,7 +152,7 @@
 	<div class="skeleton"></div>
 {:else}
 	{@const p = v.position}
-	<p class="name">{p.name} · {p.exchange.replace('_', ' ')} · <a href="/security/{p.securityId}">{tx('график', 'chart')}</a> · <b>{STAGE_LABEL[p.stage]}</b><HelpIcon topicKey="portfolio.stages" label={tx('этапы позиции', 'position stages')} /></p>
+	<p class="name">{p.name} · {p.exchange.replace('_', ' ')} · <a href="/security/{p.securityId}">{tx('график', 'chart')}</a> <TvLink exchange={p.exchange} symbol={p.symbol} /> · <b>{STAGE_LABEL[p.stage]}</b><HelpIcon topicKey="portfolio.stages" label={tx('этапы позиции', 'position stages')} /></p>
 
 	{#if p.qty > 0}
 		<div class="nums">

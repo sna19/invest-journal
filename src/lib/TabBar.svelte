@@ -14,9 +14,23 @@
 		{ href: '/', label: 'tab.hypotheses' as const, icon: NotebookPen, match: (p: string) => p === '/' || p.startsWith('/hypotheses') },
 		{ href: '/sources', label: 'tab.sources' as const, icon: Newspaper, match: (p: string) => p.startsWith('/sources') },
 		{ href: '/stats', label: 'tab.stats' as const, icon: ChartColumn, match: (p: string) => p.startsWith('/stats') },
-		{ href: '/more', label: 'tab.more' as const, icon: Ellipsis, match: (p: string) => ['/more', '/tickers', '/settings', '/account', '/model'].some((x) => p.startsWith(x)) }
+		{ href: '/more', label: 'tab.more' as const, icon: Ellipsis, match: (p: string) => inMore(p) }
 	];
 	const path = $derived(page.url.pathname);
+
+	// «Ещё» returns to the screen last open inside it (owner's request 20.11.2026): a tap from another tab goes
+	// back to the model, settings, … where he was; a tap while inside opens the «Ещё» menu itself
+	const MORE = ['/more', '/tickers', '/settings', '/account', '/model'];
+	const inMore = (p: string) => MORE.some((x) => p === x || p.startsWith(x + '/'));
+	let moreLast = $state('/more');
+	$effect(() => {
+		try {
+			if (inMore(path)) localStorage.setItem('more-last', path + page.url.search);
+			else moreLast = localStorage.getItem('more-last') ?? '/more';
+		} catch {
+			/* private mode */
+		}
+	});
 
 	// «+» hides while the page scrolls down and comes back on the way up or at the end: it never covers data for long
 	let hidden = $state(false);
@@ -37,7 +51,7 @@
 <nav class="tabbar" aria-label={t('tab.sections')}>
 	{#each tabs as tab (tab.href)}
 		{@const on = tab.match(path)}
-		<a href={tab.href} class:on aria-current={on ? 'page' : undefined}>
+		<a href={tab.href === '/more' && !on ? moreLast : tab.href} class:on aria-current={on ? 'page' : undefined}>
 			<tab.icon size={24} strokeWidth={on ? 2.3 : 1.8} />
 			<span>{t(tab.label)}</span>
 		</a>
