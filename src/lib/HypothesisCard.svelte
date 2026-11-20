@@ -71,6 +71,7 @@
 </script>
 
 <script lang="ts">
+	import TvLink from './TvLink.svelte';
 	import { untrack } from 'svelte';
 	import Lock from '@lucide/svelte/icons/lock';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
@@ -143,7 +144,7 @@
 <div class="card">
 	<p class="name">
 		{h.securityName} · {h.exchangeCode === 'TASE' ? 'TASE' : h.exchangeCode.replace('_', ' ')} ·
-		<a href="/security/{h.securityId}">{tx('график', 'chart')}</a>
+		<a href="/security/{h.securityId}">{tx('график', 'chart')}</a> <TvLink exchange={h.exchangeCode} symbol={h.symbol} />
 	</p>
 
 	{#if h.entryPrice === null}

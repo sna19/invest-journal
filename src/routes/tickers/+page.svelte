@@ -1,4 +1,5 @@
 <script lang="ts">
+	import TvLink from '#lib/TvLink.svelte';
 	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onDestroy, onMount } from 'svelte';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
@@ -138,6 +139,7 @@
 			<dd>{s.active ? tx('да', 'yes') : tx('нет — бумага сохранена для старых гипотез', 'no — kept for old hypotheses')}</dd>
 		</dl>
 		<a class="tocard" href="/security/{s.id}">{tx('Карточка бумаги и график', 'Security card and chart')}</a>
+		<TvLink exchange={s.exchangeCode} symbol={s.symbol} />
 	</Sheet>
 {/if}
 

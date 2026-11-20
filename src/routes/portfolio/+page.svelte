@@ -12,6 +12,7 @@
 	import FileJson from '@lucide/svelte/icons/file-json';
 	import TopBar from '#lib/TopBar.svelte';
 	import Allocation from '#lib/portfolio/Allocation.svelte';
+	import TvLink from '#lib/TvLink.svelte';
 	import type { AllocProfile } from '#lib/allocation.js';
 	import Empty from '#lib/Empty.svelte';
 	import Sheet from '#lib/Sheet.svelte';
@@ -39,6 +40,7 @@
 		sourceName?: string | null;
 	}
 	interface Pos {
+		exchange: string;
 		profile: AllocProfile | null;
 		dayPct: number | null;
 		dayPc: number | null;
@@ -615,6 +617,7 @@
 								{#if p.plan?.note && st !== 'closed' && st !== 'holding'}<span class="note">{p.plan.note}</span>{/if}
 								<ChevronRight size={18} />
 							</button>
+							<span class="tvpos"><TvLink exchange={p.exchange} symbol={p.symbol} /></span>
 						</li>
 					{/each}
 				</ul>
@@ -1263,10 +1266,19 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45`)}</pre>
 		text-align: left;
 		cursor: pointer;
 	}
+	.list li {
+		position: relative;
+	}
+	/* «TV ↗» in the row's corner, under the chevron */
+	.tvpos {
+		position: absolute;
+		right: var(--s2);
+		bottom: var(--s2);
+	}
 	.list button > :global(svg) {
 		position: absolute;
 		right: var(--s3);
-		top: 50%;
+		top: 35%;
 		transform: translateY(-50%);
 		color: var(--muted);
 	}

@@ -9,3 +9,5 @@ For the chosen quarter the model takes every share of the base and looks at how 
 **Each candidate** has 10 quarterly results, the mean, the median and the worst year. A tap on a row opens the security's card with the model's block: the years next to the market (a mean can rest on one exceptional year), the chart with the quarter shaded and the trade buttons.
 
 The data update once a month, at night.
+
+The screen remembers on this device the variant, the quarter and the parameters you tried but did not save: after a security's card or another tab everything is in place. «Back to the saved» drops the trial.
