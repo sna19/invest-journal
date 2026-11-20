@@ -11,6 +11,8 @@
 		currency: string;
 		priceUnit: string;
 		active: boolean;
+		sector?: string | null;
+		capUsd?: number | null;
 	}
 	type Market = 'all' | 'us' | 'il';
 
@@ -41,6 +43,7 @@
 	import { onMount } from 'svelte';
 	import Search from '@lucide/svelte/icons/search';
 	import HelpIcon from './HelpIcon.svelte';
+	import { SECTORS, sectorName } from './allocation.js';
 
 	/**
 	 * Spec section 4 — the ticker is always chosen from the local base: autocomplete from the second
@@ -56,8 +59,17 @@
 		autofocus?: boolean;
 		/** also securities added by hand for a portfolio (ETF UCITS) */
 		withManual?: boolean;
+		/** the filters by kind and sector, and the list without a query (the «Тикеры» screen) */
+		filters?: boolean;
 	}
-	let { onselect, includeInactive = false, noIndex = false, label = tx('Тикер', 'Ticker'), autofocus = false, withManual = false }: Props = $props();
+	let { onselect, includeInactive = false, noIndex = false, label = tx('Тикер', 'Ticker'), autofocus = false, withManual = false, filters = false }: Props = $props();
+
+	type Kind = '' | 'stock' | 'etf' | 'commodity';
+	const FILTER_KEY = 'ticker-filter';
+	const PAGE = 50;
+	let kind = $state<Kind>('');
+	let sector = $state('');
+	let more = $state(false);
 
 	let q = $state('');
 	let market = $state<Market>('all');
@@ -75,24 +87,49 @@
 		try {
 			const m = localStorage.getItem(MARKET_KEY);
 			if (m === 'us' || m === 'il' || m === 'all') market = m;
+			if (filters) {
+				const f = JSON.parse(localStorage.getItem(FILTER_KEY) ?? '{}');
+				if (['stock', 'etf', 'commodity'].includes(f.kind)) kind = f.kind;
+				if (typeof f.sector === 'string' && f.sector in SECTORS) sector = f.sector;
+			}
 		} catch {
 			/* ignore */
 		}
+		if (filters && (kind || sector)) search();
 	});
 
-	const query = $derived(q.trim());
-	const shown = $derived(query.length >= 2 ? items : recent.filter((s) => market === 'all' || (market === 'il') === (s.exchangeCode === 'TASE')));
+	function setFilter(k: Kind, sec: string) {
+		kind = k;
+		sector = k === 'stock' || k === '' ? sec : '';
+		try {
+			localStorage.setItem(FILTER_KEY, JSON.stringify({ kind, sector }));
+		} catch {
+			/* ignore */
+		}
+		search();
+	}
 
-	async function search() {
+	const query = $derived(q.trim());
+	const browsing = $derived(filters && q.trim().length < 2 && !!(kind || sector));
+	const shown = $derived(query.length >= 2 || browsing ? items : recent.filter((s) => market === 'all' || (market === 'il') === (s.exchangeCode === 'TASE')));
+
+	async function search(append = false) {
 		const my = ++seq;
-		if (query.length < 2) {
+		if (query.length < 2 && !browsing) {
 			items = [];
+			more = false;
 			loading = false;
 			return;
 		}
 		loading = true;
 		try {
 			const p = new URLSearchParams({ q: query, market });
+			if (filters) {
+				if (kind) p.set('kind', kind);
+				if (sector) p.set('sector', sector);
+				p.set('limit', String(PAGE));
+				if (append) p.set('offset', String(items.length));
+			}
 			if (includeInactive) p.set('inactive', '1');
 			if (noIndex) p.set('noindex', '1');
 			if (withManual) p.set('manual', '1');
@@ -100,8 +137,9 @@
 			if (!r.ok) throw new Error();
 			const j = await r.json();
 			if (my !== seq) return;
-			items = j.items;
-			active = items.length ? 0 : -1;
+			items = append ? [...items, ...j.items] : j.items;
+			more = filters && j.items.length === PAGE;
+			if (!append) active = items.length ? 0 : -1;
 			error = undefined;
 		} catch {
 			if (my === seq) error = tx('Поиск не ответил — проверьте связь.', 'Search did not answer — check the connection.');
@@ -141,7 +179,15 @@
 	}
 
 	const unit = (s: Security) => (s.priceUnit === 'ILA' ? tx('агорот', 'agorot') : s.currency);
-	const kind = (s: Security) => (s.type === 'etf' ? 'ETF' : s.type === 'index' ? tx('индекс', 'index') : '');
+	const typeOf = (s: Security) => (s.type === 'etf' ? 'ETF' : s.type === 'index' ? tx('индекс', 'index') : '');
+	const capText = (x: number | null | undefined) =>
+		!x ? '' : x >= 1e12 ? `${(x / 1e12).toFixed(1)} ${tx('трлн $', 'T $')}` : x >= 1e9 ? `${Math.round(x / 1e9)} ${tx('млрд $', 'B $')}` : `${Math.round(x / 1e6)} ${tx('млн $', 'M $')}`;
+	const KINDS: [Kind, string, string][] = [
+		['', 'Все типы', 'All types'],
+		['stock', 'Акции', 'Stocks'],
+		['etf', 'ETF', 'ETF'],
+		['commodity', 'Сырьевые фонды', 'Commodities']
+	];
 </script>
 
 <div class="ticker">
@@ -175,8 +221,29 @@
 		{/each}
 	</div>
 
+	{#if filters}
+		<div class="markets kinds" role="radiogroup" aria-label={tx('Тип бумаги', 'Security type')}>
+			{#each KINDS as [k, ru, en] (k)}
+				<button role="radio" aria-checked={kind === k} class:on={kind === k} onclick={() => setFilter(k, sector)}>{tx(ru, en)}</button>
+			{/each}
+		</div>
+		{#if kind === '' || kind === 'stock'}
+			<div class="sectors" role="radiogroup" aria-label={tx('Сектор', 'Sector')}>
+				<button role="radio" aria-checked={!sector} class:on={!sector} onclick={() => setFilter(kind, '')}>{tx('Все секторы', 'All sectors')}</button>
+				{#each Object.keys(SECTORS) as k (k)}
+					<button role="radio" aria-checked={sector === k} class:on={sector === k} onclick={() => setFilter(kind, k)}>{sectorName(k, tx)}</button>
+				{/each}
+			</div>
+		{/if}
+	{/if}
+
 	{#if error}
 		<p class="note">{error}</p>
+	{:else if browsing && loading && !items.length}
+		<div class="skeleton"></div>
+		<div class="skeleton"></div>
+	{:else if browsing && !items.length}
+		<p class="note">{tx('Под этот фильтр ничего не нашлось.', 'Nothing matches this filter.')}</p>
 	{:else if query.length >= 2 && loading && !items.length}
 		<div class="skeleton"></div>
 		<div class="skeleton"></div>
@@ -187,7 +254,7 @@
 	{/if}
 
 	{#if shown.length}
-		{#if query.length < 2}<p class="caption">{tx('Недавние', 'Recent')}</p>{/if}
+		{#if browsing}<p class="caption">{items.some((s) => s.capUsd) ? tx('По капитализации', 'By market cap') : tx('По алфавиту', 'Alphabetically')}</p>{:else if query.length < 2}<p class="caption">{tx('Недавние', 'Recent')}</p>{/if}
 		<ul id="{inputId}-list" role="listbox" aria-label={tx('Бумаги', 'Securities')}>
 			{#each shown as s, i (s.id)}
 				<li role="option" aria-selected={i === active} class:active={i === active}>
@@ -197,12 +264,13 @@
 							— {s.nameEn}{#if s.nameHe}&nbsp;<bdi class="he" lang="he">{s.nameHe}</bdi>{/if}
 						</span>
 						<span class="meta"
-							>{[s.exchangeName, unit(s), kind(s)].filter(Boolean).join(' · ')}{#if !s.active}&nbsp;· {tx('нет в списках', 'delisted')}{/if}</span
+							>{[s.exchangeName, unit(s), typeOf(s), s.sector ? sectorName(s.sector, tx) : '', capText(s.capUsd)].filter(Boolean).join(' · ')}{#if !s.active}&nbsp;· {tx('нет в списках', 'delisted')}{/if}</span
 						>
 					</button>
 				</li>
 			{/each}
 		</ul>
+		{#if more}<button class="more" disabled={loading} onclick={() => search(true)}>{loading ? tx('Загружаю…', 'Loading…') : tx('Показать ещё', 'Show more')}</button>{/if}
 	{/if}
 </div>
 
@@ -254,6 +322,46 @@
 		background: var(--text);
 		border-color: var(--text);
 		color: var(--bg);
+	}
+	.kinds {
+		margin-top: 0;
+		flex-wrap: wrap;
+	}
+	.kinds button {
+		white-space: nowrap;
+	}
+	.sectors {
+		display: flex;
+		gap: var(--s2);
+		overflow-x: auto;
+		padding-bottom: var(--s1);
+		margin-bottom: var(--s2);
+		scrollbar-width: none;
+	}
+	.sectors button {
+		flex: none;
+		min-height: 32px;
+		padding: 0 var(--s3);
+		border: 1px solid var(--line);
+		border-radius: var(--r-pill);
+		background: var(--surface);
+		font-size: var(--fs-xs);
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.sectors button.on {
+		background: var(--text);
+		border-color: var(--text);
+		color: var(--bg);
+	}
+	.more {
+		width: 100%;
+		min-height: var(--tap);
+		margin-top: var(--s2);
+		border: 1px solid var(--line);
+		border-radius: var(--r2);
+		background: var(--surface);
+		cursor: pointer;
 	}
 	.caption {
 		margin: var(--s3) 0 var(--s1);
