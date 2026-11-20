@@ -36,6 +36,24 @@ export interface Marker {
 	direction?: string;
 }
 
+/** the simple moving averages of the daily closes from `from` on (the 200 days before are read for the start) */
+function smaLines(market: Database.Database, id: number, from: string) {
+	const before = (market.prepare('select close from market_prices_daily where security_id = ? and date < ? order by date desc limit 199').all(id, from) as { close: number }[]).reverse();
+	const after = market.prepare('select date, close from market_prices_daily where security_id = ? and date >= ? order by date').all(id, from) as { date: string; close: number }[];
+	const closes = [...before.map((r) => r.close), ...after.map((r) => r.close)];
+	const offset = before.length;
+	const out: Record<'20' | '50' | '200', { date: string; value: number }[]> = { '20': [], '50': [], '200': [] };
+	for (const n of [20, 50, 200] as const) {
+		let sum = 0;
+		for (let i = 0; i < closes.length; i++) {
+			sum += closes[i];
+			if (i >= n) sum -= closes[i - n];
+			if (i >= n - 1 && i >= offset) out[String(n) as '20' | '50' | '200'].push({ date: after[i - offset].date, value: Math.round((sum / n) * 10000) / 10000 });
+		}
+	}
+	return out;
+}
+
 /** Spec section 19 «Бумага»: close and the benchmark from the same starting point; marks of hypotheses and trades. */
 export function securityChart(app: Database.Database, market: Database.Database, id: number, period: Period = '1Y', today = israelDate()) {
 	const s = security(market, id);
@@ -160,6 +178,8 @@ export function securityChart(app: Database.Database, market: Database.Database,
 		benchmark: benchId && benchId !== id ? { id: benchId, label: s.country === 'IL' ? 'ТА-125' : 'S&P 500' } : null,
 		period,
 		points: rows.map((r) => ({ date: r.date, value: r4(r.close) })),
+		/** T-018 (5): SMA 20, 50, 200 days over the period — counted with the days before it, so the lines start at once */
+		sma: monthly || rows.length < 2 ? null : smaLines(market, id, rows[0].date),
 		bench: bench.map((b) => ({ date: b.date, value: r4(b.value) })),
 		markers,
 		change: first && last ? (last.close / first.close - 1) * 100 : null,

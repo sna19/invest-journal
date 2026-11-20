@@ -10,7 +10,7 @@
 	import { sectorName } from '#lib/allocation.js';
 
 	/** Spec section 21, T-009 — the quarterly model: parameters with «?», a live preview, the candidates. */
-	type Variant = 'A' | 'B' | 'C';
+	type Variant = 'A' | 'B' | 'C' | 'D';
 	interface Params {
 		years: number;
 		k: number;
@@ -27,6 +27,9 @@
 			commissionPct: number;
 		commissionMinUsd: number;
 		taxPct: number;
+		trendFilter: 'none' | 'price_sma10' | 'sma3_sma10';
+		trendExit: 'none' | 'sma3';
+		lagThreshold: number;
 	}
 	interface Cand {
 		id: number;
@@ -43,6 +46,9 @@
 		capUsd: number | null;
 		capGroup: string | null;
 		score: number | null;
+		months: (number | null)[];
+		own: { mean: number | null; median: number | null; up: number; years: number };
+		sma10: number | null;
 	}
 	interface Data {
 		variant: Variant;
@@ -61,6 +67,8 @@
 			placebo: { runs: number; real: number; mean: number; share: number; verdict: 'signal' | 'unclear' | 'chance' };
 			p: number;
 			candidates: Cand[];
+			trendOut: number;
+			months: (number | null)[];
 			capped: number;
 			bench: { US: (number | null)[]; IL: (number | null)[] };
 			walk: { year: number; picked: number; pickedMean: number | null; allMean: number | null; pickedUp: number }[];
@@ -104,6 +112,8 @@
 		// a preview kept before a parameter was added: the new ones come from the saved
 		else if (params) params = { ...data!.saved, ...params };
 		void loadCosts(q, my);
+		void loadTrend(q, my);
+		void loadCompare();
 		if (!quarter && data!.result) quarter = data!.result.quarter;
 	}
 	// T-012: the variant's portfolio over the last 12 quarters before and after the costs
@@ -135,6 +145,63 @@
 		costsBusy = false;
 		if (r?.ok) costs = await r.json();
 	}
+	// T-018: trend filter × exit, the laggards, the variants side by side
+	interface TStats {
+		excess: number | null;
+		median: number | null;
+		worst: number | null;
+		maxDrawdown: number | null;
+		avgCount: number;
+		under5: number;
+		years: number;
+	}
+	interface TRow {
+		filter: string;
+		exit: string;
+		all: TStats;
+		walk: TStats;
+		placebo: { runs: number; mean: number | null; share: number; verdict: 'signal' | 'unclear' | 'chance' };
+	}
+	interface Lag {
+		n: number;
+		corr: number | null;
+		all: { mean3: number | null; up3: number | null; excess3: number | null };
+		lag: { n: number; mean3: number | null; up3: number | null; excess3: number | null };
+		placebo: { runs: number; mean: number | null; share: number };
+		verdict: 'catch_up' | 'no' | 'unclear';
+		threshold: number;
+	}
+	let trend = $state<{ table: TRow[]; laggards: Lag | null; ms: number } | null>(null);
+	let trendBusy = $state(false);
+	let trendWalk = $state(false);
+	async function loadTrend(q: URLSearchParams, my: number) {
+		trendBusy = true;
+		const r = await fetch(`/api/model/trend?${q}`).catch(() => null);
+		if (my !== seq) return;
+		trendBusy = false;
+		if (r?.ok) trend = await r.json();
+	}
+	interface VRow {
+		variant: Variant;
+		passed: number;
+		candidates: number;
+		placebo: { real: number; mean: number; share: number; verdict: 'signal' | 'unclear' | 'chance' };
+		walkVsAll: number | null;
+		gross: number | null;
+		afterCosts: number | null;
+	}
+	let compareV = $state<VRow[] | null>(null);
+	async function loadCompare() {
+		const q = quarter || data?.result?.quarter;
+		if (!q) return;
+		const r = await fetch(`/api/model/compare?quarter=${q}`).catch(() => null);
+		if (r?.ok) compareV = (await r.json()).items;
+	}
+	const VNAME: Record<Variant, [string, string]> = { A: ['А. Рост', 'A. Rise'], B: ['Б. Рынок', 'B. Market'], C: ['В. Оценка', 'C. Score'], D: ['Д. Тренд', 'D. Trend'] };
+	const FNAME: Record<string, [string, string]> = { none: ['без фильтра', 'no filter'], price_sma10: ['цена > SMA10', 'price > SMA10'], sma3_sma10: ['SMA3 > SMA10', 'SMA3 > SMA10'] };
+	const VERDICT: Record<string, [string, string]> = { signal: ['сигнал', 'signal'], unclear: ['неясно', 'unclear'], chance: ['случайность', 'chance'] };
+	const LAG: Record<string, [string, string]> = { catch_up: ['отставшие догоняют', 'laggards catch up'], no: ['отставшие не догоняют', 'laggards do not catch up'], unclear: ['неясно', 'unclear'] };
+
 	const usd = (x: number) => `${Math.round(x).toLocaleString(loc())} $`;
 
 	// the screen is remembered on this device (owner's request 20.11.2026): the variant, the quarter and the
@@ -161,7 +228,7 @@
 		} catch {
 			kept = {};
 		}
-		variant = kept.variant ?? ((['A', 'B', 'C'] as const).find((v) => v === read('model-variant', 'A')) ?? 'A');
+		variant = kept.variant ?? ((['A', 'B', 'C', 'D'] as const).find((v) => v === read('model-variant', 'A')) ?? 'A');
 		if (kept.quarter && [1, 2, 3, 4].includes(kept.quarter)) quarter = kept.quarter;
 		open(variant);
 	});
@@ -295,6 +362,7 @@
 	<button role="radio" aria-checked={variant === 'A'} class:on={variant === 'A'} onclick={() => setVariant('A')}>{tx('А. Рост цены', 'A. Price rise')}</button>
 	<button role="radio" aria-checked={variant === 'B'} class:on={variant === 'B'} onclick={() => setVariant('B')}>{tx('Б. Против рынка', 'B. Against the market')}</button>
 	<button role="radio" aria-checked={variant === 'C'} class:on={variant === 'C'} onclick={() => setVariant('C')}>{tx('В. Оценка', 'C. Score')}</button>
+	<button role="radio" aria-checked={variant === 'D'} class:on={variant === 'D'} onclick={() => setVariant('D')}>{tx('Д. Против тренда', 'D. Against its trend')}</button>
 	<HelpIcon topicKey="model.variants" label={tx('варианты', 'variants')} />
 </div>
 
@@ -354,7 +422,22 @@
 				{/each}
 			</div>
 		{/if}
-		{#if variant !== 'A'}
+		<div class="prow">
+			<span class="pl">{tx('Фильтр тренда', 'Trend filter')} <HelpIcon topicKey="model.trend_filter" label={tx('фильтр тренда', 'trend filter')} /></span>
+			<select value={params.trendFilter} onchange={(e) => set('trendFilter', e.currentTarget.value as Params['trendFilter'])}>
+				<option value="none">{tx('нет', 'none')}</option>
+				<option value="price_sma10">{tx('цена выше SMA 10 мес.', 'price above SMA 10 mo')}</option>
+				<option value="sma3_sma10">{tx('SMA 3 мес. выше SMA 10 мес.', 'SMA 3 mo above SMA 10 mo')}</option>
+			</select>
+		</div>
+		<div class="prow">
+			<span class="pl">{tx('Выход по тренду', 'Trend exit')} <HelpIcon topicKey="model.trend_exit" label={tx('выход по тренду', 'trend exit')} /></span>
+			<select value={params.trendExit} onchange={(e) => set('trendExit', e.currentTarget.value as Params['trendExit'])}>
+				<option value="none">{tx('нет', 'none')}</option>
+				<option value="sma3">{tx('продать, если закрытие месяца ниже SMA 3 мес.', 'sell if a month closes below SMA 3 mo')}</option>
+			</select>
+		</div>
+		{#if variant === 'B' || variant === 'C'}
 			<div class="prow">
 				<span class="pl">{tx('Сравнивать', 'Compare with')} <HelpIcon topicKey="model.param.compare_with" label={tx('сравнение', 'comparison')} /></span>
 				<select value={params.compareWith} onchange={(e) => set('compareWith', e.currentTarget.value as Params['compareWith'])}>
@@ -407,6 +490,11 @@
 		{:else if verdict === 'none'}
 			<p class="warn">{variant === 'C' ? tx('Ни у одной бумаги балл не выше 2 — кандидаты ниже показаны по баллу, но уверенности нет.', 'No share has a score of 2 or more — the candidates below are ranked by score, without confidence.') : tx('Фильтр не прошла ни одна бумага — ослабьте K или пороги.', 'No share passed — lower K or the thresholds.')}</p>
 		{/if}
+		{#if res.trendOut}<p class="muted small">{tx(`Фильтр тренда отсёк ${res.trendOut} из прошедших.`, `The trend filter left out ${res.trendOut} of those that passed.`)}</p>{/if}
+		{#if res.candidates.length && res.months.some((m) => m !== null)}
+			<p class="muted small">{tx('Рост кандидатов по месяцам квартала, в среднем за годы окна:', 'The candidates\' rise by month of the quarter, mean over the window:')} {res.months.map((m, i) => `${tx('м', 'm')}${i + 1} ${pct(m)}`).join(' · ')} <HelpIcon topicKey="model.months" label={tx('по месяцам', 'by month')} /></p>
+		{/if}
+		{#if res.candidates.length < 5 && params?.trendFilter !== 'none'}<p class="warn small">{tx('Кандидатов меньше 5 — риск концентрации.', 'Fewer than 5 candidates — a concentration risk.')}</p>{/if}
 		{#if res.capOut}<p class="muted small">{tx(`Вне выбранной капитализации — ${res.capOut} акций.`, `${res.capOut} shares outside the chosen market cap.`)}</p>{/if}
 		{#if res.capped}<p class="muted small">{tx(`Ещё ${res.capped} прошли, но не вошли из-за ограничений по сектору и рынку.`, `${res.capped} more passed but were left out by the sector and market caps.`)}</p>{/if}
 		<ul class="cands">
@@ -414,7 +502,7 @@
 				<li>
 					<button class="crow" onclick={() => goto(`/security/${c.id}?model=${variant}&q=${res.quarter}&${previewQuery()}`)}>
 						<span class="n">{i + 1}</span>
-						<span class="who"><b>{c.symbol}</b><span class="muted small block name">{c.name}</span><span class="muted small block">{c.market === 'US' ? tx('США', 'US') : tx('Израиль', 'Israel')} {' · '}{c.sector ? sectorName(c.sector, tx) : tx('сектор неизвестен', 'sector unknown')}{#if c.capUsd}{' · '}{capText(c.capUsd)}, {capName(c.capGroup)}{/if}{' · '}{c.up}/{res.years.length}</span></span>
+						<span class="who"><b>{c.symbol}</b><span class="muted small block name">{c.name}</span><span class="muted small block">{c.market === 'US' ? tx('США', 'US') : tx('Израиль', 'Israel')} {' · '}{c.sector ? sectorName(c.sector, tx) : tx('сектор неизвестен', 'sector unknown')}{#if c.capUsd}{' · '}{capText(c.capUsd)}, {capName(c.capGroup)}{/if}{' · '}{c.up}/{res.years.length}</span><span class="muted small block">{tx('по месяцам', 'by month')} {c.months.map((m) => pct(m)).join(' · ')}{#if c.sma10 !== null}{' · '}{c.sma10 >= 0 ? tx('над', 'above') : tx('под', 'below')} SMA10 {pct(c.sma10)}{/if}</span>{#if c.own.mean !== null && variant !== 'D'}<span class="muted small block" class:warnline={Math.abs(c.own.mean) < 1 || c.own.up < 6}>{tx('к обычному кварталу', 'vs usual quarter')} {pct(c.own.mean)} · {tx('выше в', 'above in')} {c.own.up}/{c.own.years}</span>{/if}</span>
 						<span class="nums">{#if c.score !== null}<span class="score">{tx('балл', 'score')} {c.score.toFixed(1)}</span>{/if}<b class:up={c.mean > 0}>{pct(c.mean)}</b><span class="muted small block">{tx('мед.', 'med.')} {pct(c.median)}</span><span class="muted small block">{tx('худш.', 'worst')} {pct(c.worst)}</span></span>
 					</button>
 					<span class="tvpos"><TvLink exchange={c.exchange} symbol={c.symbol} /></span>
@@ -479,11 +567,96 @@
 	</Fold>
 {/if}
 
+{#if trend?.table.length}
+	{@const rows = trend.table}
+	<Fold key="model-trend" title={tx('Фильтр и выход по тренду', 'Trend filter and exit')} summary={tx('6 сочетаний: превышение, просадка, пустышка', '6 combinations: excess, drawdown, placebo')}>
+		{#snippet aside()}{#if trendBusy}<span class="muted small">{tx('считаю…', 'computing…')}</span>{/if}<HelpIcon topicKey="model.trend_filter" label={tx('фильтр тренда', 'trend filter')} />{/snippet}
+		<div class="seg small-seg" role="radiogroup" aria-label={tx('Годы', 'Years')}>
+			<button role="radio" aria-checked={!trendWalk} class:on={!trendWalk} onclick={() => (trendWalk = false)}>{tx(`Все годы (${rows[0].all.years})`, `All years (${rows[0].all.years})`)}</button>
+			<button role="radio" aria-checked={trendWalk} class:on={trendWalk} onclick={() => (trendWalk = true)}>{tx(`Без подглядывания (${rows[0].walk.years})`, `Without peeking (${rows[0].walk.years})`)}</button>
+		</div>
+		<div class="scroll">
+			<table class="walk trend">
+				<thead><tr><th>{tx('Фильтр · выход', 'Filter · exit')}</th><th>{tx('Сверх рынка', 'Over market')}</th><th>{tx('Мед.', 'Med.')}</th><th>{tx('Худший', 'Worst')}</th><th>{tx('Просадка', 'Drawdown')}</th><th>{tx('Канд.', 'Cand.')}</th><th>&lt;5</th><th>{tx('Пустышка', 'Placebo')}</th></tr></thead>
+				<tbody>
+					{#each rows as r (r.filter + r.exit)}
+						{@const st = trendWalk ? r.walk : r.all}
+						<tr class:cur={params?.trendFilter === r.filter && params?.trendExit === r.exit}>
+							<td>{tx(...FNAME[r.filter])}<br /><span class="muted small">{r.exit === 'none' ? tx('без выхода', 'no exit') : tx('выход SMA3', 'exit SMA3')}</span></td>
+							<td><b>{pct(st.excess)}</b></td>
+							<td>{pct(st.median)}</td>
+							<td>{pct(st.worst)}</td>
+							<td>{pct(st.maxDrawdown)}</td>
+							<td>{st.avgCount}</td>
+							<td>{st.under5}%</td>
+							<td class="v-{r.placebo.verdict}">{tx(...VERDICT[r.placebo.verdict])}<br /><span class="muted small">{Math.round(r.placebo.share * 100)}%</span></td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
+		<p class="muted small">{tx('Строка выбранных сейчас параметров выделена. «Пустышка» — те же фильтр и выход на кварталах, перемешанных внутри года; процент — доля прогонов с превышением не меньше. Правило: включать по умолчанию, только если на годах без подглядывания превышение лучше или просадка меньше при потере не больше 1 п.п., и пустышка — «сигнал».', 'The row of the parameters chosen now is highlighted. «Placebo» — the same filter and exit on quarters shuffled inside the year; the percent is the share of runs with an excess at least as large. Rule: on by default only if, on the years without peeking, the excess is better or the drawdown smaller at a loss of at most 1 pp, and the placebo says «signal».')} <HelpIcon topicKey="model.trend_exit" label={tx('выход по тренду', 'trend exit')} /></p>
+	</Fold>
+{/if}
+
+{#if trend?.laggards}
+	{@const l = trend.laggards}
+	<Fold key="model-laggards" title={tx('Отставшие догоняют?', 'Do laggards catch up?')} summary={tx(...LAG[l.verdict])}>
+		{#snippet aside()}<HelpIcon topicKey="model.late_entry" label={tx('отставшие', 'laggards')} />{/snippet}
+		<p class="placebo {l.verdict === 'catch_up' ? 'signal' : l.verdict === 'no' ? 'chance' : 'unclear'}"><span class="badge">{tx(...LAG[l.verdict])}</span></p>
+		<p class="small">
+			{tx(`Прошлые кандидаты А и Б (выбранные по 7 годам до своего года, все кварталы): ${l.n}. Связь месяцев 1–2 с 3-м месяцем: ${l.corr ?? '—'}.`, `Past candidates of A and B (chosen on the 7 years before their year, all quarters): ${l.n}. Months 1–2 against the 3rd month: correlation ${l.corr ?? '—'}.`)}
+		</p>
+		<table class="walk">
+			<thead><tr><th></th><th>{tx('3-й месяц', '3rd month')}</th><th>{tx('Рост', 'Up')}</th><th>{tx('Сверх рынка', 'Over market')}</th></tr></thead>
+			<tbody>
+				<tr><td>{tx('Все кандидаты', 'All candidates')}</td><td>{pct(l.all.mean3)}</td><td>{l.all.up3 ?? '—'}%</td><td>{pct(l.all.excess3)}</td></tr>
+				<tr><td>{tx(`Отставшие (${l.lag.n})`, `Laggards (${l.lag.n})`)}</td><td>{pct(l.lag.mean3)}</td><td>{l.lag.up3 ?? '—'}%</td><td><b>{pct(l.lag.excess3)}</b></td></tr>
+				<tr><td>{tx('Случайные отставшие', 'Random laggards')}</td><td></td><td></td><td>{pct(l.placebo.mean)}</td></tr>
+			</tbody>
+		</table>
+		{#if params}
+			<div class="prow">
+				<span class="pl">{tx('Отставшие — за 2 месяца не больше, %', 'Laggards — 2 months at most, %')}</span>
+				<span class="stepper">
+					<button aria-label="−" disabled={params.lagThreshold <= -20} onclick={() => set('lagThreshold', round3(params!.lagThreshold - 1))}>−</button>
+					<b>{params.lagThreshold}</b>
+					<button aria-label="+" disabled={params.lagThreshold >= 20} onclick={() => set('lagThreshold', round3(params!.lagThreshold + 1))}>+</button>
+				</span>
+			</div>
+		{/if}
+		<p class="muted small">{tx(`Пустышка: столько же случайных бумаг той же выборки в тех же кварталах; не меньше превышение у ${Math.round(l.placebo.share * 100)}% из ${l.placebo.runs} прогонов. «Поздний вход» появится, только если отставшие догоняют лучше случайности.`, `Placebo: as many random shares of the same universe in the same quarters; ${Math.round(l.placebo.share * 100)}% of ${l.placebo.runs} runs had an excess at least as large. «Late entry» appears only if laggards catch up better than chance.`)}</p>
+	</Fold>
+{/if}
+
+{#if compareV?.length}
+	<Fold key="model-variants" title={tx('Варианты рядом', 'Variants side by side')} summary={compareV.map((x) => `${x.variant}: ${tx(...VERDICT[x.placebo.verdict])}`).join(' · ')}>
+		{#snippet aside()}<HelpIcon topicKey="model.variants" label={tx('варианты', 'variants')} />{/snippet}
+		<div class="scroll">
+			<table class="walk trend">
+				<thead><tr><th>{tx('Вариант', 'Variant')}</th><th>{tx('Прошли', 'Passed')}</th><th>{tx('Пустышка', 'Placebo')}</th><th>{tx('Без подгл. к всем', 'No-peek vs all')}</th><th>{tx('В год до / после издержек', 'A year before / after costs')}</th></tr></thead>
+				<tbody>
+					{#each compareV as x (x.variant)}
+						<tr class:cur={x.variant === variant}>
+							<td>{tx(...VNAME[x.variant])}</td>
+							<td>{x.passed}</td>
+							<td class="v-{x.placebo.verdict}">{tx(...VERDICT[x.placebo.verdict])}<br /><span class="muted small">{x.placebo.real} {tx('против', 'vs')} {x.placebo.mean}</span></td>
+							<td>{x.walkVsAll === null ? '—' : `${x.walkVsAll > 0 ? '+' : ''}${x.walkVsAll} ${tx('п.п.', 'pp')}`}</td>
+							<td>{pct(x.gross)} / <b>{pct(x.afterCosts)}</b></td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
+		<p class="muted small">{tx(`Q${quarter}, у каждого варианта — его сохранённые параметры.`, `Q${quarter}, each variant with its saved parameters.`)}</p>
+	</Fold>
+{/if}
+
 {#if data?.recorded.length}
 	<Fold key="model-recorded" title={tx('Записанные кварталы', 'Recorded quarters')} summary={String(data.recorded.length)}>
 		<ul class="plain">
 			{#each data.recorded as r (r.variant + r.quarter)}
-				<li>{r.quarter} · {r.variant === 'A' ? tx('А. Рост цены', 'A. Price rise') : r.variant === 'B' ? tx('Б. Против рынка', 'B. Against the market') : tx('В. Оценка', 'C. Score')} · {tx('гипотез', 'hypotheses')} {r.hypotheses}</li>
+				<li>{r.quarter} · {r.variant === 'A' ? tx('А. Рост цены', 'A. Price rise') : r.variant === 'B' ? tx('Б. Против рынка', 'B. Against the market') : r.variant === 'C' ? tx('В. Оценка', 'C. Score') : tx('Д. Против тренда', 'D. Against its trend')} · {tx('гипотез', 'hypotheses')} {r.hypotheses}</li>
 			{/each}
 		</ul>
 		<p class="muted small"><a href="/sources">{tx('Статистика вариантов — в «Источниках»', 'Variant stats — in «Sources»')}</a></p>
@@ -784,6 +957,25 @@
 	}
 	.scroll {
 		overflow-x: auto;
+	}
+	.trend td,
+	.trend th {
+		white-space: nowrap;
+	}
+	.trend tr.cur td {
+		background: color-mix(in srgb, var(--accent) 10%, transparent);
+	}
+	.v-signal {
+		color: var(--up);
+	}
+	.v-chance {
+		color: var(--down);
+	}
+	.small-seg {
+		margin: 0 0 var(--s2);
+	}
+	.warnline {
+		color: var(--warn, var(--down));
 	}
 	.books {
 		list-style: none;

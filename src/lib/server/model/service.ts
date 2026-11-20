@@ -12,8 +12,8 @@ import { cleanParams, DEFAULTS, nextQuarter, runModel, universe, type Params, ty
  * The parameters the hypotheses were recorded with are a version; a hypothesis refers to it.
  */
 
-export const VARIANTS: Variant[] = ['A', 'B', 'C'];
-export const SOURCE_NAME: Record<Variant, string> = { A: 'Квартальная схема', B: 'Квартальная схема — против рынка', C: 'Квартальная схема — оценка' };
+export const VARIANTS: Variant[] = ['A', 'B', 'C', 'D'];
+export const SOURCE_NAME: Record<Variant, string> = { A: 'Квартальная схема', B: 'Квартальная схема — против рынка', C: 'Квартальная схема — оценка', D: 'Квартальная схема — против своего тренда' };
 
 export function readParams(app: Database.Database, v: Variant): Params {
 	const r = app.prepare('select params from model_settings where variant = ?').get(v) as { params: string } | undefined;
@@ -64,7 +64,7 @@ export function quarterOf(date: string) {
 const fmt = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x).toFixed(1).replace('.', ',')}%`;
 
 export function thesisOf(v: Variant, r: Result, c: Result['candidates'][number]) {
-	const what = v === 'A' ? 'росла' : r.params.compareWith === 'sector' ? 'обгоняла свой сектор' : 'обгоняла рынок';
+	const what = v === 'A' ? 'росла' : v === 'D' ? 'была лучше своего обычного квартала' : r.params.compareWith === 'sector' ? 'обгоняла свой сектор' : 'обгоняла рынок';
 	const score = v === 'C' && c.score !== null ? `балл ${c.score.toFixed(2).replace('.', ',')}; ` : '';
 	return `Q${r.quarter}: ${score}${what} в ${c.up} из ${r.years.length} лет (${r.years[0]}–${r.years.at(-1)}); среднее ${fmt(c.mean)}, медиана ${fmt(c.median)}, худший год ${fmt(c.worst)}`;
 }

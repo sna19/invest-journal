@@ -19,7 +19,7 @@
 	 * 1М…10Л. A tap on a mark opens the hypothesis or the position.
 	 */
 	interface ModelBlock {
-		variant: 'A' | 'B' | 'C';
+		variant: 'A' | 'B' | 'C' | 'D';
 		quarter: number;
 		forYear: number;
 		years: number[];
@@ -33,6 +33,10 @@
 		inUniverse: boolean;
 		passed: boolean;
 		score: number | null;
+		months: (number | null)[];
+		own: { mean: number | null; median: number | null; up: number; years: number };
+		sma10: number | null;
+		trendOk: boolean;
 		rank: number | null;
 		params: { k: number; years: number; compareWith: string };
 		versionId: number | null;
@@ -46,6 +50,7 @@
 		security: { id: number; symbol: string; name: string; exchange: string; currency: string; priceUnit: string };
 		benchmark: { id: number; label: string } | null;
 		points: { date: string; value: number }[];
+		sma: Record<"20" | "50" | "200", { date: string; value: number }[]> | null;
 		bench: { date: string; value: number }[];
 		markers: { id: string; date: string; price: number; kind: Mark['kind']; label: string; sourceId?: number; hypothesisId?: number; positionId?: number; direction?: string }[];
 		change: number | null;
@@ -70,7 +75,7 @@
 	let loadMs = $state<number | null>(null);
 	let allHyps = $state(false);
 	// T-020: opened from the quarterly model — its block on top, the trade linked to the model
-	const modelVariant = $derived(((['A', 'B', 'C'] as const).find((v) => v === page.url.searchParams.get('model')) ?? null) as 'A' | 'B' | 'C' | null);
+	const modelVariant = $derived(((['A', 'B', 'C', 'D'] as const).find((v) => v === page.url.searchParams.get('model')) ?? null) as 'A' | 'B' | 'C' | 'D' | null);
 	let model = $state<ModelBlock | null>(null);
 	let highlight = $state<number | null>(null);
 	async function loadModel() {
@@ -115,6 +120,16 @@
 	let cmp = $state<{ periods: string[]; security: Record<string, number | null>; refs: CmpRef[] } | null>(null);
 	let shown = $state<number[]>([]);
 	let refLines = $state<Record<number, { date: string; value: number }[]>>({});
+	// T-018 (5): SMA 20, 50, 200 days on the chart — chosen on this device
+	let smaOn = $state<string[]>([]);
+	function toggleSma(n: string) {
+		smaOn = smaOn.includes(n) ? smaOn.filter((x) => x !== n) : [...smaOn, n];
+		try {
+			localStorage.setItem('chart-sma', JSON.stringify(smaOn));
+		} catch {
+			/* ignore */
+		}
+	}
 	// leveraged and inverse ETFs on the share, its industry, sector and indices (owner's request 20.11.2026)
 	interface Lev {
 		id: number;
@@ -277,6 +292,12 @@
 		loadLev();
 		loadNews();
 		try {
+			const v = JSON.parse(localStorage.getItem('chart-sma') ?? '[]');
+			if (Array.isArray(v)) smaOn = v.filter((x) => ['20', '50', '200'].includes(x));
+		} catch {
+			/* ignore */
+		}
+		try {
 			if (localStorage.getItem('lev-dir') === 'short') levDir = 'short';
 		} catch {
 			/* ignore */
@@ -300,6 +321,9 @@
 			? [
 					{ key: 'sec', label: c.security.symbol, points: c.points, main: true },
 					...(c.benchmark && c.bench.length ? [{ key: 'bench', label: tl(c.benchmark.label), points: c.bench, color: css('--muted'), dashed: true }] : []),
+					...(['20', '50', '200'] as const)
+						.filter((n) => smaOn.includes(n) && c!.sma?.[n]?.length)
+						.map((n, i) => ({ key: `sma${n}`, label: `SMA${n}`, points: c!.sma![n], color: css(`--series-${i + 5}`) || css('--accent') })),
 					...(cmp?.refs ?? [])
 						.filter((r) => shown.includes(r.id) && refLines[r.id]?.length && !c!.monthly)
 						.map((r, i) => ({ key: `ref${r.id}`, label: r.symbol, points: scaled(refLines[r.id]), color: css(`--series-${(i % 6) + 2}`), dashed: true }))
@@ -385,6 +409,17 @@
 			<p class="sum small">
 				{#if model.score !== null}{tx('Балл', 'Score')} <b>{model.score.toFixed(1)}</b> <HelpIcon topicKey="model.score" label={tx('балл', 'score')} /> · {/if}{tx(model.variant === 'A' ? 'Рост' : 'Сверх рынка', model.variant === 'A' ? 'Rise' : 'Over the market')}: {tx('лет', 'years')} {model.up}/{model.years.length} · {tx('среднее', 'mean')} <b>{pctText(model.mean)}</b> · {tx('медиана', 'median')} {pctText(model.median)} · {tx('худший год', 'worst year')} {pctText(model.worst)}
 			</p>
+			{#if model.own.mean !== null && model.variant !== 'D'}
+				<p class="sum small" class:trendwarn={Math.abs(model.own.mean) < 1 || model.own.up < 6}>
+					Q{model.quarter} {tx('против обычного квартала', 'against the usual quarter')}: <b>{model.own.mean > 0 ? '+' : ''}{model.own.mean.toFixed(1).replace('.', tx(',', '.'))} {tx('п.п.', 'pp')}</b> ({tx('медиана', 'median')} {model.own.median! > 0 ? '+' : ''}{model.own.median?.toFixed(1).replace('.', tx(',', '.'))}) · {tx('выше в', 'above in')} {model.own.up} {tx('из', 'of')} {model.own.years} {tx('лет', 'years')}
+					{#if Math.abs(model.own.mean) < 1 || model.own.up < 6}<br />{tx('Рост, скорее, от тренда, а не от сезона.', 'The rise is likely from the trend, not the season.')}{/if}
+					<HelpIcon topicKey="model.own_quarter" label={tx('обычный квартал', 'usual quarter')} />
+				</p>
+			{/if}
+			<p class="sum small">
+				{tx('По месяцам квартала, в среднем', 'By month of the quarter, mean')}: {model.months.map((m, i) => `${tx('м', 'm')}${i + 1} ${pctText(m)}`).join(' · ')} <HelpIcon topicKey="model.months" label={tx('по месяцам', 'by month')} />
+				{#if model.sma10 !== null}<br />{tx('Последнее месячное закрытие', 'The last monthly close')} {model.sma10 >= 0 ? tx('выше', 'above') : tx('ниже', 'below')} SMA 10 {tx('мес.', 'mo')} {tx('на', 'by')} {Math.abs(model.sma10).toFixed(1).replace('.', tx(',', '.'))}%{#if !model.trendOk}{' · '}{tx('фильтр тренда не пройден', 'the trend filter is not passed')}{/if}{/if}
+			</p>
 			</div>
 		</Fold>
 	{/if}
@@ -416,6 +451,14 @@
 	{:else}
 		{#if c.monthly}<p class="muted small center">{tx('Месячные закрытия: дневная история бумаги загружается, откройте карточку чуть позже.', 'Monthly closes: the daily history is loading, open the card again a little later.')}</p>{/if}
 		<LineChart {lines} {marks} {onmarker} {bands} format={(v) => priceText(v, c!.security.priceUnit)} />
+		{#if c.sma}
+			<div class="smas" role="group" aria-label={tx('Скользящие средние', 'Moving averages')}>
+				{#each ['20', '50', '200'] as n (n)}
+					<button class:on={smaOn.includes(n)} aria-pressed={smaOn.includes(n)} onclick={() => toggleSma(n)}>SMA {n}</button>
+				{/each}
+				<HelpIcon topicKey="chart.sma" label={tx('скользящие средние', 'moving averages')} />
+			</div>
+		{/if}
 		<button class="hl" class:on={!!highlight} aria-pressed={!!highlight} onclick={toggleHighlight}>{highlight ? tx(`Подсвечен Q${highlight} — снять`, `Q${highlight} shaded — clear`) : tx('Подсветить квартал', 'Shade the quarter')}</button>
 		<p class="muted small keys">
 			● {tx('вход гипотезы', 'hypothesis entry')} · ■ {tx('выход', 'exit')} · <span class="up">▲</span> {tx('купил', 'bought')} · <span class="down">▼</span> {tx('продал', 'sold')}{#if newsMarks.length} · <span class="newsdot">●</span> {tx('новости (тап — новости дня)', 'news (tap — the day\'s news)')}{/if}{#if sources.length} · {#each sources as [id, name] (id)}<span class="src"><i style:background={colorOf(id)}></i>{tl(name)}</span>{/each}{/if}
@@ -763,6 +806,29 @@
 		color: var(--link);
 		font-weight: 400;
 		align-self: flex-start;
+	}
+	.smas {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		margin: var(--s2) 0;
+	}
+	.smas button {
+		min-height: 32px;
+		padding: 0 var(--s3);
+		border: 1px solid var(--line);
+		border-radius: var(--r-pill);
+		background: var(--surface);
+		font-size: var(--fs-xs);
+		cursor: pointer;
+	}
+	.smas button.on {
+		background: var(--text);
+		border-color: var(--text);
+		color: var(--bg);
+	}
+	.trendwarn {
+		color: var(--down);
 	}
 	.newsdot {
 		color: var(--muted);
