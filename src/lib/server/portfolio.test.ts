@@ -301,7 +301,7 @@ describe('automatic portfolio of a source (section 18)', () => {
 		expect(cash.n).toBe(2);
 		expect(v.positions.find((x) => x.hypotheses.includes(openOne))!.stage).toBe('holding');
 		// idempotent
-		expect(syncAuto(s.app, s.market, NOW)).toEqual({ bought: 0, sold: 0, dividends: 0, reversed: 0 });
+		expect(syncAuto(s.app, s.market, NOW)).toEqual({ carried: 0, bought: 0, sold: 0, dividends: 0, reversed: 0 });
 	});
 });
 
@@ -393,5 +393,52 @@ describe('the report (owner\'s request 20.11.2026)', async () => {
 		// the price now 110 against the sale's 120
 		expect(r.trades[0].afterPct).toBeCloseTo((110 / 120 - 1) * 100, 1);
 		expect(r.summary).toMatchObject({ n: 1, wins: 1, profitPc: 80 });
+	});
+});
+
+describe('a model\'s automatic portfolios (T-012)', () => {
+	it('the fee on every trade, «hold if chosen again» carries the position, variant C keeps a second portfolio without the rule, the tax of the year', () => {
+		const s = setup();
+		const src = Number(s.app.prepare(`insert into sources (name, kind, market) values ('Квартальная схема — оценка', 'model', 'any')`).run().lastInsertRowid);
+		s.app.prepare(`insert into model_versions (variant, params, source_id) values ('C', '{}', ?)`).run(src);
+		const art = (s.app.prepare(`insert into articles (source_id, read_at) values (?, '2026-01-05') returning id`).get(src) as { id: number }).id;
+		const hyp = s.app.prepare(
+			`insert into hypotheses (article_id, security_id, symbol, security_name, exchange_code, currency, price_unit, signal_type, direction, direction_source,
+			   thesis, invalidation, horizon_date, horizon_source, entry_date, benchmark_id, benchmark_symbol, entry_price, entry_price_date)
+			 values (?, ?, 'UUU', 'U Corp', 'NASDAQ', 'USD', 'USD', 'recommendation', 'long', 'article', 't', 'i', ?, 'article', ?, 1, 'SPX', ?, ?) returning id`
+		);
+		const q1 = (hyp.get(art, s.us, '2026-03-31', '2026-01-05', 100, '2026-01-05') as { id: number }).id;
+		s.app.prepare(`update hypotheses set status = 'closed', exit_date = '2026-04-01', exit_price = 120, return_pct = 20, outcome = 'hit' where id = ?`).run(q1);
+		// the next quarter is not recorded yet: the sale waits
+		const early = new Date('2026-04-02T09:00:00Z');
+		const ports = setAuto(s.app, s.market, src, true, early);
+		expect(ports.map((p) => [p.currency, p.auto_hold])).toEqual([['USD', 1], ['USD', 0]]);
+		const [withRule, without] = ports;
+		const sells = () => s.app.prepare(`select f.auto_hold as hold, count(*) as n from position_events e join positions p on p.id = e.position_id join portfolios f on f.id = p.portfolio_id where e.kind = 'sell' group by 1`).all();
+		expect(sells()).toEqual([]);
+		// the fee of a purchase: 0,1% of 3 000 $ is 3 $ — the minimum 5 $
+		expect(s.app.prepare(`select distinct fee from position_events where kind = 'buy'`).all()).toEqual([{ fee: 5 }]);
+		// Q2 chooses the same share again
+		const q2 = (hyp.get(art, s.us, '2026-06-30', '2026-04-01', 120, '2026-04-01') as { id: number }).id;
+		const r = syncAuto(s.app, s.market, NOW);
+		expect(r.carried).toBe(1);
+		// with the rule: one position, one purchase, no sale; it now serves the Q2 hypothesis
+		const vh = portfolioView(s.app, s.market, withRule.id, '2026-04-30')!;
+		expect(vh.positions).toHaveLength(1);
+		expect(vh.positions[0].hypotheses).toEqual(expect.arrayContaining([q1]));
+		expect(s.app.prepare('select hypothesis_id as h, from_hypothesis_id as f from auto_carries').all()).toEqual([{ h: q2, f: q1 }]);
+		// without: sold at 120 (fee 5 $) and bought again (fee 5 $)
+		expect(sells()).toEqual([{ hold: 0, n: 1 }]);
+		const vn = portfolioView(s.app, s.market, without.id, '2026-04-30')!;
+		expect(vn.positions).toHaveLength(2);
+		// the tax of the current year is accrued: 25% of 30 × 20 $ − the two fees
+		const tax = (id: number) => (s.app.prepare('select tax_accrued as t from portfolios where id = ?').get(id) as { t: number | null }).t;
+		expect(tax(without.id)).toBeCloseTo(0.25 * (600 - 10), 2);
+		expect(tax(withRule.id)).toBeNull();
+		// a year later: the 2026 tax is a money record on 31 December, once
+		syncAuto(s.app, s.market, new Date('2027-01-10T09:00:00Z'));
+		syncAuto(s.app, s.market, new Date('2027-01-11T09:00:00Z'));
+		expect(s.app.prepare(`select portfolio_id as p, date, amount from cash_events where kind = 'tax'`).all()).toEqual([{ p: without.id, date: '2026-12-31', amount: 147.5 }]);
+		expect(tax(without.id)).toBeNull();
 	});
 });

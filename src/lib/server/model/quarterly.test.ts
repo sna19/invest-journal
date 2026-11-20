@@ -154,6 +154,31 @@ describe('quarterly model 10a', () => {
 		expect(r.placebo.runs).toBe(100);
 	});
 
+	it('the costs (T-012): the fee and the tax; «hold if chosen again» spares the trades of a share chosen every quarter', async () => {
+		const { costRun } = await import('./quarterly.js');
+		// +3% every month: chosen in every quarter by A (it rose every year)
+		const always = series(1, () => 0.03);
+		const r = costRun(u([always]), 'A', { ...DEFAULTS, k: 7, count: 1 }, 12);
+		expect(r.quarters).toHaveLength(12);
+		expect(r.quarters.every((q) => q.picked === 1)).toBe(true);
+		expect(r.start).toBe(3000);
+		// without costs: 1.03³ a quarter → (1.03¹²) a year
+		expect(r.gross).toBeCloseTo((1.03 ** 12 - 1) * 100, 1);
+		// with the rule: bought once, sold once — two fees; without: 24
+		expect(r.hold.kept).toBe(11);
+		expect(r.noHold.kept).toBe(0);
+		expect(r.noHold.fees).toBeGreaterThan(r.hold.fees * 5);
+		// the tax: without the rule paid every year; with it — all at the end, on the same gain, so less money is lost
+		expect(r.hold.taxes).toBeGreaterThan(0);
+		expect(r.hold.cagr!).toBeLessThan(r.gross!);
+		expect(r.hold.cagr!).toBeGreaterThan(r.noHold.cagr!);
+		expect(r.hold.turnover).toBe(0);
+		// no fee, no tax: the books are the market itself
+		const free = costRun(u([always]), 'A', { ...DEFAULTS, k: 7, count: 1, commissionPct: 0, commissionMinUsd: 0, taxPct: 0 }, 12);
+		expect(free.hold.cagr).toBeCloseTo(free.gross!, 1);
+		expect(free.noHold.cagr).toBeCloseTo(free.gross!, 1);
+	});
+
 	it('funds labelled as shares are not shares', async () => {
 		const { isFund } = await import('./quarterly.js');
 		expect(isFund({ kind: 'etf', industry: null, name: 'Invesco DB Gold Double Long ETN' })).toBe(true);

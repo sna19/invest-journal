@@ -5,7 +5,7 @@
 	import HelpIcon from '#lib/HelpIcon.svelte';
 	import TvLink from '#lib/TvLink.svelte';
 	import { showToast } from '#lib/toast.svelte.js';
-	import { tx } from '#lib/i18n.js';
+	import { loc, tx } from '#lib/i18n.js';
 	import { sectorName } from '#lib/allocation.js';
 
 	/** Spec section 21, T-009 — the quarterly model: parameters with «?», a live preview, the candidates. */
@@ -23,6 +23,9 @@
 		capMode: 'abs' | 'rel';
 		capGroups: string[];
 		capBounds: number[];
+			commissionPct: number;
+		commissionMinUsd: number;
+		taxPct: number;
 	}
 	interface Cand {
 		id: number;
@@ -97,8 +100,42 @@
 		problem = null;
 		data = await r.json();
 		if (!withParams) params = { ...data!.saved };
+		// a preview kept before a parameter was added: the new ones come from the saved
+		else if (params) params = { ...data!.saved, ...params };
+		void loadCosts(q, my);
 		if (!quarter && data!.result) quarter = data!.result.quarter;
 	}
+	// T-012: the variant's portfolio over the last 12 quarters before and after the costs
+	interface CostBook {
+		cagr: number | null;
+		fees: number;
+		taxes: number;
+		turnover: number;
+		kept: number;
+		endValue: number;
+	}
+	interface Costs {
+		quarters: { label: string; picked: number; kept: number; gross: number | null; hold: number | null; noHold: number | null }[];
+		years: number;
+		start: number;
+		gross: number | null;
+		hold: CostBook;
+		noHold: CostBook;
+	}
+	let costs = $state<{ costs: Costs | null; portfolios: { id: number; name: string; hold: number }[] } | null>(null);
+	let costsBusy = $state(false);
+	let quartersOpen = $state(false);
+	async function loadCosts(q: URLSearchParams, my: number) {
+		const c = new URLSearchParams(q);
+		c.delete('quarter');
+		costsBusy = true;
+		const r = await fetch(`/api/model/costs?${c}`).catch(() => null);
+		if (my !== seq) return;
+		costsBusy = false;
+		if (r?.ok) costs = await r.json();
+	}
+	const usd = (x: number) => `${Math.round(x).toLocaleString(loc())} $`;
+
 	// the screen is remembered on this device (owner's request 20.11.2026): the variant, the quarter and the
 	// parameters tried but not saved — coming back from a card or another tab, nothing is set again
 	type Kept = { variant?: Variant; quarter?: number; preview?: Partial<Record<Variant, Params>> };
@@ -181,6 +218,13 @@
 		{ key: 'perMarket', help: 'model.param.per_market', ru: 'Не больше из рынка', en: 'At most per market', min: 1, max: 30, step: 1 },
 		{ key: 'minPriceUsd', help: 'model.param.min_price', ru: 'Цена не ниже, $', en: 'Price at least, $', min: 0, max: 1000, step: 1 }
 	];
+	// T-012: the costs of the variant's portfolios
+	const COST_PARAMS: { key: keyof Params; ru: string; en: string; min: number; max: number; step: number }[] = [
+		{ key: 'commissionPct', ru: 'Комиссия, % сделки', en: 'Fee, % of a trade', min: 0, max: 2, step: 0.05 },
+		{ key: 'commissionMinUsd', ru: 'Комиссия не меньше, $', en: 'Fee at least, $', min: 0, max: 50, step: 1 },
+		{ key: 'taxPct', ru: 'Налог с прибыли, %', en: 'Tax on gains, %', min: 0, max: 50, step: 5 }
+	];
+	const round3 = (x: number) => Math.round(x * 1000) / 1000;
 	// T-021: market cap groups
 	const CAP_ABS = ['mega', 'large', 'mid', 'small', 'micro'];
 	const CAP_REL = ['top', 'middle', 'bottom'];
@@ -318,6 +362,17 @@
 				</select>
 			</div>
 		{/if}
+		<h3 class="sub">{tx('Издержки', 'Costs')} <HelpIcon topicKey="model.costs" label={tx('издержки', 'costs')} /></h3>
+		{#each COST_PARAMS as f (f.key)}
+			<div class="prow">
+				<span class="pl">{tx(f.ru, f.en)}</span>
+				<span class="stepper">
+					<button aria-label="−" disabled={Number(params[f.key]) <= f.min} onclick={() => set(f.key, round3(Math.max(f.min, Number(params![f.key]) - f.step)) as never)}>−</button>
+					<b>{String(params[f.key]).replace('.', loc() === 'ru-RU' ? ',' : '.')}</b>
+					<button aria-label="+" disabled={Number(params[f.key]) >= f.max} onclick={() => set(f.key, round3(Math.min(f.max, Number(params![f.key]) + f.step)) as never)}>+</button>
+				</span>
+			</div>
+		{/each}
 		{#if changed}
 			<div class="save">
 				<button class="primary" onclick={save}>{tx('Сохранить параметры', 'Save the parameters')}</button>
@@ -385,6 +440,45 @@
 			<p class="muted small">{tx('Кандидаты выбраны по 7 годам до проверяемого и измерены в нём. Только для справки: в базе нет бумаг, исчезнувших за эти годы, поэтому прошлое выглядит лучше, чем было.', 'Candidates chosen on the 7 years before the tested one and measured in it. For reference only: shares that vanished in those years are not in the base, so the past looks better than it was.')}</p>
 		</section>
 	{/if}
+{/if}
+
+{#if costs?.costs}
+	{@const c = costs.costs}
+	<section class="card">
+		<h2>{tx('Издержки и оборот', 'Costs and turnover')} {#if costsBusy}<span class="muted small">· {tx('считаю…', 'computing…')}</span>{/if} <HelpIcon topicKey="model.costs" label={tx('издержки', 'costs')} /></h2>
+		<p class="muted small">{tx(`Портфель варианта за последние ${c.quarters.length} кварталов: каждый квартал — его кандидаты поровну, ${usd(c.start)} на старте.`, `The variant's portfolio over the last ${c.quarters.length} quarters: each quarter its candidates in equal parts, ${usd(c.start)} at the start.`)}</p>
+		<ul class="books">
+			<li><span>{tx('До издержек', 'Before costs')}</span><b>{pct(c.gross)}</b><span class="muted small">{tx('в год', 'a year')}</span></li>
+			{#each [[tx('После, с правилом «держать»', 'After, with «hold»'), c.hold, true], [tx('После, без правила', 'After, without the rule'), c.noHold, false]] as [label, bk, main] (label)}
+				{@const x = bk as CostBook}
+				<li class:main>
+					<span>{label}</span><b>{pct(x.cagr)}</b><span class="muted small">{tx('в год', 'a year')}</span>
+					<span class="muted small detail">{tx('комиссии', 'fees')} {usd(x.fees)} · {tx('налог', 'tax')} {usd(x.taxes)} · {tx('оборот', 'turnover')} {x.turnover}% {tx('в год', 'a year')}</span>
+				</li>
+			{/each}
+		</ul>
+		<p class="muted small">
+			{tx(`Правило сберегло ${c.hold.kept} продаж и покупок: бумага снова попала в кандидаты следующего квартала. В конце всё продаётся — с комиссией и налогом.`, `The rule spared ${c.hold.kept} sales and purchases: the share was chosen again for the next quarter. At the end everything is sold — with the fee and the tax.`)}
+			{tx('Только для справки: в базе нет бумаг, исчезнувших за эти годы.', 'For reference only: shares that vanished in those years are not in the base.')}
+		</p>
+		<button class="textlink" onclick={() => (quartersOpen = !quartersOpen)}>{quartersOpen ? tx('Скрыть кварталы', 'Hide the quarters') : tx('По кварталам', 'By quarter')}</button>
+		{#if quartersOpen}
+			<div class="scroll">
+				<table class="walk costs">
+					<thead><tr><th>{tx('Квартал', 'Quarter')}</th><th>{tx('Бумаг', 'Shares')}</th><th>{tx('До', 'Before')}</th><th>{tx('Держать', 'Hold')}</th><th>{tx('Без', 'Without')}</th></tr></thead>
+					<tbody>
+						{#each c.quarters as x (x.label)}
+							<tr><td>{x.label}</td><td>{x.picked}{#if x.kept}{' '}({x.kept}↻){/if}</td><td>{pct(x.gross)}</td><td>{pct(x.hold)}</td><td>{pct(x.noHold)}</td></tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+			<p class="muted small">{tx('↻ — сколько бумаг было и в прошлом квартале. Квартал с налогом — последний в году.', '↻ — how many shares were in the quarter before too. The tax is paid in the last quarter of a year.')}</p>
+		{/if}
+		{#if costs.portfolios.length}
+			<p class="small">{tx('Виртуальные портфели варианта ведутся с теми же издержками:', 'The variant\'s virtual portfolios are kept with the same costs:')} {#each costs.portfolios as pf (pf.id)}<a href="/portfolio?p={pf.id}">«{pf.name}»</a>{' '}{/each}</p>
+		{/if}
+	</section>
 {/if}
 
 {#if data?.recorded.length}
@@ -686,6 +780,44 @@
 		display: block;
 		font-size: 0.75rem;
 		color: var(--muted);
+	}
+	h3.sub {
+		margin: var(--s3) 0 var(--s1);
+		font-size: var(--fs-s, 0.95rem);
+	}
+	.scroll {
+		overflow-x: auto;
+	}
+	.books {
+		list-style: none;
+		padding: 0;
+		margin: var(--s2) 0;
+	}
+	.books li {
+		display: grid;
+		grid-template-columns: 1fr auto auto;
+		align-items: baseline;
+		gap: 0 var(--s2);
+		padding: var(--s2) 0;
+		border-top: 1px solid var(--line);
+	}
+	.books li b {
+		font-variant-numeric: tabular-nums;
+	}
+	.books li.main span:first-child,
+	.books li.main b {
+		font-weight: 700;
+	}
+	.books .detail {
+		grid-column: 1 / -1;
+	}
+	.textlink {
+		border: none;
+		background: none;
+		padding: var(--s1) 0;
+		color: var(--link);
+		cursor: pointer;
+		font: inherit;
 	}
 	.walk {
 		width: 100%;

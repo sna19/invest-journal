@@ -1,10 +1,12 @@
-import { modelVersionNow } from './model/service.js';
+import { modelVersionNow, readParams } from './model/service.js';
+import type { Variant } from './model/quarterly.js';
 import { readProfiles, type ProfileView } from './market/profiles.js';
 import type Database from 'better-sqlite3';
 import { israelDate } from '../hypothesis.js';
 import {
 	cashFlow,
 	effective,
+	matches,
 	fifo,
 	holding,
 	OversellError,
@@ -271,6 +273,8 @@ export interface PortfolioRow {
 	currency: 'USD' | 'ILS';
 	auto_source_id: number | null;
 	auto_amount_ils: number;
+	/** T-012: a model's portfolio with «hold if chosen again» (1) or without (0) */
+	auto_hold: number;
 	tax_accrued: number | null;
 	sort_order: number;
 	archived_at: string | null;
@@ -1036,18 +1040,40 @@ export function portfolioCash(app: Database.Database, id: number) {
 
 // ── automatic portfolios of a source ──────────────────────────────────────────────────────────────────
 
-const autoName = (source: string, currency: string) => `Авто · ${source} ${currency === 'USD' ? '$' : '₪'}`;
+const autoName = (source: string, currency: string, hold = 1) => `Авто · ${source} ${currency === 'USD' ? '$' : '₪'}${hold ? '' : ' · без удержания'}`;
 
 /** The source's automatic portfolio in a currency: found, or made when the source's portfolios are switched on. */
-function autoPortfolio(app: Database.Database, sourceId: number, currency: string, make: boolean) {
-	const p = app.prepare('select * from portfolios where auto_source_id = ? and currency = ?').get(sourceId, currency) as PortfolioRow | undefined;
+function autoPortfolio(app: Database.Database, sourceId: number, currency: string, make: boolean, hold = 1) {
+	const p = app.prepare('select * from portfolios where auto_source_id = ? and currency = ? and auto_hold = ?').get(sourceId, currency, hold) as PortfolioRow | undefined;
 	if (p || !make) return p;
 	const src = app.prepare('select name from sources where id = ?').get(sourceId) as { name: string };
-	let name = autoName(src.name, currency);
+	let name = autoName(src.name, currency, hold);
 	if (app.prepare('select 1 from portfolios where name = ?').get(name)) name = `${name} (${sourceId})`;
 	return app
-		.prepare(`insert into portfolios (name, kind, currency, auto_source_id, auto_amount_ils) values (?, 'virtual', ?, ?, ?) returning *`)
-		.get(name, currency, sourceId, AUTO_AMOUNT[currency]) as PortfolioRow;
+		.prepare(`insert into portfolios (name, kind, currency, auto_source_id, auto_amount_ils, auto_hold) values (?, 'virtual', ?, ?, ?, ?) returning *`)
+		.get(name, currency, sourceId, AUTO_AMOUNT[currency], hold) as PortfolioRow;
+}
+
+/**
+ * T-012: a model's source keeps its portfolios with the costs of its variant's parameters: the fee on every trade,
+ * the tax on the year's net realized gain, «hold if chosen again»; variant C keeps a second portfolio without the
+ * rule. Another source: no costs, one portfolio, as before.
+ */
+interface AutoRules {
+	model: boolean;
+	modes: number[];
+	commissionPct: number;
+	commissionMinUsd: number;
+	taxPct: number;
+}
+function autoRules(app: Database.Database, sourceId: number): AutoRules {
+	const none: AutoRules = { model: false, modes: [1], commissionPct: 0, commissionMinUsd: 0, taxPct: 0 };
+	const src = app.prepare('select kind from sources where id = ?').get(sourceId) as { kind: string } | undefined;
+	if (src?.kind !== 'model') return none;
+	const v = app.prepare('select variant from model_versions where source_id = ? order by id desc limit 1').get(sourceId) as { variant: string } | undefined;
+	if (!v) return none;
+	const p = readParams(app, v.variant as Variant);
+	return { model: true, modes: v.variant === 'C' ? [1, 0] : [1], commissionPct: p.commissionPct, commissionMinUsd: p.commissionMinUsd, taxPct: p.taxPct };
 }
 
 /**
@@ -1055,6 +1081,11 @@ function autoPortfolio(app: Database.Database, sourceId: number, currency: strin
  * opinion, on the rise, is bought for a fixed sum (3 000 $ or 10 000 ₪ — a source with securities of both markets
  * has two portfolios) at its entry price and sold when it closes, at its exit price; dividends while it is held
  * come as money. A «down» hypothesis does not go in. Idempotent: run as often as wanted.
+ *
+ * T-012, a model's portfolio: the fee on every purchase and sale; the sale of a closed hypothesis waits until the
+ * model has recorded its next quarter (or 10 days) — if the same share is chosen again, the portfolio with the
+ * rule keeps the position for the new hypothesis (auto_carries) instead of selling and buying; the tax of each
+ * finished year is a money record on 31 December, the current year's is shown as accrued.
  */
 export function syncAuto(app: Database.Database, market: Database.Database, now = new Date()) {
 	const today = israelDate(now);
@@ -1063,8 +1094,15 @@ export function syncAuto(app: Database.Database, market: Database.Database, now 
 		(r) => r.id
 	);
 	const m = marketView(market);
-	const s = { bought: 0, sold: 0, dividends: 0, reversed: 0 };
+	const s = { bought: 0, sold: 0, dividends: 0, reversed: 0, carried: 0 };
+	const DAY = 86_400_000;
 	for (const sourceId of on) {
+		const rules = autoRules(app, sourceId);
+		const fee = (amount: number, currency: string, date: string) => {
+			if (!rules.model || !(amount > 0)) return 0;
+			const min = rules.commissionMinUsd * (currency === 'USD' ? 1 : m.conv('USD', currency, date));
+			return Math.round(Math.max((amount * rules.commissionPct) / 100, min) * 100) / 100;
+		};
 		const hyps = app
 			.prepare(
 				`select h.* from hypotheses h join articles a on a.id = h.article_id
@@ -1072,83 +1110,147 @@ export function syncAuto(app: Database.Database, market: Database.Database, now 
 				  order by h.id`
 			)
 			.all(sourceId, ...RATED_TYPES) as Record<string, unknown>[];
-		for (const h of hyps) {
-			const hid = h.id as number;
-			const cur = moneyOf(h.price_unit as string);
-			const existing = autoPortfolio(app, sourceId, cur, false);
-			// a portfolio of this currency switched off on purpose stays off
-			if (existing?.archived_at) continue;
-			const buys = app
-				.prepare(
-					`select e.id, e.position_id as positionId from position_events e join positions p on p.id = e.position_id
-					  join portfolios f on f.id = p.portfolio_id
-					  where f.auto_source_id = ? and e.hypothesis_id = ? and e.kind = 'buy' and e.auto = 1 and e.cancelled_at is null`
-				)
-				.all(sourceId, hid) as { id: number; positionId: number }[];
-			const live = buys.filter((b) => !app.prepare(`select 1 from position_events where reverses_event_id = ? and cancelled_at is null`).get(b.id));
-			if (h.status === 'cancelled') {
-				for (const b of live)
-					for (const e of app
-						.prepare(`select id from position_events where position_id = ? and kind <> 'reverse' and cancelled_at is null order by date desc, id desc`)
-						.all(b.positionId) as { id: number }[])
-						if (!app.prepare(`select 1 from position_events where reverses_event_id = ? and cancelled_at is null`).get(e.id)) {
-							reverseEvent(app, market, e.id, 'гипотеза отменена', now);
-							s.reversed++;
-						}
-				continue;
-			}
-			const entry = h.entry_price as number | null;
-			const entryDate = h.entry_price_date as string | null;
-			if (!entry || !entryDate) continue;
-			let positionId = live[0]?.positionId;
-			if (!positionId) {
-				const sec = security(market, h.security_id as number);
-				if (!sec) continue;
-				const port = autoPortfolio(app, sourceId, cur, true)!;
-				const f = unitFactor(sec.price_unit);
-				const qty = port.auto_amount_ils / (entry * f);
-				positionId = app
+		for (const hold of rules.modes)
+			for (const h of hyps) {
+				const hid = h.id as number;
+				const cur = moneyOf(h.price_unit as string);
+				const existing = autoPortfolio(app, sourceId, cur, false, hold);
+				// a portfolio of this currency switched off on purpose stays off
+				if (existing?.archived_at) continue;
+				// a mode added later (variant C's second portfolio) is made only where the first one is on
+				if (!existing && hold === 0 && !autoPortfolio(app, sourceId, cur, false, 1)) continue;
+				const buys = app
 					.prepare(
-						`insert into positions (portfolio_id, security_id, symbol, security_name, exchange_code, currency, price_unit, stage, opened_at)
-						 values (?, ?, ?, ?, ?, ?, ?, 'watch', ?) returning id`
+						`select e.id, e.position_id as positionId from position_events e join positions p on p.id = e.position_id
+						  join portfolios f on f.id = p.portfolio_id
+						  where f.auto_source_id = ? and f.auto_hold = ? and e.hypothesis_id = ? and e.kind = 'buy' and e.auto = 1 and e.cancelled_at is null`
 					)
-					.pluck()
-					.get(port.id, sec.id, sec.symbol, sec.name_en, sec.exchange_code, cur, sec.price_unit, entryDate) as number;
-				app.prepare(
-					`insert into position_events (position_id, kind, date, qty, price, currency, fee, fx_rate, note, hypothesis_id, auto)
-					 values (?, 'buy', ?, ?, ?, ?, 0, 1, ?, ?, 1)`
-				).run(positionId, entryDate, qty, entry, cur, `гипотеза №${hid}`, hid);
-				s.bought++;
+					.all(sourceId, hold, hid) as { id: number; positionId: number }[];
+				const live = buys.filter((b) => !app.prepare(`select 1 from position_events where reverses_event_id = ? and cancelled_at is null`).get(b.id));
+				const carried = existing
+					? (app.prepare('select position_id as id from auto_carries where portfolio_id = ? and hypothesis_id = ?').get(existing.id, hid) as { id: number } | undefined)
+					: undefined;
+				if (h.status === 'cancelled') {
+					for (const b of live)
+						for (const e of app
+							.prepare(`select id from position_events where position_id = ? and kind <> 'reverse' and cancelled_at is null order by date desc, id desc`)
+							.all(b.positionId) as { id: number }[])
+							if (!app.prepare(`select 1 from position_events where reverses_event_id = ? and cancelled_at is null`).get(e.id)) {
+								reverseEvent(app, market, e.id, 'гипотеза отменена', now);
+								s.reversed++;
+							}
+					continue;
+				}
+				const entry = h.entry_price as number | null;
+				const entryDate = h.entry_price_date as string | null;
+				if (!entry || !entryDate) continue;
+				let positionId = live[0]?.positionId ?? carried?.id;
+				if (!positionId) {
+					const sec = security(market, h.security_id as number);
+					if (!sec) continue;
+					const port = autoPortfolio(app, sourceId, cur, true, hold)!;
+					const f = unitFactor(sec.price_unit);
+					const qty = port.auto_amount_ils / (entry * f);
+					positionId = app
+						.prepare(
+							`insert into positions (portfolio_id, security_id, symbol, security_name, exchange_code, currency, price_unit, stage, opened_at)
+							 values (?, ?, ?, ?, ?, ?, ?, 'watch', ?) returning id`
+						)
+						.pluck()
+						.get(port.id, sec.id, sec.symbol, sec.name_en, sec.exchange_code, cur, sec.price_unit, entryDate) as number;
+					app.prepare(
+						`insert into position_events (position_id, kind, date, qty, price, currency, fee, fx_rate, note, hypothesis_id, auto)
+						 values (?, 'buy', ?, ?, ?, ?, ?, 1, ?, ?, 1)`
+					).run(positionId, entryDate, qty, entry, cur, fee(port.auto_amount_ils, cur, entryDate), `гипотеза №${hid}`, hid);
+					s.bought++;
+				}
+				const pos = positionRow(app, positionId)!;
+				const f = unitFactor(pos.price_unit);
+				const list = eventsOf(app, positionId);
+				const fi = fifo(trades(list, m.splits(pos.security_id), f), f);
+				const closed = (h.status === 'closed' || h.status === 'closed_early') && h.exit_price && h.exit_date;
+				const exitDate = closed ? (h.exit_date as string) : today;
+				// dividends while held: ex-date after the buy, not after the sale
+				const buy = effective(list).find((e) => e.kind === 'buy')!;
+				const qtyNow = (buy.qty ?? 0) * splitFactor(buy.date, m.splits(pos.security_id));
+				for (const d of m.dividends(pos.security_id, buy.date, exitDate)) {
+					const exists = app
+						.prepare(`select 1 from cash_events where position_id = ? and kind = 'dividend' and date = ? and auto = 1 and cancelled_at is null`)
+						.get(positionId, d.date);
+					if (exists) continue;
+					addCash(app, market, pos.portfolio_id, { kind: 'dividend', date: d.date, amount: qtyNow * d.amount * f, currency: pos.currency, note: `${pos.symbol}, авто`, positionId }, now, true);
+					s.dividends++;
+				}
+				if (closed && fi.qty > EPS) {
+					if (rules.model) {
+						// the next hypotheses of the source: recorded after this one, with a later horizon
+						const next = app
+							.prepare(
+								`select h.id, h.security_id as sid from hypotheses h join articles a on a.id = h.article_id
+								  where a.source_id = ? and h.id > ? and h.horizon_date > ? and h.status <> 'cancelled' and h.direction = 'long'`
+							)
+							.all(sourceId, hid, h.horizon_date) as { id: number; sid: number }[];
+						const decided = next.length > 0 || Date.parse(today) - Date.parse(exitDate) > 10 * DAY;
+						if (!decided) {
+							recomputeStage(app, market, positionId);
+							continue;
+						}
+						const again = next.find((x) => x.sid === pos.security_id);
+						if (hold && again) {
+							app.prepare('insert or ignore into auto_carries (portfolio_id, hypothesis_id, position_id, from_hypothesis_id) values (?, ?, ?, ?)').run(pos.portfolio_id, again.id, positionId, hid);
+							s.carried++;
+							recomputeStage(app, market, positionId);
+							continue;
+						}
+					}
+					const k = splitFactor(exitDate, m.splits(pos.security_id));
+					const qty = fi.qty / k;
+					app.prepare(
+						`insert into position_events (position_id, kind, date, qty, price, currency, fee, fx_rate, note, hypothesis_id, auto)
+						 values (?, 'sell', ?, ?, ?, ?, ?, 1, ?, ?, 1)`
+					).run(positionId, exitDate, qty, h.exit_price, pos.currency, fee(qty * (h.exit_price as number) * f, pos.currency, exitDate), `гипотеза №${hid} закрыта`, hid);
+					s.sold++;
+				}
+				recomputeStage(app, market, positionId);
 			}
-			const pos = positionRow(app, positionId)!;
-			const f = unitFactor(pos.price_unit);
-			const list = eventsOf(app, positionId);
-			const fi = fifo(trades(list, m.splits(pos.security_id), f), f);
-			const closed = (h.status === 'closed' || h.status === 'closed_early') && h.exit_price && h.exit_date;
-			const exitDate = closed ? (h.exit_date as string) : today;
-			// dividends while held: ex-date after the buy, not after the sale
-			const buy = effective(list).find((e) => e.kind === 'buy')!;
-			const qtyNow = (buy.qty ?? 0) * splitFactor(buy.date, m.splits(pos.security_id));
-			for (const d of m.dividends(pos.security_id, buy.date, exitDate)) {
-				const exists = app
-					.prepare(`select 1 from cash_events where position_id = ? and kind = 'dividend' and date = ? and auto = 1 and cancelled_at is null`)
-					.get(positionId, d.date);
-				if (exists) continue;
-				addCash(app, market, pos.portfolio_id, { kind: 'dividend', date: d.date, amount: qtyNow * d.amount * f, currency: pos.currency, note: `${pos.symbol}, авто`, positionId }, now, true);
-				s.dividends++;
-			}
-			if (closed && fi.qty > EPS) {
-				const k = splitFactor(exitDate, m.splits(pos.security_id));
-				app.prepare(
-					`insert into position_events (position_id, kind, date, qty, price, currency, fee, fx_rate, note, hypothesis_id, auto)
-					 values (?, 'sell', ?, ?, ?, ?, 0, 1, ?, ?, 1)`
-				).run(positionId, exitDate, fi.qty / k, h.exit_price, pos.currency, `гипотеза №${hid} закрыта`, hid);
-				s.sold++;
-			}
-			recomputeStage(app, market, positionId);
-		}
+		if (rules.model && rules.taxPct > 0)
+			for (const port of app.prepare('select id from portfolios where auto_source_id = ? and archived_at is null').all(sourceId) as { id: number }[])
+				autoTax(app, market, port.id, rules.taxPct, today, now);
 	}
 	return s;
+}
+
+/**
+ * T-012: the tax of a model's portfolio — on the net realized gain of each calendar year (sales by FIFO, in the
+ * portfolio's currency), a loss carried to the next year. A finished year — a money record on its 31 December
+ * (once); the current year — the portfolio's accrued tax.
+ */
+function autoTax(app: Database.Database, market: Database.Database, portfolioId: number, taxPct: number, today: string, now: Date) {
+	const m = marketView(market);
+	const { book: b } = book(app, m, portfolioId);
+	const byYear = new Map<number, number>();
+	for (const pos of b.positions)
+		for (const x of matches(pos.trades, pos.f)) {
+			const y = Number(x.sellDate.slice(0, 4));
+			byYear.set(y, (byYear.get(y) ?? 0) + x.qty * (x.proceeds * x.fxSell - x.cost * x.fxBuy));
+		}
+	const port = portfolioRow(app, portfolioId)!;
+	const thisYear = Number(today.slice(0, 4));
+	let carry = 0;
+	let accrued = 0;
+	for (const y of [...byYear.keys()].sort()) {
+		const net = byYear.get(y)! + carry;
+		const tax = net > 0 ? Math.round(net * taxPct) / 100 : 0;
+		carry = net > 0 ? 0 : net;
+		if (y >= thisYear) {
+			accrued = tax;
+			continue;
+		}
+		const note = `налог за ${y}, авто`;
+		if (tax > 0 && !app.prepare(`select 1 from cash_events where portfolio_id = ? and kind = 'tax' and note = ? and cancelled_at is null`).get(portfolioId, note))
+			addCash(app, market, portfolioId, { kind: 'tax', date: `${y}-12-31`, amount: tax, currency: port.currency, note }, now, true);
+	}
+	app.prepare('update portfolios set tax_accrued = ? where id = ?').run(accrued > 0 ? accrued : null, portfolioId);
 }
 
 /**
@@ -1172,11 +1274,12 @@ export function setAuto(app: Database.Database, market: Database.Database, sourc
 			.all(sourceId) as { u: string }[]
 	).map((r) => moneyOf(r.u));
 	const want = new Set(used.length ? used : src.market === 'US' ? ['USD'] : src.market === 'IL' ? ['ILS'] : ['USD', 'ILS']);
+	const modes = autoRules(app, sourceId).modes;
 	app.transaction(() => {
-		for (const c of want) autoPortfolio(app, sourceId, c, true);
+		for (const c of want) for (const hold of modes) autoPortfolio(app, sourceId, c, true, hold);
 		syncAuto(app, market, now);
 	})();
-	return app.prepare('select * from portfolios where auto_source_id = ? order by currency desc').all(sourceId) as PortfolioRow[];
+	return app.prepare('select * from portfolios where auto_source_id = ? order by auto_hold desc, currency desc').all(sourceId) as PortfolioRow[];
 }
 
 // ── deleting a portfolio whole ────────────────────────────────────────────────────────────────────────
@@ -1205,6 +1308,7 @@ export function deletePosition(app: Database.Database, market: Database.Database
 		).run(id, id);
 		const events = app.prepare('delete from position_events where position_id = ?').run(id).changes;
 		const cash = app.prepare('delete from cash_events where position_id = ?').run(id).changes;
+		app.prepare('delete from auto_carries where position_id = ?').run(id);
 		app.prepare('delete from positions where id = ?').run(id);
 		app.prepare('delete from portfolio_purge where portfolio_id = ?').run(pos.portfolio_id);
 		return { events, cash };
@@ -1225,6 +1329,7 @@ export function deletePortfolio(app: Database.Database, id: number, confirmName:
 		).run(id, id);
 		const ev = app.prepare('delete from position_events where position_id in (select id from positions where portfolio_id = ?)').run(id).changes;
 		const cash = app.prepare('delete from cash_events where portfolio_id = ?').run(id).changes;
+		app.prepare('delete from auto_carries where portfolio_id = ?').run(id);
 		const pos = app.prepare('delete from positions where portfolio_id = ?').run(id).changes;
 		app.prepare('delete from portfolios where id = ?').run(id);
 		app.prepare('delete from portfolio_purge where portfolio_id = ?').run(id);
