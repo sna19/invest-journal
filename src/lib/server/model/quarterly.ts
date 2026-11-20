@@ -51,6 +51,10 @@ export interface Params {
 	capGroups: string[];
 	/** the lower bounds of mega, large, mid and small, dollars */
 	capBounds: number[];
+	/** T-012: the broker's fee — % of a trade, but not less than the minimum in dollars; the tax on realized gains, % */
+	commissionPct: number;
+	commissionMinUsd: number;
+	taxPct: number;
 }
 
 export const CAP_ABS = ['mega', 'large', 'mid', 'small', 'micro'] as const;
@@ -68,19 +72,28 @@ export const DEFAULTS: Params = {
 	compareWith: 'market',
 	capMode: 'abs',
 	capGroups: [],
-	capBounds: [200e9, 10e9, 2e9, 0.3e9]
+	capBounds: [200e9, 10e9, 2e9, 0.3e9],
+	commissionPct: 0.1,
+	commissionMinUsd: 5,
+	taxPct: 25
 };
 
 /** the limits a parameter is kept in (the screen's inputs and the API check) */
-export const LIMITS: Record<'years' | 'k' | 'count' | 'perSector' | 'perMarket' | 'minTurnoverUsd' | 'minPriceUsd', [number, number]> = {
+export const LIMITS: Record<'years' | 'k' | 'count' | 'perSector' | 'perMarket' | 'minTurnoverUsd' | 'minPriceUsd' | 'commissionPct' | 'commissionMinUsd' | 'taxPct', [number, number]> = {
 	years: [5, 15],
 	k: [1, 15],
 	count: [1, 30],
 	perSector: [1, 30],
 	perMarket: [1, 30],
 	minTurnoverUsd: [0, 100_000_000],
-	minPriceUsd: [0, 1000]
+	minPriceUsd: [0, 1000],
+	commissionPct: [0, 2],
+	commissionMinUsd: [0, 50],
+	taxPct: [0, 50]
 };
+
+/** the parameters with fractions: not rounded to whole numbers */
+const FRACTIONAL = new Set(['minTurnoverUsd', 'minPriceUsd', 'commissionPct', 'commissionMinUsd', 'taxPct']);
 
 export function cleanParams(input: Partial<Record<keyof Params, unknown>>, base: Params = DEFAULTS): Params {
 	const p: Params = { ...base };
@@ -89,7 +102,7 @@ export function cleanParams(input: Partial<Record<keyof Params, unknown>>, base:
 		const n = Number(input[k]);
 		if (!Number.isFinite(n)) continue;
 		const [lo, hi] = LIMITS[k];
-		p[k] = Math.min(hi, Math.max(lo, k === 'minTurnoverUsd' || k === 'minPriceUsd' ? n : Math.round(n)));
+		p[k] = Math.min(hi, Math.max(lo, FRACTIONAL.has(k) ? Math.round(n * 1000) / 1000 : Math.round(n)));
 	}
 	if (input.sort === 'mean' || input.sort === 'median' || input.sort === 'worst') p.sort = input.sort;
 	if (input.compareWith === 'market' || input.compareWith === 'sector') p.compareWith = input.compareWith;
@@ -715,4 +728,196 @@ export function needSector(u: Universe, p: Params = DEFAULTS): number[] {
 			return l.turnoverUsd >= p.minTurnoverUsd && l.priceUsd >= p.minPriceUsd;
 		})
 		.map((s) => s.id);
+}
+
+// ── T-012: the costs — the variant's portfolio over the last 12 quarters ─────────────────────────────────────────
+
+export interface CostQuarter {
+	/** «2025-Q3» */
+	label: string;
+	picked: number;
+	/** of them kept from the quarter before by the rule «hold if chosen again» */
+	kept: number;
+	/** the equal-weighted candidates without any cost, % */
+	gross: number | null;
+	/** the portfolio after the fee and the tax, with the rule and without, % */
+	hold: number | null;
+	noHold: number | null;
+}
+
+export interface CostBook {
+	/** the annual return over the period, %; after costs — as if everything were sold at the end */
+	cagr: number | null;
+	fees: number;
+	taxes: number;
+	/** the purchases of a year against the portfolio's mean value, % */
+	turnover: number;
+	/** positions not sold because chosen again */
+	kept: number;
+	endValue: number;
+}
+
+export interface CostRun {
+	quarters: CostQuarter[];
+	years: number;
+	/** the money at the start: the automatic portfolio's sum per hypothesis × the number of candidates */
+	start: number;
+	gross: number | null;
+	hold: CostBook;
+	noHold: CostBook;
+}
+
+/** a portfolio per position notional of 3 000 $ — the automatic portfolio's sum (section 18) */
+export const NOTIONAL_USD = 3000;
+
+/**
+ * The quarters in a row, the candidates of each chosen as in the check without peeking (on the 7 years before,
+ * K lowered as there; the measure and the cap filter of the variant), held for the quarter, each bought for an
+ * equal part. Two books: with «hold if chosen again» (a share chosen again is neither sold nor bought) and
+ * without (everything sold and bought every quarter). The fee — on every purchase and sale; the tax — on the
+ * net realized gain of a calendar year, a loss carried to the next; at the end everything is sold, so the
+ * unrealized gain of the book with the rule is taxed too. The returns include dividends (adjusted prices), not
+ * taxed separately. Only the shares that are in the base today — the same peeking as in the check.
+ */
+export function costRun(u: Universe, variant: Variant, input: Params, n = 12): CostRun {
+	const p = { ...input, k: Math.min(input.k, input.years) };
+	const train = 7;
+	const k = Math.max(1, p.k - (p.years - train));
+	// the last complete quarter, then n back
+	let y = Math.floor(u.lastMonth / 12);
+	let q = 4;
+	while (quarterEnd(y, q) > u.lastMonth) if (--q === 0) (q = 4), y--;
+	const seq: { y: number; q: number }[] = [];
+	for (let i = 0; i < n; i++) {
+		seq.unshift({ y, q });
+		if (--q === 0) (q = 4), y--;
+	}
+	const liquid = new Map<Series, { turnoverUsd: number; priceUsd: number }>();
+	for (const s of u.stocks) {
+		const l = liquidity(s, u.lastMonth, u.usdIls);
+		if (l.turnoverUsd >= p.minTurnoverUsd && l.priceUsd >= p.minPriceUsd) liquid.set(s, l);
+	}
+	const choose = (yy: number, qq: number) => {
+		const yrs = Array.from({ length: train + 1 }, (_, i) => yy - train + i);
+		const rows: Row[] = [];
+		for (const [s, l] of liquid) {
+			const r = yrs.map((x) => quarterReturn(s, x, qq));
+			if (r.every((x) => Number.isFinite(x))) rows.push({ s, r, ...l });
+		}
+		const ms = measures(u, rows, yrs, qq, variant, p.compareWith);
+		const groups = p.capGroups.length ? capGroupMap(rows, p, (r) => capAt(r.s, quarterEnd(yy, qq) - 3, u.usdIls)) : null;
+		const list = rows
+			.map((row, i) => {
+				const m = ms[i].slice(0, train);
+				return { s: row.s, m, score: variant === 'C' ? (tScore(m) ?? -Infinity) : scoreOf(m, p.sort), r: row.r[train], keep: !groups || p.capGroups.includes(groups.get(row) ?? '') };
+			})
+			.filter((x) => x.keep && (variant === 'C' ? Number.isFinite(x.score) : x.m.filter((v) => v > 0).length >= k));
+		return pick(list, p).chosen.map((x) => ({ id: x.s.id, r: x.r }));
+	};
+	const fee = (amount: number) => (amount > 0 ? Math.max((amount * p.commissionPct) / 100, p.commissionMinUsd) : 0);
+	const start = p.count * NOTIONAL_USD;
+
+	interface Book {
+		cash: number;
+		pos: Map<number, { value: number; cost: number }>;
+		realized: number;
+		carry: number;
+		fees: number;
+		taxes: number;
+		bought: number;
+		kept: number;
+		values: number[];
+	}
+	const book = (): Book => ({ cash: start, pos: new Map(), realized: 0, carry: 0, fees: 0, taxes: 0, bought: 0, kept: 0, values: [] });
+	const valueOf = (b: Book) => b.cash + [...b.pos.values()].reduce((x, v) => x + v.value, 0);
+	const sell = (b: Book, id: number) => {
+		const x = b.pos.get(id)!;
+		const f = fee(x.value);
+		b.fees += f;
+		b.cash += x.value - f;
+		b.realized += x.value - f - x.cost;
+		b.pos.delete(id);
+	};
+	const payTax = (b: Book) => {
+		const net = b.realized + b.carry;
+		if (net > 0) {
+			const t = (net * p.taxPct) / 100;
+			b.taxes += t;
+			b.cash -= t;
+			b.carry = 0;
+		} else b.carry = net;
+		b.realized = 0;
+	};
+	const step = (b: Book, chosen: { id: number; r: number }[], hold: boolean) => {
+		const want = new Set(chosen.map((c) => c.id));
+		for (const id of [...b.pos.keys()]) if (!hold || !want.has(id)) sell(b, id);
+		const fresh = chosen.filter((c) => !b.pos.has(c.id));
+		b.kept += chosen.length - fresh.length;
+		// the money there is goes in equal parts into the new ones; a tax owed may leave little
+		const each = fresh.length && b.cash > 0 ? b.cash / fresh.length : 0;
+		for (const c of fresh) {
+			if (!(each > 0)) break;
+			const f = fee(each);
+			b.fees += f;
+			b.bought += each;
+			b.cash -= each;
+			b.pos.set(c.id, { value: each - f, cost: each });
+		}
+		for (const c of chosen) {
+			const x = b.pos.get(c.id);
+			if (x) x.value *= 1 + c.r;
+		}
+	};
+	const withRule = book();
+	const without = book();
+	let gross = 1;
+	const quarters: CostQuarter[] = [];
+	const pct = (x: number) => Math.round(x * 10000) / 100;
+	let prevH = start;
+	let prevN = start;
+	let prevPicked = new Set<number>();
+	for (let i = 0; i < seq.length; i++) {
+		const { y: yy, q: qq } = seq[i];
+		const chosen = choose(yy, qq);
+		const g = chosen.length ? chosen.reduce((x, c) => x + c.r, 0) / chosen.length : 0;
+		gross *= 1 + g;
+		step(withRule, chosen, true);
+		step(without, chosen, false);
+		// the turnover counts the changes, not the first purchase
+		if (i === 0) withRule.bought = without.bought = 0;
+		// the tax of a calendar year — after its last quarter
+		if (qq === 4) for (const b of [withRule, without]) payTax(b);
+		const vh = valueOf(withRule);
+		const vn = valueOf(without);
+		withRule.values.push(vh);
+		without.values.push(vn);
+		quarters.push({
+			label: `${yy}-Q${qq}`,
+			picked: chosen.length,
+			kept: chosen.filter((c) => prevPicked.has(c.id)).length,
+			gross: chosen.length ? pct(g) : null,
+			hold: pct(vh / prevH - 1),
+			noHold: pct(vn / prevN - 1)
+		});
+		prevPicked = new Set(chosen.map((c) => c.id));
+		prevH = vh;
+		prevN = vn;
+	}
+	const years = seq.length / 4;
+	const turnYears = (seq.length - 1) / 4 || 1;
+	const close = (b: Book): CostBook => {
+		for (const id of [...b.pos.keys()]) sell(b, id);
+		payTax(b);
+		const end = b.cash;
+		const mean = b.values.reduce((x, v) => x + v, 0) / (b.values.length || 1);
+		return {
+			cagr: end > 0 ? pct((end / start) ** (1 / years) - 1) : null,
+			fees: Math.round(b.fees),
+			taxes: Math.round(b.taxes),
+			turnover: Math.round((b.bought / turnYears / mean) * 100),
+			kept: b.kept,
+			endValue: Math.round(end)
+		};
+	};
+	return { quarters, years, start, gross: pct(gross ** (1 / years) - 1), hold: close(withRule), noHold: close(without) };
 }

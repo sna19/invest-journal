@@ -153,13 +153,18 @@ export const portfolios = sqliteTable(
 		autoSourceId: integer().references(() => sources.id),
 		/** the sum an automatic portfolio puts into each hypothesis, in the portfolio's currency */
 		autoAmountIls: real().notNull().default(10000),
+		/**
+		 * T-012, a model's portfolio: 1 — «hold if chosen again» (a share chosen for the next quarter is not sold and
+		 * bought again), 0 — without the rule (variant C keeps both, to compare)
+		 */
+		autoHold: integer().notNull().default(1),
 		/** for reference only, as the broker shows it («мас лешалем»): entered by hand, not computed */
 		taxAccrued: real(),
 		sortOrder: integer().notNull().default(0),
 		createdAt: now(),
 		archivedAt: text()
 	},
-	(t) => [uniqueIndex('portfolios_auto_source_currency').on(t.autoSourceId, t.currency)]
+	(t) => [uniqueIndex('portfolios_auto_source_currency_hold').on(t.autoSourceId, t.currency, t.autoHold)]
 );
 
 export const positions = sqliteTable(
@@ -296,4 +301,28 @@ export const modelQuarters = sqliteTable(
 		recordedAt: now()
 	},
 	(t) => [primaryKey({ columns: [t.variant, t.quarter] })]
+);
+
+/**
+ * T-012: a model's position carried into the next quarter by «hold if chosen again» — the next hypothesis on the
+ * same share takes the position of the one that closed, without a sale and a purchase
+ */
+export const autoCarries = sqliteTable(
+	'auto_carries',
+	{
+		portfolioId: integer()
+			.notNull()
+			.references(() => portfolios.id),
+		hypothesisId: integer()
+			.notNull()
+			.references(() => hypotheses.id),
+		positionId: integer()
+			.notNull()
+			.references(() => positions.id),
+		fromHypothesisId: integer()
+			.notNull()
+			.references(() => hypotheses.id),
+		createdAt: now()
+	},
+	(t) => [primaryKey({ columns: [t.portfolioId, t.hypothesisId] })]
 );

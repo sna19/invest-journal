@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { israelDate } from '../hypothesis.js';
-import { DEFAULTS, dropUniverse, nextQuarter, runModel, universe, universeIds } from './model/quarterly.js';
+import { costRun, DEFAULTS, dropUniverse, nextQuarter, runModel, universe, universeIds } from './model/quarterly.js';
 import { recordQuarter, VARIANTS } from './model/service.js';
 import { checkMonthlyAgainstDaily, loadMonthly, monthlyDue, type MonthlySummary } from './market/monthly.js';
 import { loadProfiles, staleProfiles, type ProfilesSummary } from './market/profiles.js';
@@ -415,6 +415,11 @@ export function logModel() {
 					})
 					.join('; ')
 		);
+	// T-012 report: the portfolio of each variant over the last 12 quarters before and after the costs
+	for (const v of ['A', 'B', 'C'] as const) {
+		const c = costRun(u, v, DEFAULTS);
+		out.push(`costs ${v}: gross ${c.gross}%/y; hold ${c.hold.cagr}%/y (fees ${c.hold.fees}$, tax ${c.hold.taxes}$, turnover ${c.hold.turnover}%, kept ${c.hold.kept}); no hold ${c.noHold.cagr}%/y (fees ${c.noHold.fees}$, tax ${c.noHold.taxes}$, turnover ${c.noHold.turnover}%)`);
+	}
 	for (const l of out) console.log(`model: ${l}`);
 	// T-020: the candidates' cards need daily history — load it now rather than on the first open
 	if (enqueueMissingHistory(m, [...new Set(candidates)], israelDate())) void runHistoryJob().catch((e) => console.error(`history: ${e}`));
