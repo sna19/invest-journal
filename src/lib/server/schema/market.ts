@@ -282,6 +282,8 @@ export const securityProfiles = sqliteTable('ref_security_profiles', {
 	capCurrency: text(),
 	fundCategory: text(),
 	sectorWeights: text(),
+	/** a fund's annual fee (expense ratio), a fraction: 0.0105 = 1.05% a year */
+	expenseRatio: real(),
 	fetchedAt: text().notNull()
 });
 

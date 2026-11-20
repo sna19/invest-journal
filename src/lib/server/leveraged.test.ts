@@ -37,3 +37,14 @@ describe('leveraged and inverse ETFs (20.11.2026)', () => {
 		]);
 	});
 });
+
+describe('a fund\'s fee in its profile', () => {
+	it('is read from fundProfile.feesExpensesInvestment', async () => {
+		const { parseProfile } = await import('./market/profiles.js');
+		const body = JSON.stringify({
+			quoteSummary: { result: [{ quoteType: { quoteType: 'ETF' }, fundProfile: { categoryName: 'Trading--Leveraged Equity', feesExpensesInvestment: { annualReportExpenseRatio: { raw: 0.0105, fmt: '1.05%' }, netExpRatio: {} } } }] }
+		});
+		expect(parseProfile(body)).toMatchObject({ kind: 'etf', expenseRatio: 0.0105 });
+		expect(parseProfile(JSON.stringify({ quoteSummary: { result: [{ quoteType: { quoteType: 'ETF' }, fundProfile: {} }] } })).expenseRatio).toBeNull();
+	});
+});

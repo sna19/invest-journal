@@ -125,12 +125,23 @@
 		x: number;
 		level: 'stock' | 'industry' | 'sector' | 'index';
 		label: string;
+		expenseRatio: number | null;
 	}
 	let lev = $state<Lev[] | null>(null);
+	let levLoading = $state(0);
+	let levSort = $state<'x' | 'fee'>('x');
 	let levDir = $state<'long' | 'short'>('long');
 	async function loadLev() {
 		const r = await fetch(`/api/securities/${page.params.id}/leveraged`).catch(() => null);
-		if (r?.ok) lev = (await r.json()).items;
+		if (!r?.ok) return;
+		const j = await r.json();
+		lev = j.items;
+		levLoading = j.loading;
+		// the fees are being loaded: ask again once, a little later
+		if (j.loading && !levRetried) {
+			levRetried = true;
+			setTimeout(loadLev, Math.min(60_000, 2000 + j.loading * 700));
+		}
 	}
 	function setLevDir(d: 'long' | 'short') {
 		levDir = d;
@@ -140,7 +151,10 @@
 			/* ignore */
 		}
 	}
+	let levRetried = false;
 	const LEVELS: Lev['level'][] = ['stock', 'industry', 'sector', 'index'];
+	const feeText = (x: number | null) => (x === null ? '—' : `${(x * 100).toFixed(2).replace('.', tx(',', '.'))}%`);
+	const byFee = (a: Lev, b: Lev) => (a.expenseRatio ?? 9) - (b.expenseRatio ?? 9) || b.x - a.x;
 	const levelName = (l: Lev) =>
 		l.level === 'stock' ? tx(`На саму ${l.label}`, `On ${l.label} itself`) : l.level === 'industry' ? `${tx('Отрасль', 'Industry')}: ${l.label}` : l.level === 'sector' ? `${tx('Сектор', 'Sector')}: ${sectorName(l.label, tx)}` : `${tx('Индекс', 'Index')}: ${l.label}`;
 	const xText = (x: number) => `×${String(x).replace('.', tx(',', '.'))}`;
@@ -363,9 +377,15 @@
 				<button role="radio" aria-checked={levDir === 'long'} class:on={levDir === 'long'} onclick={() => setLevDir('long')}>▲ {tx('На рост', 'Up')} · {ups.length}</button>
 				<button role="radio" aria-checked={levDir === 'short'} class:on={levDir === 'short'} onclick={() => setLevDir('short')}>▼ {tx('На падение', 'Down')} · {downs.length}</button>
 			</div>
+			<p class="levsort muted small">
+				{tx('Порядок:', 'Order:')}
+				<button class:on={levSort === 'x'} aria-pressed={levSort === 'x'} onclick={() => (levSort = 'x')}>{tx('по плечу', 'by leverage')}</button>
+				<button class:on={levSort === 'fee'} aria-pressed={levSort === 'fee'} onclick={() => (levSort = 'fee')}>{tx('по комиссии', 'by fee')}</button>
+				· {tx('комиссия — в год', 'fee — a year')}
+			</p>
 			{#if !list.length}<p class="muted small">{levDir === 'long' ? tx('ETF на рост с плечом не нашлось.', 'No leveraged ETFs up.') : tx('ETF на падение не нашлось.', 'No inverse ETFs.')}</p>{/if}
 			{#each LEVELS as level (level)}
-				{@const rows = list.filter((l) => l.level === level).sort((a, b) => b.x - a.x)}
+				{@const rows = list.filter((l) => l.level === level).sort(levSort === 'fee' ? byFee : (a, b) => b.x - a.x || (a.expenseRatio ?? 9) - (b.expenseRatio ?? 9))}
 				{#each [...new Set(rows.map((r) => r.label))] as label (label)}
 					{@const group = rows.filter((r) => r.label === label)}
 					<p class="levhead muted small">{levelName(group[0])}</p>
@@ -375,12 +395,14 @@
 								<span class="x" class:up={l.dir === 'long'} class:down={l.dir === 'short'}>{l.dir === 'long' ? '▲' : '▼'} {xText(l.x)}</span>
 								<a href="/security/{l.id}"><b>{l.symbol}</b></a>
 								<span class="muted small nm">{l.name}</span>
+								<span class="fee" title={tx('комиссия фонда в год', 'the fund\'s annual fee')}>{feeText(l.expenseRatio)}</span>
 								<TvLink exchange={l.exchange} symbol={l.symbol} />
 							</li>
 						{/each}
 					</ul>
 				{/each}
 			{/each}
+			{#if levLoading}<p class="muted small">{tx(`Комиссии ${levLoading} фондов загружаются — появятся через минуту.`, `The fees of ${levLoading} funds are loading — they appear in a minute.`)}</p>{/if}
 			<p class="muted small">{tx('Плечо — дневное: за один день фонд движется как акция ×N (на падение — против неё). За недели и месяцы итог расходится с ×N, тем сильнее, чем сильнее колебания. Это инструменты для коротких сделок.', 'The leverage is daily: over one day the fund moves as the share ×N (inverse — against it). Over weeks and months the result drifts from ×N, the more so the stronger the swings. These are tools for short trades.')}</p>
 		</Fold>
 	{/if}
@@ -454,7 +476,7 @@
 	}
 	.levlist li {
 		display: grid;
-		grid-template-columns: 4.2em auto 1fr auto;
+		grid-template-columns: 4.2em auto 1fr auto auto;
 		align-items: center;
 		gap: var(--s2);
 		padding: 6px 0;
@@ -470,6 +492,23 @@
 	}
 	.levlist .x.down {
 		color: var(--down);
+	}
+	.levlist .fee {
+		font-variant-numeric: tabular-nums;
+		font-size: var(--fs-xs);
+		white-space: nowrap;
+	}
+	.levsort button {
+		border: none;
+		background: none;
+		padding: 2px 4px;
+		color: var(--link);
+		cursor: pointer;
+		font: inherit;
+	}
+	.levsort button.on {
+		color: var(--text);
+		font-weight: 600;
 	}
 	.levlist .nm {
 		overflow: hidden;
