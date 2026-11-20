@@ -202,3 +202,15 @@ describe('search', () => {
 		expect(sp.slice(0, 1)).toEqual(['SPX']); // the benchmark index: «S&P 500»
 	});
 });
+
+describe('TASE foreign ETF names (20.11.2026)', async () => {
+	const { foreignEtfName } = await import('./tase.js');
+	it('the full name from the Hebrew one, so «iShares» and «UCITS» find them', () => {
+		expect(foreignEtfName('IS.FF505', 'ISHAR.F MSCI AC', 'איישרס.חוץ MSCI AC WORLD')).toBe('iShares MSCI AC WORLD UCITS ETF');
+		expect(foreignEtfName('IS.FF702', 'ISH.FRF SP 500', 'איישרס.חוץ P 500&S')).toBe('iShares S&P 500 UCITS ETF');
+		expect(foreignEtfName('IN.FF6', 'INV.FRFMSCIEM', 'אינבסקו.חוץMSCIEMUCITSETF')).toBe('Invesco MSCI EM UCITS ETF');
+		expect(foreignEtfName('IN.FF1', 'INV.FRFS&P 500', 'אינבסקו.חוץ')).toBe('Invesco S&P 500 UCITS ETF');
+		expect(foreignEtfName('IS.FFIND', 'ISHARE.F INDIA', 'איישרס.חוץ הודו INDIA')).toBe('iShares INDIA UCITS ETF');
+		expect(foreignEtfName('KSM.F208', 'KSM ETF', 'קסם')).toBe('KSM ETF');
+	});
+});
