@@ -12,4 +12,4 @@ A position is the history of one security from the first interest to the full sa
 
 **A price far from the day.** If the price is more than 10% outside the day's range, the app asks again — that catches typos and shekels instead of agorot.
 
-**Sorting.** Above the list — «Invested» (how much money is in the security), «Ticker», «Change» (% from the purchase price), «Profit» (realized and unrealized together). Tapping again flips the order: best on top ↓ or worst on top ↑. The choice is remembered on this device.
+**Sorting.** Above the list — «Value», «Today» (% today), «Invested» (how much money is in the security), «Ticker», «Change» (% from the purchase price), «Profit» (realized and unrealized together). Tapping again flips the order: best on top ↓ or worst on top ↑. The choice is remembered on this device.

@@ -325,3 +325,38 @@ describe('live quotes in the portfolio (owner 19.11.2026)', () => {
 		expect(v.position.livePrice).toBe(false);
 	});
 });
+
+describe('the day change (T-019)', () => {
+	it('the last close against the one before, with the rate of each day for a dollar share; the portfolio sums it', () => {
+		const s = setup();
+		addEvent(s.app, s.market, { portfolioId: s.p.id, securityId: s.us, kind: 'buy', date: '2026-01-05', qty: 10, price: 100, fee: 0 }, NOW);
+		addEvent(s.app, s.market, { portfolioId: s.p.id, securityId: s.il, kind: 'buy', date: '2026-01-05', qty: 100, price: 5000, fee: 0 }, NOW);
+		const v = portfolioView(s.app, s.market, s.p.id, '2026-04-30')!;
+		const us = v.positions.find((p) => p.symbol === 'UUU')!;
+		const il = v.positions.find((p) => p.symbol === 'AAA')!;
+		// no quote: 110 against 120, the dollar 3.8 against 3.7, dated by the last close
+		expect(us.dayPct).toBeCloseTo((110 / 120 - 1) * 100, 6);
+		expect(us.dayPc).toBeCloseTo(10 * (110 * 3.8 - 120 * 3.7), 6);
+		expect(us.dayDate).toBe('2026-04-30');
+		// agorot: 6500 against 7000 for 100 shares
+		expect(il.dayPc).toBeCloseTo(100 * 0.01 * (6500 - 7000), 6);
+		const day = v.summary.day!;
+		// dollars kept in the shekel portfolio move with the rate too (here −1 000 $ spent on the share)
+		const usd = v.summary.balances.find((b) => b.currency === 'USD')!.amount;
+		expect(usd).toBeCloseTo(-1000, 6);
+		expect(day.money).toBeCloseTo(us.dayPc! + il.dayPc! + usd * (3.8 - 3.7), 6);
+		expect(day.date).toBe('2026-04-30');
+		expect(day.pct).toBeLessThan(0);
+	});
+
+	it('a live quote against its own previous close', () => {
+		const s = setup();
+		addEvent(s.app, s.market, { portfolioId: s.p.id, securityId: s.us, kind: 'buy', date: '2026-01-05', qty: 10, price: 100, fee: 0 }, NOW);
+		s.market
+			.prepare(`insert into market_quotes (key, security_id, price, prev_close, currency, market_time, fetched_at, provider_code) values (?, ?, 112, 110, 'USD', ?, ?, 'yahoo')`)
+			.run(`sec:${s.us}`, s.us, new Date().toISOString(), new Date().toISOString());
+		const us = portfolioView(s.app, s.market, s.p.id)!.positions.find((p) => p.symbol === 'UUU')!;
+		expect(us.dayPct).toBeCloseTo((112 / 110 - 1) * 100, 6);
+		expect(us.dayPc).toBeCloseTo(10 * (112 - 110) * 3.8, 6);
+	});
+});
