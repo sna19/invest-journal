@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Fold from '#lib/Fold.svelte';
 	import { goto } from '$app/navigation';
 	import LangSwitch from '#lib/LangSwitch.svelte';
 	import TopBar from '#lib/TopBar.svelte';
@@ -28,8 +29,7 @@
 	</div>
 </section>
 
-<section class="card">
-	<h2>{t('acc.password')}</h2>
+<Fold key="account-password" title={t('acc.password')} open={false}>
 	<form method="POST" action="?/password">
 		<input type="text" name="username" autocomplete="username" value={data.user?.login} hidden readonly />
 		<label><span>{t('acc.old')}</span><input name="old" type="password" autocomplete="current-password" required /></label>
@@ -39,11 +39,10 @@
 		{#if okOf('password')}<p class="ok" role="status">{t('acc.saved')}</p>{/if}
 		<button type="submit" class="primary">{t('acc.save')}</button>
 	</form>
-</section>
+</Fold>
 
 {#if data.user?.admin}
-	<section class="card">
-		<h2>{t('acc.users')}</h2>
+	<Fold key="account-users" title={t('acc.users')} summary={data.users.map((u) => u.name).join(' · ')}>
 		<p class="muted">{t('acc.usersNote')}</p>
 		<ul class="users">
 			{#each data.users as u (u.id)}
@@ -72,7 +71,7 @@
 			{#if okOf('add')}<p class="ok" role="status">{t('acc.added')}</p>{/if}
 			<button type="submit" class="primary">{t('acc.add')}</button>
 		</form>
-	</section>
+	</Fold>
 {/if}
 
 <style>
@@ -81,10 +80,6 @@
 		padding: var(--s4);
 		border-radius: var(--r3);
 		background: var(--surface);
-	}
-	h2 {
-		margin: 0 0 var(--s2);
-		font-size: var(--fs-l);
 	}
 	h3 {
 		margin: var(--s4) 0 var(--s2);

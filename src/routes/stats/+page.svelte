@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Fold from '#lib/Fold.svelte';
 	import { tl, tx } from '#lib/i18n.js';
 	import { onMount } from 'svelte';
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
@@ -123,12 +124,11 @@
 			<li class="card" data-key={key}>
 				{#if key === 'calibration'}
 					{@const c = data.calibration}
-					<div class="head">
-						<h2>{tx('Калибровка', 'Calibration')}</h2>
-						<HelpIcon topicKey="stats.calibration" label={tx('калибровка', 'calibration')} />
-						<span class="grow"></span>
-						<button class="handle" data-handle aria-label={tx('Калибровка: перетащить', 'Calibration: drag')}><GripVertical size={18} /></button>
-					</div>
+					<Fold bare key="stats-calibration" title={tx('Калибровка', 'Calibration')} summary={c.n ? tx(`закрыто с уверенностью: ${c.n}`, `closed with a confidence: ${c.n}`) : undefined}>
+						{#snippet aside()}
+							<HelpIcon topicKey="stats.calibration" label={tx('калибровка', 'calibration')} />
+							<button class="handle" data-handle aria-label={tx('Калибровка: перетащить', 'Calibration: drag')}><GripVertical size={18} /></button>
+						{/snippet}
 					{#if !c.n}
 						<p class="muted">
 							{tx('Появится, когда закроются гипотезы с заполненной уверенностью.', 'Appears when hypotheses with a confidence filled in close.')}{#if c.without}
@@ -175,14 +175,14 @@
 						</ul>
 						{#if c.without}<p class="muted small">{tx(`Ещё ${c.without} закрытых без уверенности — в калибровку не входят.`, `${c.without} more closed without a confidence — not in the calibration.`)}</p>{/if}
 					{/if}
+					</Fold>
 				{:else if key === 'own' || key === 'mode'}
 					{@const sides = key === 'own' ? data.own : data.mode}
-					<div class="head">
-						<h2>{key === 'own' ? tx('Свои идеи и внешние источники', 'Own ideas and outside sources') : tx('Симуляция и реальные деньги', 'Simulation and real money')}</h2>
-						<HelpIcon topicKey={key === 'own' ? 'stats.own' : 'stats.mode'} label={key === 'own' ? tx('свои идеи', 'own ideas') : tx('режимы', 'modes')} />
-						<span class="grow"></span>
-						<button class="handle" data-handle aria-label={tx('Блок: перетащить', 'Block: drag')}><GripVertical size={18} /></button>
-					</div>
+					<Fold bare key="stats-{key}" title={key === 'own' ? tx('Свои идеи и внешние источники', 'Own ideas and outside sources') : tx('Симуляция и реальные деньги', 'Simulation and real money')}>
+						{#snippet aside()}
+							<HelpIcon topicKey={key === 'own' ? 'stats.own' : 'stats.mode'} label={key === 'own' ? tx('свои идеи', 'own ideas') : tx('режимы', 'modes')} />
+							<button class="handle" data-handle aria-label={tx('Блок: перетащить', 'Block: drag')}><GripVertical size={18} /></button>
+						{/snippet}
 					{#if sides.every((s) => !s.score.n && !s.open)}
 						<p class="muted">
 							{key === 'own'
@@ -192,13 +192,13 @@
 					{:else}
 						{@render compare(sides)}
 					{/if}
+					</Fold>
 				{:else if key === 'tags'}
-					<div class="head">
-						<h2>{tx('По тегам', 'By tags')}</h2>
-						<HelpIcon topicKey="stats.tags" label={tx('теги', 'tags')} />
-						<span class="grow"></span>
-						<button class="handle" data-handle aria-label={tx('По тегам: перетащить', 'By tags: drag')}><GripVertical size={18} /></button>
-					</div>
+					<Fold bare key="stats-tags" title={tx('По тегам', 'By tags')} summary={data.tags.shown.map((t) => t.label).join(' · ') || undefined}>
+						{#snippet aside()}
+							<HelpIcon topicKey="stats.tags" label={tx('теги', 'tags')} />
+							<button class="handle" data-handle aria-label={tx('По тегам: перетащить', 'By tags: drag')}><GripVertical size={18} /></button>
+						{/snippet}
 					{#if data.tags.shown.length}
 						{@render compare(data.tags.shown)}
 					{:else}
@@ -209,6 +209,7 @@
 							{tx('Набирают', 'Gathering')}: {data.tags.gathering.map((t) => `${t.label} (${t.closed} ${tx('из', 'of')} 10${t.open ? `, ${tx('открыто', 'open')} ${t.open}` : ''})`).join(', ')}
 						</p>
 					{/if}
+					</Fold>
 				{/if}
 			</li>
 		{/each}
@@ -282,16 +283,6 @@
 	}
 	:global(.card.dragging) {
 		box-shadow: var(--shadow);
-	}
-	.head {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		min-height: var(--tap);
-	}
-	h2 {
-		margin: 0;
-		font-size: var(--fs-m);
 	}
 	.handle {
 		width: var(--tap);

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Fold from '#lib/Fold.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import TopBar from '#lib/TopBar.svelte';
@@ -97,8 +98,7 @@
 	{#if !r.from}
 		<p class="muted">{tx('В портфеле ещё нет денег и сделок — отчёту не из чего считать.', 'No money or trades in the portfolio yet — nothing to report.')}</p>
 	{:else}
-		<section class="card">
-			<h2>{tx('По месяцам', 'By month')}</h2>
+		<Fold key="report-months" title={tx('По месяцам', 'By month')} summary={r.total.pct !== null ? `${tx('портфель', 'portfolio')} ${r.total.pct > 0 ? '+' : ''}${r.total.pct}% · ${r.benchLabel} ${(r.total.benchPct ?? 0) > 0 ? '+' : ''}${r.total.benchPct ?? '—'}%` : undefined}>
 			<p class="muted small">
 				{tx('С', 'Since')} {d(r.from)}: {tx('портфель', 'portfolio')} <Pct value={r.total.pct} /> · {r.benchLabel} <Pct value={r.total.benchPct} plain />
 				{#if r.total.pct !== null && r.total.benchPct !== null} · <b>{pp(r.total.pct - r.total.benchPct)}</b>{/if}
@@ -148,10 +148,9 @@
 				</tbody>
 			</table>
 			<p class="muted small">{tx('Тап по месяцу — из чего сложился доход.', 'Tap a month to see what the gain was made of.')}</p>
-		</section>
+		</Fold>
 
-		<section class="card">
-			<h2>{tx('Закрытые сделки', 'Closed trades')}</h2>
+		<Fold key="report-trades" title={tx('Закрытые сделки', 'Closed trades')} summary={tx(`сделок: ${r.trades.length}`, `trades: ${r.trades.length}`)}>
 			{#if !r.trades.length}
 				<p class="muted">{tx('Продаж ещё не было.', 'No sales yet.')}</p>
 			{:else}
@@ -199,23 +198,13 @@
 					{/each}
 				</ul>
 			{/if}
-		</section>
+		</Fold>
 	{/if}
 {:else if !problem}
 	<p class="muted">{tx('Считаю…', 'Computing…')}</p>
 {/if}
 
 <style>
-	.card {
-		margin-bottom: var(--s4);
-		padding: var(--s4);
-		border-radius: var(--r3);
-		background: var(--surface);
-	}
-	h2 {
-		margin: 0 0 var(--s2);
-		font-size: var(--fs-l);
-	}
 	.muted {
 		color: var(--muted);
 	}
