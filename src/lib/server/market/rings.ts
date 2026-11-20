@@ -1,3 +1,4 @@
+import { ringRefIds } from '../compare.js';
 import type Database from 'better-sqlite3';
 
 /**
@@ -25,6 +26,8 @@ export const ring = (market: Database.Database): Ring => {
 export function ringSecurities(market: Database.Database, app: Database.Database, r: Ring = ring(market)): number[] {
 	const ids = new Set<number>();
 	for (const b of market.prepare('select id from ref_securities where is_benchmark = 1 order by id').all() as { id: number }[]) ids.add(b.id);
+	// the sector, industry and index ETFs a security's card compares with (20.11.2026)
+	for (const id of ringRefIds(market)) ids.add(id);
 	for (const h of app.prepare(`select distinct security_id as id from hypotheses where status <> 'cancelled'`).all() as { id: number }[])
 		ids.add(h.id);
 	// section 18: what the portfolios hold or plan needs its prices too
