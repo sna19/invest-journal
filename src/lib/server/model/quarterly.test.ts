@@ -118,6 +118,23 @@ describe('quarterly model 10a', () => {
 		expect(capAt(big, START + 1, 3.7)).toBeCloseTo(3e9 * big.close[1], 0);
 	});
 
+	it('the placebo (T-010): no seasonality reads as chance, a built-in one as a signal', () => {
+		// 300 shares; noise: every quarter up or down at random
+		let seed = 11;
+		const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647) - 0.5;
+		const noise = Array.from({ length: 300 }, (_, i) => series(i + 1, () => rnd() * 0.06, { sector: `s${i}` }));
+		const n = runModel(u(noise), 'A', 1, { ...DEFAULTS, k: 8 });
+		expect(n.placebo.runs).toBe(100);
+		expect(n.placebo.verdict).toBe('chance');
+		// the same, but 20 shares rise in every first quarter
+		const seasonal = noise.map((s, i) => (i < 20 ? series(i + 1, (_, m) => (m <= 3 ? 0.02 + rnd() * 0.01 : rnd() * 0.06), { sector: `s${i}` }) : s));
+		const r = runModel(u(seasonal), 'A', 1, { ...DEFAULTS, k: 8 });
+		expect(r.placebo.real).toBeGreaterThan(r.placebo.mean + 10);
+		expect(r.placebo.verdict).toBe('signal');
+		// the same seed: the same placebo on every request
+		expect(runModel(u(seasonal), 'A', 1, { ...DEFAULTS, k: 8 }).placebo).toEqual(r.placebo);
+	});
+
 	it('funds labelled as shares are not shares', async () => {
 		const { isFund } = await import('./quarterly.js');
 		expect(isFund({ kind: 'etf', industry: null, name: 'Invesco DB Gold Double Long ETN' })).toBe(true);

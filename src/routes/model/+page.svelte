@@ -53,6 +53,7 @@
 			capOut: number;
 			passed: number;
 			expected: number;
+			placebo: { runs: number; real: number; mean: number; share: number; verdict: 'signal' | 'unclear' | 'chance' };
 			p: number;
 			candidates: Cand[];
 			capped: number;
@@ -165,9 +166,8 @@
 	}
 
 	const res = $derived(data?.result ?? null);
-	const verdict = $derived(
-		!res ? null : res.passed === 0 ? 'none' : res.passed <= res.expected * 1.5 + 1 ? 'chance' : res.passed <= res.expected * 3 ? 'some' : 'more'
-	);
+	// T-010: the verdict comes from the placebo (100 runs with the quarters shuffled), not from the rough formula
+	const verdict = $derived(!res ? null : res.passed === 0 ? 'none' : res.placebo.verdict);
 	const pct = (x: number | null) => (x === null ? '—' : `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x).toFixed(1)}%`);
 	const money = (x: number) => (x >= 1e6 ? `${(x / 1e6).toFixed(x >= 1e7 ? 0 : 1)} ${tx('млн $', 'M $')}` : `${Math.round(x / 1000)} ${tx('тыс. $', 'K $')}`);
 	const label = $derived(tx('Q', 'Q'));
@@ -333,15 +333,22 @@
 			<HelpIcon topicKey="model.quarterly" label={tx('как считается', 'how it is computed')} />
 		</h2>
 		<p class="sum">
-			{tx('Выборка', 'Universe')} <b>{res.universe}</b> {tx('акций', 'shares')} · {tx('прошли фильтр', 'passed')} <b>{res.passed}</b> · {tx('случайно прошло бы', 'by chance')} ≈ <b>{res.expected}</b>
-			<HelpIcon topicKey="model.chance" label={tx('случайность', 'chance')} />
+			{tx('Выборка', 'Universe')} <b>{res.universe}</b> {tx('акций', 'shares')} · {tx('прошли фильтр', 'passed')} <b>{res.passed}</b>
+		</p>
+		<p class="placebo {res.placebo.verdict}">
+			<span class="badge">{res.placebo.verdict === 'signal' ? tx('сигнал', 'signal') : res.placebo.verdict === 'unclear' ? tx('неясно', 'unclear') : tx('похоже на случайность', 'looks like chance')}</span>
+			<span>
+				{tx(`Настоящий расчёт нашёл ${res.placebo.real}, пустышка — в среднем ${res.placebo.mean}; не меньше нашли ${Math.round(res.placebo.share * 100)}% из ${res.placebo.runs} пустышек.`, `The real calculation found ${res.placebo.real}, the placebo — ${res.placebo.mean} on average; ${Math.round(res.placebo.share * 100)}% of ${res.placebo.runs} placebos found as many or more.`)}
+			</span>
+			<HelpIcon topicKey="model.placebo" label={tx('пустышка', 'placebo')} />
 		</p>
 		<p class="muted small">
 			{tx(`Годы ${res.years[0]}–${res.years.at(-1)}, данные по ${res.dataMonth}; без 10 лет истории — ${res.noHistory}, мало оборота или дешевле порога — ${res.illiquid}; доля растущих кварталов ${Math.round(res.p * 100)}%.`, `Years ${res.years[0]}–${res.years.at(-1)}, data to ${res.dataMonth}; without the full history — ${res.noHistory}, too little turnover or too cheap — ${res.illiquid}; share of rising quarters ${Math.round(res.p * 100)}%.`)}
+			{tx(`Грубая оценка по формуле — ≈ ${res.expected}.`, `The rough formula — ≈ ${res.expected}.`)} <HelpIcon topicKey="model.chance" label={tx('формула случайности', 'the chance formula')} />
 			{#if data}· {data.ms} {tx('мс', 'ms')}{/if}
 		</p>
 		{#if verdict === 'chance'}
-			<p class="warn">{tx('Прошло не сильно больше, чем прошло бы случайно: кандидаты этого варианта могут быть просто везением.', 'Not much more passed than would by chance: these candidates may be plain luck.')}</p>
+			<p class="warn">{tx('Пустышка находит столько же: кандидаты этого варианта не лучше случайных.', 'The placebo finds as many: these candidates are no better than random ones.')}</p>
 		{:else if verdict === 'none'}
 			<p class="warn">{tx('Фильтр не прошла ни одна бумага — ослабьте K или пороги.', 'No share passed — lower K or the thresholds.')}</p>
 		{/if}
@@ -583,6 +590,32 @@
 		gap: 4px;
 		margin: 0 0 4px;
 		font-size: var(--fs-s);
+	}
+	.placebo {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
+		margin: 6px 0;
+		font-size: var(--fs-s);
+	}
+	.placebo .badge {
+		padding: 2px 8px;
+		border-radius: 999px;
+		font-size: var(--fs-xs);
+		font-weight: 700;
+	}
+	.placebo.signal .badge {
+		background: color-mix(in srgb, var(--up) 18%, transparent);
+		color: var(--up);
+	}
+	.placebo.unclear .badge {
+		background: var(--warn-bg);
+		color: var(--warn-text);
+	}
+	.placebo.chance .badge {
+		background: color-mix(in srgb, var(--down) 15%, transparent);
+		color: var(--down);
 	}
 	.warn {
 		margin: var(--s2) 0;

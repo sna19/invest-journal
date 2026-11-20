@@ -281,8 +281,10 @@ export interface Result {
 	capCounts: Record<string, number>;
 	capOut: number;
 	passed: number;
-	/** how many would pass by chance: N × P(Binomial(years, p) ≥ K) */
+	/** how many would pass by chance: N × P(Binomial(years, p) ≥ K) — the rough estimate before T-010 */
 	expected: number;
+	/** T-010: the same count on 100 runs with the quarters shuffled inside each year */
+	placebo: Placebo;
 	/** the share of rising (beating) quarters among all shares and years */
 	p: number;
 	candidates: Candidate[];
@@ -292,6 +294,59 @@ export interface Result {
 	bench: { US: (number | null)[]; IL: (number | null)[] };
 	walk: Walk[];
 	dataMonth: string;
+}
+
+export interface Placebo {
+	runs: number;
+	/** what the real calculation found (shares that passed K) */
+	real: number;
+	mean: number;
+	/** the share of runs that found at least as many as the real one */
+	share: number;
+	/** signal — more than almost any run (under 5%); unclear — under 25%; chance — as many as a placebo */
+	verdict: 'signal' | 'unclear' | 'chance';
+}
+
+/** a small seeded random generator: the same placebo on every request */
+function rng(seed: number) {
+	let a = seed >>> 0;
+	return () => {
+		a = (a + 0x6d2b79f5) >>> 0;
+		let t = a;
+		t = Math.imul(t ^ (t >>> 15), t | 1);
+		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	};
+}
+
+/**
+ * T-010 — the placebo: the variant's measure for all four quarters of each year of the window; in each of `runs`
+ * runs every share's year takes the measure of a random quarter of that year (a quarter not complete yet is not
+ * drawn). Seasonality cannot survive this, so what passes K there passes by luck alone.
+ */
+export function placebo(u: Universe, rows: Row[], years: number[], quarter: number, variant: Variant, p: Params, real: number, runs = 100): Placebo {
+	// measure[q][row][year] — each quarter measured as the real calculation measures its own quarter
+	const byQ = [1, 2, 3, 4].map((q) => {
+		const rq = rows.map((r) => ({ ...r, r: years.map((y) => quarterReturn(r.s, y, q)) }));
+		return measures(u, rq, years, q, variant, p.compareWith);
+	});
+	const rand = rng(quarter * 7919 + (variant === 'B' ? 104729 : 0) + p.k * 31 + p.years);
+	// for each share and year: whether each available quarter rose — drawn from in every run
+	const cells: boolean[][][] = rows.map((_, i) => years.map((_, j) => [0, 1, 2, 3].filter((q) => Number.isFinite(byQ[q][i][j])).map((q) => byQ[q][i][j] > 0)));
+	let ge = 0;
+	let sum = 0;
+	for (let run = 0; run < runs; run++) {
+		let passed = 0;
+		for (const share of cells) {
+			let up = 0;
+			for (const avail of share) if (avail.length && avail[Math.floor(rand() * avail.length)]) up++;
+			if (up >= p.k) passed++;
+		}
+		sum += passed;
+		if (passed >= real) ge++;
+	}
+	const share = ge / runs;
+	return { runs, real, mean: Math.round((sum / runs) * 10) / 10, share, verdict: share < 0.05 && real > 0 ? 'signal' : share < 0.25 ? 'unclear' : 'chance' };
 }
 
 export interface Walk {
@@ -419,6 +474,7 @@ export function runModel(u: Universe, variant: Variant, quarter: number, input: 
 		capOut,
 		passed: passed.length,
 		expected: Math.round(universeN * binomTail(p.years, p.k, prob) * 10) / 10,
+		placebo: placebo(u, rows.filter(kept), years, quarter, variant, p, passed.length),
 		p: Math.round(prob * 1000) / 1000,
 		candidates: chosen.map((x) => ({
 			id: x.s.id,
