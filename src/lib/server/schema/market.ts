@@ -319,3 +319,77 @@ export const monthlyLoads = sqliteTable('ops_monthly_loads', {
 	lastMonth: text(),
 	error: text()
 });
+
+// ── T-022: news «Почему двигается?» ─────────────────────────────────────────────
+
+/**
+ * A news item from a feed: the title, the link (unique), the publisher, the time, a short fragment from the feed —
+ * never the article's text. Duplicates are merged by the link and by the title's key (a normalised title).
+ */
+export const newsItems = sqliteTable(
+	'news_items',
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		url: text().notNull().unique(),
+		title: text().notNull(),
+		/** the title lower-cased, without the publisher's suffix and punctuation: the same story from two feeds */
+		titleKey: text().notNull(),
+		/** the publisher: Reuters, Globes, מאיה… */
+		publisher: text(),
+		/** google | yahoo | maya | globes | themarker | sec */
+		provider: text().notNull(),
+		publishedAt: text().notNull(),
+		snippet: text(),
+		fetchedAt: text().notNull()
+	},
+	(t) => [index('news_items_title_key').on(t.titleKey), index('news_items_published').on(t.publishedAt)]
+);
+
+/** which security a news item is about, and how: the share itself, its sector (ETF, neighbours) or the market */
+export const newsLinks = sqliteTable(
+	'news_links',
+	{
+		newsId: integer().notNull(),
+		/** the security whose card the item belongs to */
+		securityId: integer().notNull(),
+		/** stock | sector | market */
+		role: text().notNull()
+	},
+	(t) => [primaryKey({ columns: [t.newsId, t.securityId, t.role] }), index('news_links_security').on(t.securityId, t.role)]
+);
+
+/** when a feed was last asked for a key («google:stock:123»): not more often than every half hour */
+export const newsFetches = sqliteTable('news_fetches', {
+	key: text().primaryKey(),
+	fetchedAt: text().notNull(),
+	items: integer().notNull().default(0),
+	error: text()
+});
+
+/** a TASE security's company on Maya (the stock exchange's reports site) */
+export const mayaCompanies = sqliteTable('news_maya_companies', {
+	securityId: integer().primaryKey(),
+	companyId: integer(),
+	fetchedAt: text().notNull()
+});
+
+/**
+ * T-022, the trigger: a day the security moved by at least max(2 ATR%, 3%) — with the move split into the market,
+ * the sector and the share itself, and the news found then
+ */
+export const newsMoves = sqliteTable(
+	'news_moves',
+	{
+		securityId: integer().notNull(),
+		date: text().notNull(),
+		movePct: real().notNull(),
+		atrPct: real(),
+		marketPct: real(),
+		sectorPct: real(),
+		ownPct: real(),
+		news: integer().notNull().default(0),
+		topTitle: text(),
+		createdAt: text().notNull()
+	},
+	(t) => [primaryKey({ columns: [t.securityId, t.date] })]
+);

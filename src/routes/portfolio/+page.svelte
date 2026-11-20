@@ -1,4 +1,5 @@
 <script lang="ts">
+	import NewsMoves from '#lib/NewsMoves.svelte';
 	import Fold from '#lib/Fold.svelte';
 	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onDestroy, onMount } from 'svelte';
@@ -490,6 +491,7 @@
 <svelte:head><title>{tx('Портфель', 'Portfolio')} · {tx('Журнал гипотез', 'Hypothesis journal')}</title></svelte:head>
 
 <TopBar title={tx('Портфель', 'Portfolio')} help="portfolio.kinds" />
+<NewsMoves />
 
 {#if list && list.length}
 	<div class="switch" role="tablist" aria-label={tx('Портфели', 'Portfolios')}>

@@ -27,7 +27,7 @@
 		id: string;
 		date: string;
 		price: number;
-		kind: 'entry' | 'exit' | 'buy' | 'sell';
+		kind: 'entry' | 'exit' | 'buy' | 'sell' | 'news';
 		color: string;
 		text?: string;
 		up?: boolean;
@@ -103,16 +103,21 @@
 			if (l.main && marks.length) {
 				markersApi = lib.createSeriesMarkers(
 					s,
-					marks.map((m) => ({
-						id: m.id,
-						time: m.date as Time,
-						position: 'atPriceMiddle' as const,
-						price: m.price,
-						shape: m.kind === 'buy' ? ('arrowUp' as const) : m.kind === 'sell' ? ('arrowDown' as const) : m.kind === 'entry' ? ('circle' as const) : ('square' as const),
-						color: m.color,
-						size: 1.4,
-						text: m.text
-					}))
+					marks.map((m) =>
+						m.kind === 'news'
+							? // T-022: a day with news — above the line, small
+								{ id: m.id, time: m.date as Time, position: 'aboveBar' as const, shape: 'circle' as const, color: m.color, size: 0.8, text: m.text }
+							: {
+									id: m.id,
+									time: m.date as Time,
+									position: 'atPriceMiddle' as const,
+									price: m.price,
+									shape: m.kind === 'buy' ? ('arrowUp' as const) : m.kind === 'sell' ? ('arrowDown' as const) : m.kind === 'entry' ? ('circle' as const) : ('square' as const),
+									color: m.color,
+									size: 1.4,
+									text: m.text
+								}
+					)
 				);
 			}
 		}

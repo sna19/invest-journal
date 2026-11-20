@@ -1,4 +1,5 @@
 <script lang="ts">
+	import NewsMoves from '#lib/NewsMoves.svelte';
 	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
@@ -205,6 +206,7 @@
 
 <div ontouchstart={touchStart} ontouchmove={touchMove} ontouchend={touchEnd} role="presentation">
 	<TopBar title={tx('Гипотезы', 'Hypotheses')} help="hypothesis.list" />
+	<NewsMoves />
 	{#if upcoming?.ready}
 		<a class="model-banner" href="/model">{tx(`Кандидаты квартальной модели на ${upcoming.key} готовы — до начала квартала ${upcoming.days} дн.`, `Quarterly model candidates for ${upcoming.key} are ready — ${upcoming.days} days to the quarter`)} →</a>
 	{/if}

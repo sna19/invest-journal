@@ -151,6 +151,75 @@
 			/* ignore */
 		}
 	}
+	// T-022 «Почему двигается?»: the move split and the news of the share, its sector and its market
+	type Role = 'stock' | 'sector' | 'market';
+	interface NewsItem {
+		id: number;
+		url: string;
+		title: string;
+		publisher: string | null;
+		provider: string;
+		publishedAt: string;
+		snippet: string | null;
+		roles: Role[];
+	}
+	interface Attr {
+		date: string;
+		live: boolean;
+		total: number;
+		market: number | null;
+		sector: number | null;
+		own: number;
+		sectorRef: { id: number; symbol: string; label: string } | null;
+		benchLabel: string;
+	}
+	interface NewsView {
+		attribution: Attr | null;
+		items: NewsItem[];
+		peers: string[];
+		moves: { date: string; movePct: number }[];
+		fetchedAt: string | null;
+	}
+	let news = $state<NewsView | null>(null);
+	let newsBusy = $state(false);
+	let newsRole = $state<Role>('stock');
+	let newsDays = $state(7);
+	let newsDay = $state<string | null>(null);
+	let peersEdit = $state<string | null>(null);
+	let newsLimit = $state(15);
+	async function loadNews(how: 'GET' | 'POST' = 'GET') {
+		newsBusy = true;
+		const r = await fetch(`/api/securities/${page.params.id}/news?days=90`, { method: how }).catch(() => null);
+		newsBusy = false;
+		if (r?.ok) news = await r.json();
+		// from the banner of a strong move: straight to the news
+		if (how === 'GET' && location.hash === '#news') setTimeout(() => document.getElementById('news')?.scrollIntoView({ block: 'start' }), 300);
+	}
+	async function savePeers(v: string | null) {
+		const r = await fetch(`/api/securities/${page.params.id}/news`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ peers: v }) }).catch(() => null);
+		if (r?.ok) {
+			news = await r.json();
+			peersEdit = null;
+			void loadNews('POST');
+		}
+	}
+	const dayOf = (iso: string) => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+	const moveDays = $derived(new Set([...(news?.moves ?? []).map((x) => x.date), ...(news?.attribution && Math.abs(news.attribution.total) >= 3 ? [news.attribution.date] : [])]));
+	const newsShown = $derived(
+		(news?.items ?? []).filter((x) => x.roles.includes(newsRole) && (newsDay ? dayOf(x.publishedAt) === newsDay : Date.parse(x.publishedAt) > Date.now() - newsDays * 86_400_000))
+	);
+	const newsCount = (r: Role) => (news?.items ?? []).filter((x) => x.roles.includes(r) && Date.parse(x.publishedAt) > Date.now() - newsDays * 86_400_000).length;
+	const ago = (iso: string) => {
+		const m = Math.round((Date.now() - Date.parse(iso)) / 60_000);
+		return m < 60 ? tx(`${m} мин`, `${m} min`) : m < 24 * 60 ? tx(`${Math.round(m / 60)} ч`, `${Math.round(m / 60)} h`) : new Date(iso).toLocaleDateString(tx('ru-RU', 'en-GB'), { day: 'numeric', month: 'short' });
+	};
+	const pp = (x: number | null) => (x === null ? '—' : `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x).toFixed(1).replace('.', tx(',', '.'))}%`);
+	function openNewsDay(d: string) {
+		newsDay = d;
+		newsRole = 'stock';
+		document.getElementById('news')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
+
 	let levRetried = false;
 	const LEVELS: Lev['level'][] = ['stock', 'industry', 'sector', 'index'];
 	const feeText = (x: number | null) => (x === null ? '—' : `${(x * 100).toFixed(2).replace('.', tx(',', '.'))}%`);
@@ -206,6 +275,7 @@
 		loadModel();
 		loadCompare();
 		loadLev();
+		loadNews();
 		try {
 			if (localStorage.getItem('lev-dir') === 'short') levDir = 'short';
 		} catch {
@@ -236,19 +306,41 @@
 				]
 			: []
 	);
+	// T-022: a day with news about the share — a small mark above the line (a weekend's news on the next trading day)
+	const newsMarks = $derived.by<Mark[]>(() => {
+		if (!c || c.monthly || !news) return [];
+		const dates = c.points.map((p) => p.date);
+		if (!dates.length) return [];
+		const count = new Map<string, number>();
+		for (const n of news.items) {
+			if (!n.roles.includes('stock')) continue;
+			const d = dayOf(n.publishedAt);
+			const at = dates.find((x) => x >= d);
+			if (at) count.set(at, (count.get(at) ?? 0) + 1);
+		}
+		return [...count].map(([date, n]) => ({
+			id: `news:${date}`,
+			date,
+			price: 0,
+			kind: 'news' as const,
+			color: moveDays.has(date) ? css('--warn') || css('--accent') : css('--muted'),
+			text: moveDays.has(date) ? String(n) : undefined
+		}));
+	});
 	const marks = $derived<Mark[]>(
 		c
-			? c.markers.map((m) => ({
+			? c.markers.map((m): Mark => ({
 					id: m.id,
 					date: m.date,
 					price: m.price,
 					kind: m.kind,
 					color: m.kind === 'buy' ? css('--up') : m.kind === 'sell' ? css('--down') : colorOf(m.sourceId ?? 0),
 					text: m.kind === 'buy' || m.kind === 'sell' ? undefined : m.label.slice(0, 14)
-				}))
+				})).concat(newsMarks).sort((x, y) => x.date.localeCompare(y.date))
 			: []
 	);
 	function onmarker(id: string) {
+		if (id.startsWith('news:')) return openNewsDay(id.slice(5));
 		const m = c?.markers.find((x) => x.id === id);
 		if (!m) return;
 		if (m.hypothesisId) goto(`/?open=${m.hypothesisId}`);
@@ -326,10 +418,83 @@
 		<LineChart {lines} {marks} {onmarker} {bands} format={(v) => priceText(v, c!.security.priceUnit)} />
 		<button class="hl" class:on={!!highlight} aria-pressed={!!highlight} onclick={toggleHighlight}>{highlight ? tx(`Подсвечен Q${highlight} — снять`, `Q${highlight} shaded — clear`) : tx('Подсветить квартал', 'Shade the quarter')}</button>
 		<p class="muted small keys">
-			● {tx('вход гипотезы', 'hypothesis entry')} · ■ {tx('выход', 'exit')} · <span class="up">▲</span> {tx('купил', 'bought')} · <span class="down">▼</span> {tx('продал', 'sold')}{#if sources.length} · {#each sources as [id, name] (id)}<span class="src"><i style:background={colorOf(id)}></i>{tl(name)}</span>{/each}{/if}
+			● {tx('вход гипотезы', 'hypothesis entry')} · ■ {tx('выход', 'exit')} · <span class="up">▲</span> {tx('купил', 'bought')} · <span class="down">▼</span> {tx('продал', 'sold')}{#if newsMarks.length} · <span class="newsdot">●</span> {tx('новости (тап — новости дня)', 'news (tap — the day\'s news)')}{/if}{#if sources.length} · {#each sources as [id, name] (id)}<span class="src"><i style:background={colorOf(id)}></i>{tl(name)}</span>{/each}{/if}
 		</p>
 	{/if}
 	</Fold>
+
+	{#if news}
+		{@const at = news.attribution}
+		<div id="news"></div>
+		<Fold key="sec-news" title={tx('Почему двигается', 'Why it moves')} summary={at ? tx(`${pp(at.total)}: рынок ${pp(at.market)} · сектор ${pp(at.sector)} · сама ${pp(at.own)}`, `${pp(at.total)}: market ${pp(at.market)} · sector ${pp(at.sector)} · itself ${pp(at.own)}`) : undefined}>
+			{#snippet aside()}<HelpIcon topicKey="stock.news" label={tx('новости', 'news')} />{/snippet}
+			{#if at}
+				{@const parts = [
+					{ k: 'market', label: `${tx('Рынок', 'Market')} · ${at.benchLabel}`, v: at.market },
+					{ k: 'sector', label: `${tx('Сектор', 'Sector')}${at.sectorRef ? ` · ${at.sectorRef.symbol}` : ''}`, v: at.sector },
+					{ k: 'own', label: tx('Сама бумага', 'The share itself'), v: at.own }
+				]}
+				{@const max = Math.max(1, ...parts.map((x) => Math.abs(x.v ?? 0)))}
+				<p class="attr-head">
+					<b>{pp(at.total)}</b>
+					<span class="muted small">{at.live ? tx('сегодня', 'today') : `${tx('за', 'on')} ${short(at.date, true)}`}</span>
+					<HelpIcon topicKey="stock.move_attribution" label={tx('разложение движения', 'move split')} />
+				</p>
+				{#each parts as x (x.k)}
+					<div class="attr" class:big={x.v !== null && Math.abs(x.v) === Math.max(...parts.map((y) => Math.abs(y.v ?? 0)))}>
+						<span class="al">{x.label}</span>
+						<span class="track"><span class="mid"></span><span class="b" class:neg={(x.v ?? 0) < 0} style:width="{(Math.abs(x.v ?? 0) / max) * 50}%"></span></span>
+						<span class="av">{pp(x.v)}</span>
+					</div>
+				{/each}
+				{#if at.sector === null}<p class="muted small">{tx('Секторного ETF с ценами нет — сектор не выделен, он внутри «сама бумага».', 'No sector ETF with prices — the sector is not split out, it is inside «the share itself».')}</p>{/if}
+			{/if}
+			<div class="newsbar">
+				<button class="primary" disabled={newsBusy} onclick={() => loadNews('POST')}>{newsBusy ? tx('Собираю…', 'Collecting…') : tx('Что происходит?', 'What is going on?')}</button>
+				{#if news.fetchedAt}<span class="muted small">{tx('собрано', 'collected')} {ago(news.fetchedAt)} {tx('назад', 'ago')}</span>{/if}
+			</div>
+			<div class="levseg" role="radiogroup" aria-label={tx('Круг новостей', 'News circle')}>
+				{#each [['stock', tx('Бумага', 'Share')], ['sector', tx('Сектор', 'Sector')], ['market', tx('Рынок', 'Market')]] as [r, l] (r)}
+					<button role="radio" aria-checked={newsRole === r} class:on={newsRole === r} onclick={() => ((newsRole = r as Role), (newsLimit = 15))}>{l} · {newsCount(r as Role)}</button>
+				{/each}
+			</div>
+			<p class="levsort muted small">
+				{#if newsDay}
+					{tx('День', 'Day')} <b>{short(newsDay, true)}</b> <button onclick={() => (newsDay = null)}>{tx('показать все', 'show all')}</button>
+				{:else}
+					{#each [[1, tx('день', 'day')], [7, tx('неделя', 'week')], [30, tx('месяц', 'month')]] as [d, l] (d)}
+						<button class:on={newsDays === d} aria-pressed={newsDays === d} onclick={() => ((newsDays = Number(d)), (newsLimit = 15))}>{l}</button>
+					{/each}
+				{/if}
+			</p>
+			{#if newsRole === 'sector'}
+				<p class="muted small">
+					{#if peersEdit === null}
+						{tx('Соседи', 'Neighbours')}: {news.peers.join(' · ') || tx('не найдены', 'none found')} <button class="textbtn" onclick={() => (peersEdit = news!.peers.join(', '))}>{tx('изменить', 'edit')}</button>
+					{:else}
+						<input class="peers" bind:value={peersEdit} placeholder="AMD, AVGO, TSM" aria-label={tx('Соседи через запятую', 'Neighbours, comma separated')} />
+						<button class="textbtn" onclick={() => savePeers(peersEdit)}>{tx('сохранить', 'save')}</button>
+						<button class="textbtn" onclick={() => savePeers(null)}>{tx('пять крупнейших', 'the five largest')}</button>
+					{/if}
+				</p>
+			{/if}
+			{#if !newsShown.length}
+				<p class="muted small">{newsBusy ? tx('Собираю новости…', 'Collecting the news…') : tx('Новостей за этот период нет.', 'No news for this period.')}</p>
+			{/if}
+			<ul class="newslist">
+				{#each newsShown.slice(0, newsLimit) as n (n.id)}
+					<li class:hl={moveDays.has(dayOf(n.publishedAt))}>
+						<a href={n.url} target="_blank" rel="noopener noreferrer">{n.title}</a>
+						<span class="muted small">{ago(n.publishedAt)}{n.publisher ? ` · ${n.publisher}` : ''}</span>
+						{#if n.snippet}<span class="small snip">{n.snippet}</span>{/if}
+						<a class="small rec" href="/new?url={encodeURIComponent(n.url)}&security={c.security.id}&signal=news">{tx('Записать гипотезу', 'Record a hypothesis')}</a>
+					</li>
+				{/each}
+			</ul>
+			{#if newsShown.length > newsLimit}<button class="more" onclick={() => (newsLimit += 15)}>{tx(`Показать ещё — осталось ${newsShown.length - newsLimit}`, `Show more — ${newsShown.length - newsLimit} left`)}</button>{/if}
+			<p class="muted small">{tx('Новость объясняет прошлое. Вопрос один: сломан ли мой тезис?', 'News explains the past. One question: is my thesis broken?')}</p>
+		</Fold>
+	{/if}
 
 	{#if cmp && cmp.refs.length}
 		<Fold key="sec-compare" title={tx('С чем сравнить', 'Compare with')} summary={cmp.refs.map((r) => r.symbol).join(' · ')}>
@@ -453,7 +618,11 @@
 		gap: var(--s2);
 		margin: 0 0 var(--s2);
 	}
+	.levseg {
+		flex-wrap: wrap;
+	}
 	.levseg button {
+		white-space: nowrap;
 		min-height: 36px;
 		padding: 0 var(--s3);
 		border: 1px solid var(--line);
@@ -497,6 +666,124 @@
 		font-variant-numeric: tabular-nums;
 		font-size: var(--fs-xs);
 		white-space: nowrap;
+	}
+	.attr-head {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		margin: 0 0 var(--s1);
+	}
+	.attr-head b {
+		font-size: var(--fs-l);
+	}
+	.attr {
+		display: grid;
+		grid-template-columns: 9.5em 1fr 4em;
+		align-items: center;
+		gap: var(--s2);
+		padding: 3px 0;
+		font-size: var(--fs-s, 0.9rem);
+	}
+	.attr.big .al,
+	.attr.big .av {
+		font-weight: 700;
+	}
+	.attr .av {
+		text-align: right;
+		font-variant-numeric: tabular-nums;
+	}
+	.attr .track {
+		position: relative;
+		height: 10px;
+	}
+	.attr .mid {
+		position: absolute;
+		left: 50%;
+		top: -2px;
+		bottom: -2px;
+		width: 1px;
+		background: var(--line);
+	}
+	.attr .b {
+		position: absolute;
+		left: 50%;
+		top: 0;
+		height: 100%;
+		border-radius: 0 3px 3px 0;
+		background: var(--up);
+	}
+	.attr .b.neg {
+		left: auto;
+		right: 50%;
+		border-radius: 3px 0 0 3px;
+		background: var(--down);
+	}
+	.newsbar {
+		display: flex;
+		align-items: center;
+		gap: var(--s3);
+		margin: var(--s3) 0 var(--s2);
+	}
+	.newsbar .primary {
+		white-space: nowrap;
+		min-height: 40px;
+		padding: 0 var(--s4);
+		border: none;
+		border-radius: var(--r-pill);
+		background: var(--accent);
+		color: #fff;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.newslist {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.newslist li {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: var(--s2) 0;
+		border-bottom: 1px solid var(--line);
+	}
+	.newslist li.hl {
+		border-left: 3px solid var(--accent);
+		padding-left: var(--s2);
+	}
+	.newslist a {
+		color: var(--text);
+		text-decoration: none;
+		font-weight: 500;
+	}
+	.newslist .snip {
+		color: var(--muted);
+	}
+	.newslist a.rec {
+		color: var(--link);
+		font-weight: 400;
+		align-self: flex-start;
+	}
+	.newsdot {
+		color: var(--muted);
+		font-size: 0.7em;
+	}
+	.textbtn {
+		border: none;
+		background: none;
+		padding: 0 4px;
+		color: var(--link);
+		cursor: pointer;
+		font: inherit;
+	}
+	.peers {
+		width: 12em;
+		min-height: 32px;
+		padding: 0 var(--s2);
+		border: 1px solid var(--line);
+		border-radius: var(--r2);
+		background: var(--surface);
+		color: var(--text);
 	}
 	.levsort button {
 		border: none;
