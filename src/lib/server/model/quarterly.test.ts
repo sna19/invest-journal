@@ -82,6 +82,14 @@ describe('quarterly model 10a', () => {
 		expect(r.walk.every((w) => w.picked === 1 && w.pickedUp === 1)).toBe(true);
 	});
 
+	it('funds labelled as shares are not shares', async () => {
+		const { isFund } = await import('./quarterly.js');
+		expect(isFund({ kind: 'etf', industry: null, name: 'Invesco DB Gold Double Long ETN' })).toBe(true);
+		expect(isFund({ kind: 'stock', industry: 'Asset Management', name: 'BNY Mellon High Yield Strategies Fund' })).toBe(true);
+		expect(isFund({ kind: 'stock', industry: 'Asset Management', name: 'BlackRock, Inc.' })).toBe(false);
+		expect(isFund({ kind: null, industry: null, name: 'Applied Materials' })).toBe(false);
+	});
+
 	it('parameters are kept in their limits', () => {
 		expect(cleanParams({ k: '12', years: '10', count: 0, sort: 'worst', compareWith: 'sector' })).toMatchObject({ k: 10, count: 1, sort: 'worst', compareWith: 'sector' });
 	});
