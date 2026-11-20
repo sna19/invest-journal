@@ -20,6 +20,9 @@
 		minPriceUsd: number;
 		sort: 'mean' | 'median' | 'worst';
 		compareWith: 'market' | 'sector';
+		capMode: 'abs' | 'rel';
+		capGroups: string[];
+		capBounds: number[];
 	}
 	interface Cand {
 		id: number;
@@ -33,6 +36,8 @@
 		mean: number;
 		median: number;
 		worst: number;
+		capUsd: number | null;
+		capGroup: string | null;
 	}
 	interface Data {
 		variant: Variant;
@@ -44,6 +49,8 @@
 			universe: number;
 			noHistory: number;
 			illiquid: number;
+			capCounts: Record<string, number>;
+			capOut: number;
 			passed: number;
 			expected: number;
 			p: number;
@@ -173,6 +180,46 @@
 		{ key: 'perMarket', help: 'model.param.per_market', ru: 'Не больше из рынка', en: 'At most per market', min: 1, max: 30, step: 1 },
 		{ key: 'minPriceUsd', help: 'model.param.min_price', ru: 'Цена не ниже, $', en: 'Price at least, $', min: 0, max: 1000, step: 1 }
 	];
+	// T-021: market cap groups
+	const CAP_ABS = ['mega', 'large', 'mid', 'small', 'micro'];
+	const CAP_REL = ['top', 'middle', 'bottom'];
+	const CAP_NAME: Record<string, [string, string]> = {
+		mega: ['крупнейшие', 'mega'],
+		large: ['крупные', 'large'],
+		mid: ['средние', 'mid'],
+		small: ['малые', 'small'],
+		micro: ['микро', 'micro'],
+		top: ['верхние 20%', 'top 20%'],
+		middle: ['середина', 'middle'],
+		bottom: ['нижние 30%', 'bottom 30%']
+	};
+	const capName = (g: string | null) => (g && CAP_NAME[g] ? tx(...CAP_NAME[g]) : tx('нет данных', 'no data'));
+	const bn = (x: number) => (x >= 1e9 ? `${+(x / 1e9).toFixed(1)}` : `${+(x / 1e9).toFixed(2)}`);
+	const capText = (x: number | null) => (x === null ? '' : x >= 1e12 ? `${(x / 1e12).toFixed(1)} ${tx('трлн $', 'T $')}` : x >= 1e9 ? `${Math.round(x / 1e9)} ${tx('млрд $', 'B $')}` : `${Math.round(x / 1e6)} ${tx('млн $', 'M $')}`);
+	/** the range of an absolute group by the bounds: «10–200 млрд $» */
+	function capRange(g: string, b: number[]) {
+		const i = CAP_ABS.indexOf(g);
+		if (i === 0) return `> ${bn(b[0])}`;
+		if (i === 4) return `< ${bn(b[3])}`;
+		return `${bn(b[i])}–${bn(b[i - 1])}`;
+	}
+	function toggleCap(g: string) {
+		if (!params) return;
+		const all = params.capMode === 'rel' ? CAP_REL : CAP_ABS;
+		const on = params.capGroups.length ? params.capGroups : all;
+		let next = on.includes(g) ? on.filter((x) => x !== g) : [...on, g];
+		if (!next.length || next.length === all.length) next = [];
+		set('capGroups', next);
+	}
+	let boundsOpen = $state(false);
+	function setBound(i: number, v: string) {
+		if (!params) return;
+		const n = Number(v.replace(',', '.')) * 1e9;
+		if (!(n >= 0)) return;
+		const b = [...params.capBounds];
+		b[i] = n;
+		if (b.every((x, j) => j === 0 || x < b[j - 1])) set('capBounds', b);
+	}
 	const TURNOVER = [0, 250_000, 500_000, 1_000_000, 2_000_000, 5_000_000, 10_000_000];
 </script>
 
@@ -237,6 +284,29 @@
 				<option value="worst">{tx('по худшему году', 'worst year')}</option>
 			</select>
 		</div>
+		<div class="prow caprow">
+			<span class="pl">{tx('Капитализация', 'Market cap')} <HelpIcon topicKey="model.param.market_cap" label={tx('капитализация', 'market cap')} /></span>
+			<div class="seg2" role="radiogroup" aria-label={tx('Как делить', 'How to split')}>
+				<button role="radio" aria-checked={params.capMode === 'abs'} class:on={params.capMode === 'abs'} onclick={() => (set('capMode', 'abs'), set('capGroups', []))}>{tx('в $', 'in $')}</button>
+				<button role="radio" aria-checked={params.capMode === 'rel'} class:on={params.capMode === 'rel'} onclick={() => (set('capMode', 'rel'), set('capGroups', []))}>{tx('от рынка', 'by market')}</button>
+			</div>
+		</div>
+		<div class="capchips">
+			{#each params.capMode === 'rel' ? CAP_REL : CAP_ABS as g (g)}
+				{@const on = !params.capGroups.length || params.capGroups.includes(g)}
+				<button class:on aria-pressed={on} onclick={() => toggleCap(g)}>
+					{capName(g)}{#if params.capMode === 'abs'}{' '}<small>{capRange(g, params.capBounds)}</small>{/if}{#if res?.capCounts?.[g] !== undefined}{' '}<small>· {res.capCounts[g]}</small>{/if}
+				</button>
+			{/each}
+			{#if params.capMode === 'abs'}<button class="link" onclick={() => (boundsOpen = !boundsOpen)}>{tx('границы, млрд $', 'bounds, $B')}</button>{/if}
+		</div>
+		{#if boundsOpen && params.capMode === 'abs'}
+			<div class="bounds">
+				{#each [tx('крупнейшие от', 'mega from'), tx('крупные от', 'large from'), tx('средние от', 'mid from'), tx('малые от', 'small from')] as l, i (i)}
+					<label>{l} <input inputmode="decimal" value={bn(params.capBounds[i])} onchange={(e) => setBound(i, e.currentTarget.value)} /></label>
+				{/each}
+			</div>
+		{/if}
 		{#if variant === 'B'}
 			<div class="prow">
 				<span class="pl">{tx('Сравнивать', 'Compare with')} <HelpIcon topicKey="model.param.compare_with" label={tx('сравнение', 'comparison')} /></span>
@@ -275,13 +345,14 @@
 		{:else if verdict === 'none'}
 			<p class="warn">{tx('Фильтр не прошла ни одна бумага — ослабьте K или пороги.', 'No share passed — lower K or the thresholds.')}</p>
 		{/if}
+		{#if res.capOut}<p class="muted small">{tx(`Вне выбранной капитализации — ${res.capOut} акций.`, `${res.capOut} shares outside the chosen market cap.`)}</p>{/if}
 		{#if res.capped}<p class="muted small">{tx(`Ещё ${res.capped} прошли, но не вошли из-за ограничений по сектору и рынку.`, `${res.capped} more passed but were left out by the sector and market caps.`)}</p>{/if}
 		<ul class="cands">
 			{#each res.candidates as c, i (c.id)}
 				<li>
 					<button class="crow" onclick={() => goto(`/security/${c.id}?model=${variant}&q=${res.quarter}&${previewQuery()}`)}>
 						<span class="n">{i + 1}</span>
-						<span class="who"><b>{c.symbol}</b><span class="muted small block name">{c.name}</span><span class="muted small block">{c.market === 'US' ? tx('США', 'US') : tx('Израиль', 'Israel')} · {c.sector ? sectorName(c.sector, tx) : tx('сектор неизвестен', 'sector unknown')} · {c.up}/{res.years.length}</span></span>
+						<span class="who"><b>{c.symbol}</b><span class="muted small block name">{c.name}</span><span class="muted small block">{c.market === 'US' ? tx('США', 'US') : tx('Израиль', 'Israel')} {' · '}{c.sector ? sectorName(c.sector, tx) : tx('сектор неизвестен', 'sector unknown')}{#if c.capUsd}{' · '}{capText(c.capUsd)}, {capName(c.capGroup)}{/if}{' · '}{c.up}/{res.years.length}</span></span>
 						<span class="nums"><b class:up={c.mean > 0}>{pct(c.mean)}</b><span class="muted small block">{tx('мед.', 'med.')} {pct(c.median)}</span><span class="muted small block">{tx('худш.', 'worst')} {pct(c.worst)}</span></span>
 					</button>
 					<span class="tvpos"><TvLink exchange={c.exchange} symbol={c.symbol} /></span>
@@ -301,6 +372,7 @@
 					{/each}
 				</tbody>
 			</table>
+			{#if params?.capGroups.length}<p class="warn small">{tx('Капитализация в прошлом — приблизительно: сегодняшнее число акций × цена тогда. Это подглядывание: компании, которые потом выросли, попадают в крупные задним числом.', 'The past market cap is approximate: today\'s number of shares × the price then. This peeks: companies that grew later count as large in hindsight.')}</p>{/if}
 			<p class="muted small">{tx('Кандидаты выбраны по 7 годам до проверяемого и измерены в нём. Только для справки: в базе нет бумаг, исчезнувших за эти годы, поэтому прошлое выглядит лучше, чем было.', 'Candidates chosen on the 7 years before the tested one and measured in it. For reference only: shares that vanished in those years are not in the base, so the past looks better than it was.')}</p>
 		</section>
 	{/if}
@@ -414,6 +486,72 @@
 		background: var(--bg);
 		color: var(--text);
 		font-size: var(--fs-s);
+	}
+	.caprow {
+		border-top: 1px solid var(--line);
+	}
+	.seg2 {
+		display: inline-flex;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		overflow: hidden;
+	}
+	.seg2 button {
+		min-height: 32px;
+		padding: 0 12px;
+		border: none;
+		background: none;
+		color: var(--text);
+		font-size: var(--fs-s);
+		cursor: pointer;
+	}
+	.seg2 button.on {
+		background: var(--text);
+		color: var(--bg);
+	}
+	.capchips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		padding: 0 0 10px;
+	}
+	.capchips button {
+		min-height: 32px;
+		padding: 0 10px;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		background: none;
+		color: var(--muted);
+		font-size: var(--fs-s);
+		cursor: pointer;
+	}
+	.capchips button.on {
+		border-color: var(--text);
+		color: var(--text);
+	}
+	.capchips small {
+		color: var(--muted);
+	}
+	.capchips .link {
+		border: none;
+		color: var(--link);
+	}
+	.bounds {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 6px 12px;
+		padding: 0 0 10px;
+		font-size: var(--fs-s);
+	}
+	.bounds input {
+		width: 64px;
+		min-height: 32px;
+		margin-left: 4px;
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		background: var(--bg);
+		color: var(--text);
+		font-size: 16px;
 	}
 	.save {
 		display: flex;

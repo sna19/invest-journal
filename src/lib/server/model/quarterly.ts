@@ -24,7 +24,19 @@ export interface Params {
 	sort: 'mean' | 'median' | 'worst';
 	/** variant B only: over the market or over the share's sector */
 	compareWith: 'market' | 'sector';
+	/**
+	 * T-021 — market cap: by fixed bounds in dollars (abs) or relative to the share's own market (rel: the top 20%,
+	 * the middle, the bottom 30% separately in the US and on TASE, else almost all Israeli companies are «small»)
+	 */
+	capMode: 'abs' | 'rel';
+	/** the groups kept; empty — all (abs: mega, large, mid, small, micro; rel: top, middle, bottom) */
+	capGroups: string[];
+	/** the lower bounds of mega, large, mid and small, dollars */
+	capBounds: number[];
 }
+
+export const CAP_ABS = ['mega', 'large', 'mid', 'small', 'micro'] as const;
+export const CAP_REL = ['top', 'middle', 'bottom'] as const;
 
 export const DEFAULTS: Params = {
 	years: 10,
@@ -35,7 +47,10 @@ export const DEFAULTS: Params = {
 	minTurnoverUsd: 1_000_000,
 	minPriceUsd: 5,
 	sort: 'mean',
-	compareWith: 'market'
+	compareWith: 'market',
+	capMode: 'abs',
+	capGroups: [],
+	capBounds: [200e9, 10e9, 2e9, 0.3e9]
 };
 
 /** the limits a parameter is kept in (the screen's inputs and the API check) */
@@ -60,6 +75,17 @@ export function cleanParams(input: Partial<Record<keyof Params, unknown>>, base:
 	}
 	if (input.sort === 'mean' || input.sort === 'median' || input.sort === 'worst') p.sort = input.sort;
 	if (input.compareWith === 'market' || input.compareWith === 'sector') p.compareWith = input.compareWith;
+	if (input.capMode === 'abs' || input.capMode === 'rel') p.capMode = input.capMode;
+	const list = (x: unknown) => (Array.isArray(x) ? x.map(String) : typeof x === 'string' ? x.split(',').filter(Boolean) : null);
+	const groups = list(input.capGroups);
+	if (groups) {
+		const allowed: readonly string[] = p.capMode === 'rel' ? CAP_REL : CAP_ABS;
+		p.capGroups = [...new Set(groups.filter((g) => allowed.includes(g)))];
+		// all groups chosen is the same as no filter
+		if (p.capGroups.length === allowed.length) p.capGroups = [];
+	} else if (input.capMode !== undefined && input.capMode !== base.capMode) p.capGroups = [];
+	const bounds = list(input.capBounds)?.map(Number);
+	if (bounds && bounds.length === 4 && bounds.every((b) => Number.isFinite(b) && b >= 0) && bounds.every((b, i) => i === 0 || b < bounds[i - 1])) p.capBounds = bounds;
 	p.k = Math.min(p.k, p.years);
 	return p;
 }
@@ -77,6 +103,9 @@ export interface Series {
 	market: 'US' | 'IL';
 	exchange: string;
 	sector: string | null;
+	/** T-021: market cap now, dollars, and the number of shares it implies (for the cap at an earlier date) */
+	capUsd: number | null;
+	shares: number | null;
 	/** price unit of the closes: USD | ILA | ILS */
 	unit: string;
 	/** month index of the first element */
@@ -112,12 +141,12 @@ export const isFund = (m: { kind: string | null; industry: string | null; name: 
 export function loadUniverse(market: Database.Database): Universe {
 	const meta = market
 		.prepare(
-			`select s.id, s.symbol, s.name_en as name, s.exchange_code as exchange, e.country, s.price_unit as unit, s.type, s.is_benchmark as bench, p.sector, p.kind, p.industry
+			`select s.id, s.symbol, s.name_en as name, s.exchange_code as exchange, e.country, s.price_unit as unit, s.type, s.is_benchmark as bench, p.sector, p.kind, p.industry, p.market_cap as cap, p.cap_currency as capCur
 			   from ref_securities s join ref_exchanges e on e.code = s.exchange_code
 			   left join ref_security_profiles p on p.security_id = s.id
 			  where s.id in (select security_id from ops_monthly_loads where status = 'ok')`
 		)
-		.all() as { id: number; symbol: string; name: string; exchange: string; country: string; unit: string; type: string; bench: number; sector: string | null; kind: string | null; industry: string | null }[];
+		.all() as { id: number; symbol: string; name: string; exchange: string; country: string; unit: string; type: string; bench: number; sector: string | null; kind: string | null; industry: string | null; cap: number | null; capCur: string | null }[];
 	const byId = new Map<number, { rows: [number, number, number, number][] }>();
 	for (const m of meta) byId.set(m.id, { rows: [] });
 	const it = market.prepare('select security_id, month, adj_close, close, volume from market_prices_monthly order by security_id, month').raw().iterate() as Iterable<[number, string, number, number, number | null]>;
@@ -129,6 +158,15 @@ export function loadUniverse(market: Database.Database): Universe {
 		if (i > last) last = i;
 		e.rows.push([i, adj, close, vol ?? 0]);
 	}
+	const fx = market.prepare(`select rate from market_fx_daily where pair = 'USD/ILS' order by date desc limit 1`).get() as { rate: number } | undefined;
+	const usdIls = fx?.rate ?? 3.7;
+	/** the last close in the currency of the cap: agorot → shekels */
+	const unit0 = (unit: string, close: Float64Array) => (unit === 'ILA' ? close[close.length - 1] / 100 : close[close.length - 1]);
+	/** T-021: the cap in dollars (a TASE cap is in shekels — Yahoo gives it so even for agorot quotes) and the shares */
+	const capOf = (cap: number | null, cur: string | null, closeLocal: number) => {
+		if (!cap || !(cap > 0)) return { capUsd: null, shares: null };
+		return { capUsd: cur === 'ILS' || cur === 'ILA' ? cap / usdIls : cap, shares: closeLocal > 0 ? cap / closeLocal : null };
+	};
 	const toSeries = (m: (typeof meta)[number]): Series | null => {
 		const rows = byId.get(m.id)!.rows;
 		if (!rows.length) return null;
@@ -142,7 +180,7 @@ export function loadUniverse(market: Database.Database): Universe {
 			close[i - start] = c;
 			volume[i - start] = v;
 		}
-		return { id: m.id, symbol: m.symbol, name: m.name, market: m.country === 'IL' ? 'IL' : 'US', exchange: m.exchange, sector: m.sector, unit: m.unit, start, adj, close, volume };
+		return { id: m.id, symbol: m.symbol, name: m.name, market: m.country === 'IL' ? 'IL' : 'US', exchange: m.exchange, sector: m.sector, ...capOf(m.cap, m.capCur, unit0(m.unit, close)), unit: m.unit, start, adj, close, volume };
 	};
 	const stocks: Series[] = [];
 	let US: Series | null = null;
@@ -155,8 +193,7 @@ export function loadUniverse(market: Database.Database): Universe {
 			else US = s;
 		} else if (m.type === 'stock' && !isFund(m)) stocks.push(s);
 	}
-	const fx = market.prepare(`select rate from market_fx_daily where pair = 'USD/ILS' order by date desc limit 1`).get() as { rate: number } | undefined;
-	return { stocks, bench: { US, IL }, lastMonth: last, usdIls: fx?.rate ?? 3.7, builtAt: new Date().toISOString() };
+	return { stocks, bench: { US, IL }, lastMonth: last, usdIls, builtAt: new Date().toISOString() };
 }
 
 // ── the calculation ─────────────────────────────────────────────────────────────
@@ -225,6 +262,8 @@ export interface Candidate {
 	worst: number;
 	turnoverUsd: number;
 	priceUsd: number;
+	capUsd: number | null;
+	capGroup: string | null;
 }
 
 export interface Result {
@@ -238,6 +277,9 @@ export interface Result {
 	universe: number;
 	noHistory: number;
 	illiquid: number;
+	/** T-021: liquid shares by cap group (before the filter; «unknown» — no cap), and how many the filter left out */
+	capCounts: Record<string, number>;
+	capOut: number;
 	passed: number;
 	/** how many would pass by chance: N × P(Binomial(years, p) ≥ K) */
 	expected: number;
@@ -331,11 +373,24 @@ export function runModel(u: Universe, variant: Variant, quarter: number, input: 
 		}
 		rows.push({ s, r, ...l });
 	}
+	// measured over all liquid shares (a sector's mean does not depend on the cap filter)
 	const ms = measures(u, rows, years, quarter, variant, p.compareWith);
+	// T-021: the cap groups now; the filter keeps the chosen groups, the chance is counted on what it keeps
+	const groupsNow = capGroupMap(rows, p, (r) => r.s.capUsd);
+	const capCounts: Record<string, number> = {};
+	for (const r of rows) {
+		const g = groupsNow.get(r) ?? 'unknown';
+		capCounts[g] = (capCounts[g] ?? 0) + 1;
+	}
+	const kept = (r: Row) => !p.capGroups.length || p.capGroups.includes(groupsNow.get(r) ?? '');
+	let capOut = 0;
+	let universeN = 0;
 	let ups = 0;
 	let all = 0;
 	const passed: { s: Series; score: number; m: number[]; row: Row }[] = [];
 	rows.forEach((row, i) => {
+		if (!kept(row)) return void capOut++;
+		universeN++;
 		const m = ms[i];
 		const up = m.filter((x) => x > 0).length;
 		ups += up;
@@ -356,11 +411,14 @@ export function runModel(u: Universe, variant: Variant, quarter: number, input: 
 		forYear: years.at(-1)! + 1,
 		years,
 		params: p,
-		universe: rows.length,
+		universe: universeN,
 		noHistory,
 		illiquid,
+		/** T-021: how many liquid shares are in each cap group (before the filter), and how many it left out */
+		capCounts,
+		capOut,
 		passed: passed.length,
-		expected: Math.round(rows.length * binomTail(p.years, p.k, prob) * 10) / 10,
+		expected: Math.round(universeN * binomTail(p.years, p.k, prob) * 10) / 10,
 		p: Math.round(prob * 1000) / 1000,
 		candidates: chosen.map((x) => ({
 			id: x.s.id,
@@ -375,11 +433,13 @@ export function runModel(u: Universe, variant: Variant, quarter: number, input: 
 			median: pct(median(x.m)),
 			worst: pct(Math.min(...x.m)),
 			turnoverUsd: Math.round(x.row.turnoverUsd),
-			priceUsd: Math.round(x.row.priceUsd * 100) / 100
+			priceUsd: Math.round(x.row.priceUsd * 100) / 100,
+			capUsd: x.s.capUsd,
+			capGroup: groupsNow.get(x.row) ?? null
 		})),
 		capped,
 		bench: { US: bench('US'), IL: bench('IL') },
-		walk: walkForward(rows, ms, years, p),
+		walk: walkForward(rows, ms, years, p, (t) => capGroupMap(rows, p, (r) => capAt(r.s, quarterEnd(years[t], quarter) - 3, u.usdIls))),
 		dataMonth: monthName(u.lastMonth)
 	};
 }
@@ -431,6 +491,8 @@ export function securityResult(u: Universe, id: number, variant: Variant, quarte
 		worst: ok.length ? pct(Math.min(...ok)) : null,
 		/** in the universe (full history, turnover and price), passed K, among the candidates and its place */
 		inUniverse,
+		capUsd: s.capUsd,
+		capGroup: capGroupMap(all, p, (r) => r.s.capUsd).get(target) ?? null,
 		passed: inUniverse && ok.filter((v) => v > 0).length >= p.k,
 		rank: run.candidates.findIndex((c) => c.id === id) + 1 || null,
 		params: p
@@ -442,18 +504,20 @@ export function securityResult(u: Universe, id: number, variant: Variant, quarte
  * years before it (K lowered by as many years as are dropped) and measured in that year, which the choice did
  * not see. Only for reference: shares that vanished in 10 years are not in the base.
  */
-function walkForward(rows: Row[], ms: number[][], years: number[], p: Params): Walk[] {
+function walkForward(rows: Row[], ms: number[][], years: number[], p: Params, groupsAt: (t: number) => Map<Row, string | null>): Walk[] {
 	const train = 7;
 	if (years.length < train + 1) return [];
 	const k = Math.max(1, p.k - (p.years - train));
 	const out: Walk[] = [];
 	for (let t = Math.max(train, years.length - 3); t < years.length; t++) {
+		// T-021: the cap filter with the cap of that time (approximately: today's shares × the price then)
+		const groups = p.capGroups.length ? groupsAt(t) : null;
 		const list = rows
 			.map((row, i) => {
 				const m = ms[i].slice(t - train, t);
-				return { s: row.s, m, score: scoreOf(m, p.sort), test: ms[i][t] };
+				return { s: row.s, m, score: scoreOf(m, p.sort), test: ms[i][t], keep: !groups || p.capGroups.includes(groups.get(row) ?? '') };
 			})
-			.filter((x) => x.m.filter((v) => v > 0).length >= k);
+			.filter((x) => x.keep && x.m.filter((v) => v > 0).length >= k);
 		const { chosen } = pick(list, p);
 		const avg = (xs: number[]) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10000) / 100 : null);
 		out.push({
@@ -464,6 +528,41 @@ function walkForward(rows: Row[], ms: number[][], years: number[], p: Params): W
 			pickedUp: chosen.filter((x) => x.test > 0).length
 		});
 	}
+	return out;
+}
+
+// ── market cap (T-021) ──────────────────────────────────────────────────────────
+
+export const absGroup = (cap: number, b: number[]) => (cap >= b[0] ? 'mega' : cap >= b[1] ? 'large' : cap >= b[2] ? 'mid' : cap >= b[3] ? 'small' : 'micro');
+
+/** the cap at a month: today's number of shares × that month's close, in dollars at today's rate (approximate) */
+export function capAt(s: Series, i: number, usdIls: number): number | null {
+	if (!s.shares) return null;
+	const c = at(s, i, s.close);
+	if (!(c > 0)) return null;
+	const local = s.shares * (s.unit === 'ILA' ? c / 100 : c);
+	return s.unit === 'USD' ? local : local / usdIls;
+}
+
+/** each row's cap group: by the bounds in dollars, or by its rank in its own market (top 20%, bottom 30%) */
+function capGroupMap(rows: Row[], p: Params, cap: (r: Row) => number | null): Map<Row, string | null> {
+	const out = new Map<Row, string | null>();
+	if (p.capMode === 'abs') {
+		for (const r of rows) {
+			const c = cap(r);
+			out.set(r, c === null ? null : absGroup(c, p.capBounds));
+		}
+		return out;
+	}
+	for (const mk of ['US', 'IL'] as const) {
+		const list = rows
+			.filter((r) => r.s.market === mk)
+			.map((r) => ({ r, c: cap(r) }))
+			.filter((x): x is { r: Row; c: number } => x.c !== null)
+			.sort((a, b) => b.c - a.c);
+		list.forEach((x, i) => out.set(x.r, i < list.length * 0.2 ? 'top' : i >= list.length * 0.7 ? 'bottom' : 'middle'));
+	}
+	for (const r of rows) if (!out.has(r)) out.set(r, null);
 	return out;
 }
 
@@ -498,6 +597,18 @@ export function nextQuarter(now = new Date()) {
 	const [y, m] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit' }).format(now).split('-').map(Number);
 	const q = Math.floor((m - 1) / 3) + 1;
 	return q === 4 ? { year: y + 1, quarter: 1 } : { year: y, quarter: q + 1 };
+}
+
+/** shares of the universe (full history, liquid): their profiles give the sector caps and the market cap (T-021) */
+export function universeIds(u: Universe, p: Params = DEFAULTS): number[] {
+	const first = u.lastMonth - 12 * p.years - 3;
+	return u.stocks
+		.filter((s) => s.start <= first && Number.isFinite(at(s, u.lastMonth)))
+		.filter((s) => {
+			const l = liquidity(s, u.lastMonth, u.usdIls);
+			return l.turnoverUsd >= p.minTurnoverUsd && l.priceUsd >= p.minPriceUsd;
+		})
+		.map((s) => s.id);
 }
 
 /** shares of the universe (full history, liquid) without a sector yet — their profiles are loaded for the caps */

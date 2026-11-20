@@ -5,7 +5,7 @@ import { securitiesForPrices } from './prices.js';
  * Security profiles (owner's request 19.11.2026: the portfolio's allocation by sector and other measures).
  * Yahoo's quoteSummary gives a company's sector, industry, country and market cap, and a fund's sector weights;
  * it needs a session cookie and a «crumb» (fc.yahoo.com → /v1/test/getcrumb). A profile is refreshed after 30
- * days; one the provider does not know is tried again after a week.
+ * days; T-021: refreshed weekly (the market cap moves with the price), one the provider does not know too.
  */
 
 /** sector keys as in a fund's sector weights; a company's «Real Estate» becomes «realestate» like there */
@@ -82,7 +82,8 @@ export function staleProfiles(market: Database.Database, ids: number[], now = ne
 		const r = row.get(id) as { kind: string; at: string } | undefined;
 		if (!r) return true;
 		const age = now.getTime() - Date.parse(r.at);
-		return age > (r.kind === 'none' ? 7 : 30) * DAY;
+		// the market cap moves with the price: a week (T-021); a fund's weights and the unknown — a week too
+		return age > 7 * DAY;
 	});
 }
 
