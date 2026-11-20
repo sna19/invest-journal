@@ -14,7 +14,7 @@ function series(id: number, f: (y: number, m: number) => number, o: Partial<Seri
 		if (j > 0) p *= 1 + f(Math.floor(i / 12), (i % 12) + 1);
 		adj[j] = p;
 	}
-	return { id, symbol: `S${id}`, name: `Share ${id}`, market: 'US', exchange: 'NASDAQ', sector: 'technology', unit: 'USD', start: START, adj, close: adj.slice(), volume: new Float64Array(n).fill(1e6), ...o };
+	return { id, symbol: `S${id}`, name: `Share ${id}`, market: 'US', exchange: 'NASDAQ', capUsd: null, shares: null, sector: 'technology', unit: 'USD', start: START, adj, close: adj.slice(), volume: new Float64Array(n).fill(1e6), ...o };
 }
 
 const flat = series(100, () => 0);
@@ -93,6 +93,29 @@ describe('quarterly model 10a', () => {
 		const r3 = securityResult(u([every, never]), 3, 'A', 1, DEFAULTS)!;
 		expect(r3).toMatchObject({ rank: null, passed: false, up: 0 });
 		expect(securityResult(u([every]), 99, 'A', 1, DEFAULTS)).toBeNull();
+	});
+
+	it('market cap (T-021): groups by bounds or by rank in the own market; the chance is counted after the filter', async () => {
+		const { capAt } = await import('./quarterly.js');
+		const big = series(1, (_, m) => (m <= 3 ? 0.01 : 0), { capUsd: 300e9, shares: 3e9 });
+		const mid = series(2, (_, m) => (m <= 3 ? 0.02 : 0), { capUsd: 5e9, shares: 5e7, sector: 'energy' });
+		const tiny = series(3, (_, m) => (m <= 3 ? 0.03 : 0), { capUsd: 1e8, shares: 1e6, sector: 'utilities' });
+		const nocap = series(4, (_, m) => (m <= 3 ? 0.04 : 0), { sector: 'x' });
+		const uni = u([big, mid, tiny, nocap]);
+		const all = runModel(uni, 'A', 1, DEFAULTS);
+		expect(all.capCounts).toEqual({ mega: 1, mid: 1, micro: 1, unknown: 1 });
+		expect(all.candidates).toHaveLength(4);
+		const large = runModel(uni, 'A', 1, cleanParams({ capGroups: 'mega,large' }));
+		expect(large.candidates.map((c) => c.symbol)).toEqual(['S1']);
+		expect(large).toMatchObject({ universe: 1, capOut: 3 });
+		expect(large.candidates[0]).toMatchObject({ capGroup: 'mega', capUsd: 300e9 });
+		// by rank in the market: of three with a cap, the biggest is the top 20%… of 3 → 1 share
+		const top = runModel(uni, 'A', 1, cleanParams({ capMode: 'rel', capGroups: 'top' }));
+		expect(top.candidates.map((c) => c.symbol)).toEqual(['S1']);
+		// the bounds can move: «mega» from 400B leaves S1 large
+		expect(runModel(uni, 'A', 1, cleanParams({ capBounds: '400e9,10e9,2e9,0.3e9' })).candidates.find((c) => c.symbol === 'S1')!.capGroup).toBe('large');
+		// the cap at an earlier month: shares × the close then
+		expect(capAt(big, START + 1, 3.7)).toBeCloseTo(3e9 * big.close[1], 0);
 	});
 
 	it('funds labelled as shares are not shares', async () => {

@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { israelDate } from '../hypothesis.js';
-import { DEFAULTS, dropUniverse, needSector, nextQuarter, runModel, universe } from './model/quarterly.js';
+import { DEFAULTS, dropUniverse, nextQuarter, runModel, universe, universeIds } from './model/quarterly.js';
 import { recordQuarter, VARIANTS } from './model/service.js';
 import { checkMonthlyAgainstDaily, loadMonthly, monthlyDue, type MonthlySummary } from './market/monthly.js';
 import { loadProfiles, staleProfiles, type ProfilesSummary } from './market/profiles.js';
@@ -348,8 +348,8 @@ export function runMonthlyJob(limit = 2500, sectorLimit = 1500): Promise<Monthly
 			const check = s.loaded ? checkMonthlyAgainstDaily(m) : null;
 			// the model reads the new prices: the report line, and its next request gets them
 			if (s.loaded) logModel();
-			// the model's caps need a sector for every share of its universe
-			const need = needSector(universe(m)).slice(0, sectorLimit);
+			// the model's caps need a sector and a market cap for every share of its universe; refreshed weekly
+			const need = staleProfiles(m, universeIds(universe(m))).slice(0, sectorLimit);
 			if (need.length) {
 				const pr = await loadProfiles(m, need).catch((e) => ({ updated: 0, errors: [String(e)] }));
 				console.log(`monthly: sectors of ${need.length} shares — ${pr.updated} loaded${pr.errors.length ? `, ${pr.errors.length} errors` : ''}`);
@@ -386,9 +386,14 @@ export function logModel() {
 	const nq = nextQuarter();
 	const out: string[] = [];
 	const candidates: number[] = [];
+	const capLine = (label: string, groups: string[]) => {
+		const r = runModel(u, 'A', nq.quarter, { ...DEFAULTS, capGroups: groups });
+		return `A Q${r.quarter} ${r.forYear} ${label}: universe ${r.universe}, passed ${r.passed}, by chance ≈ ${r.expected} — ${r.candidates.map((c) => `${c.symbol} ${c.up}/10 ${c.mean > 0 ? '+' : ''}${c.mean}% (${c.capUsd ? Math.round(c.capUsd / 1e9) + 'B$' : '?'})`).join('; ')}`;
+	};
 	for (const v of ['A', 'B'] as const) {
 		const t = performance.now();
 		const r = runModel(u, v, nq.quarter, DEFAULTS);
+		if (v === 'A') out.push(`caps (liquid shares): ${JSON.stringify(r.capCounts)}`);
 		candidates.push(...r.candidates.map((c) => c.id));
 		out.push(
 			`${v} Q${r.quarter} ${r.forYear}: universe ${r.universe} (no history ${r.noHistory}, illiquid ${r.illiquid}), passed ${r.passed}, by chance ≈ ${r.expected}, p ${r.p}, ${Math.round(performance.now() - t)} ms — ` +
@@ -397,6 +402,8 @@ export function logModel() {
 		);
 	}
 	console.log(`model: ${u.stocks.length} shares, data to ${u.lastMonth % 12 + 1}/${Math.floor(u.lastMonth / 12)}, built in ${build} ms, +${rss} MB rss (heap ${Math.round(process.memoryUsage().heapUsed / 1e6)} MB)`);
+	// T-021 report: large + mega and small + micro apart
+	out.push(capLine('large+mega', ['mega', 'large']), capLine('small+micro', ['small', 'micro']));
 	for (const l of out) console.log(`model: ${l}`);
 	// T-020: the candidates' cards need daily history — load it now rather than on the first open
 	if (enqueueMissingHistory(m, [...new Set(candidates)], israelDate())) void runHistoryJob().catch((e) => console.error(`history: ${e}`));
