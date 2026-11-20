@@ -11,3 +11,7 @@ A tap on a mark opens the hypothesis or the position. Periods — 1 month … 10
 **Gestures.** Two fingers — zoom, a finger left-right — scroll, a long press — the price on a date.
 
 Prices are closes on the scale of the last split; trades before a split are recomputed to the same scale.
+
+**From the quarterly model.** A tap on a candidate on the model screen opens this same card. On top — the model's block: the variant and the quarter, the place among the candidates, the parameters version, the security's 10 quarterly results next to the market (blue bar — the security, grey — the market), the mean, the median and the worst year. «Shade the quarter» fills that quarter in every year on the 10-year chart. «Watching», «Want to buy» and «Bought» from here link the trade to the model and its parameters version.
+
+**Price and data.** Under the title — the price and today's change, below — the sector, industry, market cap and country from the Yahoo profile. If the security has no daily history yet, the chart is drawn from monthly closes with a note, and the daily history is queued for loading at once.

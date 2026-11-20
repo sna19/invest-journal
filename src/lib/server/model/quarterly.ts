@@ -382,6 +382,59 @@ export function runModel(u: Universe, variant: Variant, quarter: number, input: 
 }
 
 /**
+ * T-020: one security's block on its card — its 10 results in the quarter next to the market, the mean, the
+ * median, the worst year, and whether it is among the variant's candidates. The measure of variant B «over the
+ * sector» needs the sector's mean, so the universe's rows are measured as in the full run.
+ */
+export function securityResult(u: Universe, id: number, variant: Variant, quarter: number, input: Params) {
+	const p = { ...input, k: Math.min(input.k, input.years) };
+	const s = u.stocks.find((x) => x.id === id);
+	if (!s) return null;
+	const years = windowYears(u.lastMonth, quarter, p.years);
+	const rows: Row[] = [];
+	let target: Row | null = null;
+	for (const x of u.stocks) {
+		const r = years.map((y) => quarterReturn(x, y, quarter));
+		const l = liquidity(x, u.lastMonth, u.usdIls);
+		const row = { s: x, r, ...l };
+		if (x.id === id) target = row;
+		if (r.some((v) => !Number.isFinite(v)) || l.turnoverUsd < p.minTurnoverUsd || l.priceUsd < p.minPriceUsd) continue;
+		rows.push(row);
+	}
+	if (!target) return null;
+	const inUniverse = rows.includes(target);
+	const all = inUniverse ? rows : [...rows, target];
+	const ms = measures(u, all, years, quarter, variant, p.compareWith);
+	const m = ms[all.indexOf(target)];
+	const ok = m.filter((v) => Number.isFinite(v));
+	const pct = (x: number) => Math.round(x * 10000) / 100;
+	const run = runModel(u, variant, quarter, p);
+	const bench = (y: number) => {
+		const b = u.bench[s.market];
+		const x = b ? quarterReturn(b, y, quarter) : NaN;
+		return Number.isFinite(x) ? pct(x) : null;
+	};
+	return {
+		variant,
+		quarter,
+		forYear: years.at(-1)! + 1,
+		years,
+		results: m.map((v) => (Number.isFinite(v) ? pct(v) : null)),
+		price: target.r.map((v) => (Number.isFinite(v) ? pct(v) : null)),
+		bench: years.map(bench),
+		up: ok.filter((v) => v > 0).length,
+		mean: ok.length ? pct(ok.reduce((a, b) => a + b, 0) / ok.length) : null,
+		median: ok.length ? pct(median(ok)) : null,
+		worst: ok.length ? pct(Math.min(...ok)) : null,
+		/** in the universe (full history, turnover and price), passed K, among the candidates and its place */
+		inUniverse,
+		passed: inUniverse && ok.filter((v) => v > 0).length >= p.k,
+		rank: run.candidates.findIndex((c) => c.id === id) + 1 || null,
+		params: p
+	};
+}
+
+/**
  * The check without peeking: for each of the last three years of the window, candidates are chosen on the 7
  * years before it (K lowered by as many years as are dropped) and measured in that year, which the choice did
  * not see. Only for reference: shares that vanished in 10 years are not in the base.

@@ -1,3 +1,4 @@
+import { readProfiles } from './market/profiles.js';
 import type Database from 'better-sqlite3';
 import { israelDate } from '../hypothesis.js';
 import { cashFlow, effective, splitFactor, valueOn } from '../portfolio.js';
@@ -42,17 +43,26 @@ export function securityChart(app: Database.Database, market: Database.Database,
 	const m = marketView(market);
 	const from = periodStart(period, today);
 	const benchId = benchmarkId(market, s.country === 'IL' ? 'benchmark:TA125' : 'benchmark:SPX');
-	const rows = market.prepare('select date, close from market_prices_daily where security_id = ? and date >= ? order by date').all(id, from) as {
+	let rows = market.prepare('select date, close from market_prices_daily where security_id = ? and date >= ? order by date').all(id, from) as {
 		date: string;
 		close: number;
 	}[];
+	// T-020: a security without daily history (a model's candidate) — its monthly closes until the days load
+	const monthly = rows.length < 2;
+	const monthRows = (sid: number, start: string) =>
+		(market.prepare('select month, close from market_prices_monthly where security_id = ? and month >= ? order by month').all(sid, start.slice(0, 7)) as { month: string; close: number }[]).map(
+			(r) => ({ date: lastDayOf(r.month), close: r.close })
+		);
+	if (monthly) rows = monthRows(id, from);
 	let bench: { date: string; value: number }[] = [];
 	if (benchId && benchId !== id && rows.length) {
-		const b = market.prepare('select date, close from market_prices_daily where security_id = ? and date >= ? order by date').all(benchId, rows[0].date) as {
-			date: string;
-			close: number;
-		}[];
-		const base = m.price(benchId, rows[0].date);
+		const b = monthly
+			? monthRows(benchId, rows[0].date)
+			: (market.prepare('select date, close from market_prices_daily where security_id = ? and date >= ? order by date').all(benchId, rows[0].date) as {
+					date: string;
+					close: number;
+				}[]);
+		const base = monthly ? b[0]?.close : m.price(benchId, rows[0].date);
 		// the benchmark brought to the security's first close: both lines start at one point
 		if (base) bench = b.map((r) => ({ date: r.date, value: (r.close / base) * rows[0].close }));
 	}
@@ -139,7 +149,13 @@ export function securityChart(app: Database.Database, market: Database.Database,
 
 	const first = rows[0];
 	const last = rows.at(-1);
+	const mv = m.dayMove(id);
+	const prof = readProfiles(market, [id], m.usd(today)).get(id) ?? null;
 	return {
+		monthly,
+		/** T-020: the price now and its day change (the quote, else the last close against the one before) */
+		today: mv ? { price: mv.now, dayPct: (mv.now / mv.prev - 1) * 100, date: mv.date, live: mv.live } : null,
+		profile: prof ? { sector: prof.sector, industry: prof.industry, country: prof.country, capUsd: prof.capUsd, kind: prof.kind } : null,
 		security: { id: s.id, symbol: s.symbol, name: s.name_en, exchange: s.exchange_code, currency: s.price_unit === 'USD' ? 'USD' : 'ILS', priceUnit: s.price_unit },
 		benchmark: benchId && benchId !== id ? { id: benchId, label: s.country === 'IL' ? 'ТА-125' : 'S&P 500' } : null,
 		period,
@@ -244,4 +260,10 @@ export function portfolioChart(app: Database.Database, market: Database.Database
 		}
 	}
 	return { start: main.start, series };
+}
+
+/** the last day of a month: 2026-02 → 2026-02-28 */
+function lastDayOf(month: string) {
+	const [y, mo] = month.split('-').map(Number);
+	return new Date(Date.UTC(y, mo, 0)).toISOString().slice(0, 10);
 }

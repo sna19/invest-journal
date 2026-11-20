@@ -385,9 +385,11 @@ export function logModel() {
 	if (u.stocks.length < 500) return console.log(`model: ${u.stocks.length} shares with monthly prices — too few yet`);
 	const nq = nextQuarter();
 	const out: string[] = [];
+	const candidates: number[] = [];
 	for (const v of ['A', 'B'] as const) {
 		const t = performance.now();
 		const r = runModel(u, v, nq.quarter, DEFAULTS);
+		candidates.push(...r.candidates.map((c) => c.id));
 		out.push(
 			`${v} Q${r.quarter} ${r.forYear}: universe ${r.universe} (no history ${r.noHistory}, illiquid ${r.illiquid}), passed ${r.passed}, by chance ≈ ${r.expected}, p ${r.p}, ${Math.round(performance.now() - t)} ms — ` +
 				r.candidates.map((c) => `${c.symbol}${c.market === 'IL' ? '.TA' : ''} ${c.up}/10 ${c.mean > 0 ? '+' : ''}${c.mean}% (med ${c.median}, worst ${c.worst}, ${c.sector ?? '?'})`).join('; ') +
@@ -396,6 +398,8 @@ export function logModel() {
 	}
 	console.log(`model: ${u.stocks.length} shares, data to ${u.lastMonth % 12 + 1}/${Math.floor(u.lastMonth / 12)}, built in ${build} ms, +${rss} MB rss (heap ${Math.round(process.memoryUsage().heapUsed / 1e6)} MB)`);
 	for (const l of out) console.log(`model: ${l}`);
+	// T-020: the candidates' cards need daily history — load it now rather than on the first open
+	if (enqueueMissingHistory(m, [...new Set(candidates)], israelDate())) void runHistoryJob().catch((e) => console.error(`history: ${e}`));
 }
 
 // ── the quarterly model records its hypotheses (T-009) ──────────────────────────────

@@ -82,6 +82,19 @@ describe('quarterly model 10a', () => {
 		expect(r.walk.every((w) => w.picked === 1 && w.pickedUp === 1)).toBe(true);
 	});
 
+	it('one security\'s block (T-020): its years next to the market, its place among the candidates', async () => {
+		const { securityResult } = await import('./quarterly.js');
+		const every = series(1, (_, m) => (m <= 3 ? 0.01 : 0));
+		const never = series(3, (_, m) => (m <= 3 ? -0.01 : 0.02), { sector: 'energy' });
+		const r = securityResult(u([every, never]), 1, 'A', 1, DEFAULTS)!;
+		expect(r).toMatchObject({ rank: 1, passed: true, inUniverse: true, up: 10, forYear: 2027 });
+		expect(r.price[0]).toBeCloseTo((1.01 ** 3 - 1) * 100, 1);
+		expect(r.bench.every((b) => b === 0)).toBe(true);
+		const r3 = securityResult(u([every, never]), 3, 'A', 1, DEFAULTS)!;
+		expect(r3).toMatchObject({ rank: null, passed: false, up: 0 });
+		expect(securityResult(u([every]), 99, 'A', 1, DEFAULTS)).toBeNull();
+	});
+
 	it('funds labelled as shares are not shares', async () => {
 		const { isFund } = await import('./quarterly.js');
 		expect(isFund({ kind: 'etf', industry: null, name: 'Invesco DB Gold Double Long ETN' })).toBe(true);

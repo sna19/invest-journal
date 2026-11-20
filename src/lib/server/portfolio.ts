@@ -1,3 +1,4 @@
+import { modelVersionNow } from './model/service.js';
 import { readProfiles, type ProfileView } from './market/profiles.js';
 import type Database from 'better-sqlite3';
 import { israelDate } from '../hypothesis.js';
@@ -636,6 +637,8 @@ export interface EventInput {
 	basisPrice?: unknown;
 	note?: unknown;
 	hypothesisId?: unknown;
+	/** T-020: bought from a quarterly model's candidate card — A | B; the version of its saved parameters is linked */
+	modelVariant?: unknown;
 	/** the person looked again at a price far from the day's range */
 	confirm?: unknown;
 }
@@ -727,9 +730,10 @@ export function addEvent(app: Database.Database, market: Database.Database, inpu
 	const hypothesisId = input.hypothesisId ? Number(input.hypothesisId) : null;
 	if (hypothesisId && !app.prepare('select 1 from hypotheses where id = ?').get(hypothesisId)) throw bad({ hypothesisId: 'Гипотезы нет' });
 
+	const modelVersionId = input.modelVariant === 'A' || input.modelVariant === 'B' ? modelVersionNow(app, input.modelVariant) : null;
 	const insert = app.prepare(
-		`insert into position_events (position_id, kind, date, qty, price, currency, fee, fx_rate, amount, cost_total, note, hypothesis_id, auto)
-		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id`
+		`insert into position_events (position_id, kind, date, qty, price, currency, fee, fx_rate, amount, cost_total, note, hypothesis_id, auto, model_version_id)
+		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id`
 	);
 	return app.transaction(() => {
 		const ev = insert.get(
@@ -745,11 +749,12 @@ export function addEvent(app: Database.Database, market: Database.Database, inpu
 			kind === 'basis' ? costTotal : null,
 			note,
 			hypothesisId,
-			auto ? 1 : 0
+			auto ? 1 : 0,
+			modelVersionId
 		) as { id: number };
 		// an opening with its purchase price: the price goes in as a «basis» event right after it
 		if (kind === 'opening' && (costTotal !== null || basisPrice !== null))
-			insert.run(pos!.id, 'basis', date, null, basisPrice, pos!.currency, null, fxRate, null, costTotal, null, null, 0);
+			insert.run(pos!.id, 'basis', date, null, basisPrice, pos!.currency, null, fxRate, null, costTotal, null, null, 0, null);
 		// no point in time may hold less than nothing
 		try {
 			fifo(trades(eventsOf(app, pos!.id), m.splits(pos!.security_id), f), f);

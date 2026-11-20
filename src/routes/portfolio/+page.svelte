@@ -136,7 +136,7 @@
 		}
 	}
 	let createError = $state<string | null>(null);
-	let adding = $state<{ kind: string; securityId: number | null; hypothesisId: number | null } | null>(null);
+	let adding = $state<{ kind: string; securityId: number | null; hypothesisId: number | null; model?: 'A' | 'B' | null } | null>(null);
 	let opened = $state<number | null>(null);
 	let cashing = $state(false);
 	// deleting a portfolio whole (owner's request): the name is typed back, the app copies the journal first
@@ -292,8 +292,11 @@
 		if (add) {
 			const real = list?.find((p) => p.kind === 'real' && p.id === current) ?? list?.find((p) => p.kind === 'real');
 			if (real) current = real.id;
-			const kind = page.url.searchParams.get('kind') === 'buy' ? 'buy' : 'plan_buy';
-			adding = { kind, securityId: add, hypothesisId: Number(page.url.searchParams.get('hyp')) || null };
+			const k = page.url.searchParams.get('kind');
+			const kind = k === 'buy' || k === 'watch' ? k : 'plan_buy';
+			// T-020: from a model's candidate card — the trade is linked to the model and its version
+			const mv = page.url.searchParams.get('model');
+			adding = { kind, securityId: add, hypothesisId: Number(page.url.searchParams.get('hyp')) || null, model: mv === 'A' || mv === 'B' ? mv : null };
 			replaceState('/portfolio', {});
 			if (!real) creating = true;
 		}
@@ -705,6 +708,7 @@
 			kind={adding.kind}
 			securityId={adding.securityId}
 			hypothesisId={adding.hypothesisId}
+			modelVariant={adding.model ?? null}
 			lastFee={v.lastFee}
 			onsaved={(pid) => {
 				adding = null;
@@ -715,6 +719,7 @@
 			oncancel={() => (adding = null)}
 		/>
 		{#if adding.hypothesisId}<p class="muted small">{tx('Позиция будет связана с гипотезой', 'The position will be linked to hypothesis')} №{adding.hypothesisId}.</p>{/if}
+		{#if adding.model}<p class="muted small">{tx(`Сделка будет связана с квартальной моделью, вариант ${adding.model === 'A' ? 'А' : 'Б'}, и версией её параметров.`, `The trade will be linked to the quarterly model, variant ${adding.model}, and the version of its parameters.`)}</p>{/if}
 	</Sheet>
 {/if}
 

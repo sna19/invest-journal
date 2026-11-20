@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import TopBar from '#lib/TopBar.svelte';
 	import HelpIcon from '#lib/HelpIcon.svelte';
 	import { showToast } from '#lib/toast.svelte.js';
@@ -69,7 +70,6 @@
 	let data = $state<Data | null>(null);
 	let problem = $state<string | null>(null);
 	let busy = $state(false);
-	let opened = $state<number | null>(null);
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let seq = 0;
 
@@ -109,14 +109,14 @@
 		} catch {
 			/* private mode */
 		}
-		opened = null;
 		void load(false);
 	}
 	function setQuarter(q: number) {
 		quarter = q;
-		opened = null;
 		void load(true);
 	}
+	/** the parameters on screen, for the card: it shows the candidate as the preview found it */
+	const previewQuery = () => new URLSearchParams(Object.entries(params ?? {}).map(([k, v]) => [k, String(v)])).toString();
 	const changed = $derived(!!params && !!data && JSON.stringify(params) !== JSON.stringify(data.saved));
 	async function save() {
 		const r = await fetch('/api/model', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ variant, ...params }) }).catch(() => null);
@@ -132,7 +132,6 @@
 	const pct = (x: number | null) => (x === null ? '—' : `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x).toFixed(1)}%`);
 	const money = (x: number) => (x >= 1e6 ? `${(x / 1e6).toFixed(x >= 1e7 ? 0 : 1)} ${tx('млн $', 'M $')}` : `${Math.round(x / 1000)} ${tx('тыс. $', 'K $')}`);
 	const label = $derived(tx('Q', 'Q'));
-	const maxAbs = (c: Cand) => Math.max(5, ...c.results.map((x) => Math.abs(x ?? 0)));
 
 	const PARAMS: { key: keyof Params; help: string; ru: string; en: string; min: number; max: number; step: number }[] = [
 		{ key: 'k', help: 'model.param.k', ru: 'Лет с ростом, не меньше (K)', en: 'Years with a rise, at least (K)', min: 1, max: 15, step: 1 },
@@ -248,25 +247,11 @@
 		<ul class="cands">
 			{#each res.candidates as c, i (c.id)}
 				<li>
-					<button class="crow" aria-expanded={opened === c.id} onclick={() => (opened = opened === c.id ? null : c.id)}>
+					<button class="crow" onclick={() => goto(`/security/${c.id}?model=${variant}&q=${res.quarter}&${previewQuery()}`)}>
 						<span class="n">{i + 1}</span>
 						<span class="who"><b>{c.symbol}</b><span class="muted small block name">{c.name}</span><span class="muted small block">{c.market === 'US' ? tx('США', 'US') : tx('Израиль', 'Israel')} · {c.sector ? sectorName(c.sector, tx) : tx('сектор неизвестен', 'sector unknown')} · {c.up}/{res.years.length}</span></span>
 						<span class="nums"><b class:up={c.mean > 0}>{pct(c.mean)}</b><span class="muted small block">{tx('мед.', 'med.')} {pct(c.median)}</span><span class="muted small block">{tx('худш.', 'worst')} {pct(c.worst)}</span></span>
 					</button>
-					{#if opened === c.id}
-						<div class="years">
-							<div class="yr head muted small"><span></span><span></span><span class="v">{c.symbol}</span><span class="v">{tx('рынок', 'market')}</span></div>
-							{#each c.results as r, j (j)}
-								<div class="yr">
-									<span class="y">{res.years[j]}</span>
-									<span class="track"><span class="mid"></span><span class="b" class:neg={(r ?? 0) < 0} style:width="{(Math.abs(r ?? 0) / maxAbs(c)) * 50}%"></span></span>
-									<span class="v">{pct(r)}</span>
-									<span class="v muted">{pct(res.bench[c.market][j])}</span>
-								</div>
-							{/each}
-							<p class="links"><a href="/security/{c.id}">{tx('Карточка и график', 'Card and chart')}</a> · <a href="/portfolio?add={c.id}&kind=buy">{tx('Купил', 'Bought')}</a> · <a href="/portfolio?add={c.id}&kind=plan_buy">{tx('Хочу купить', 'Want to buy')}</a></p>
-						</div>
-					{/if}
 				</li>
 			{/each}
 		</ul>
@@ -480,54 +465,6 @@
 	}
 	.up {
 		color: var(--up);
-	}
-	.years {
-		padding: 0 0 var(--s3) 30px;
-	}
-	.yr.head {
-		min-height: 16px;
-	}
-	.yr {
-		display: grid;
-		grid-template-columns: 36px 1fr 58px 58px;
-		align-items: center;
-		gap: 6px;
-		font-size: var(--fs-xs);
-		min-height: 22px;
-	}
-	.track {
-		position: relative;
-		height: 10px;
-	}
-	.mid {
-		position: absolute;
-		left: 50%;
-		top: -2px;
-		bottom: -2px;
-		width: 1px;
-		background: var(--line);
-	}
-	.b {
-		position: absolute;
-		left: 50%;
-		top: 0;
-		height: 100%;
-		border-radius: 0 3px 3px 0;
-		background: var(--series-1);
-	}
-	.b.neg {
-		left: auto;
-		right: 50%;
-		border-radius: 3px 0 0 3px;
-		background: var(--series-2);
-	}
-	.v {
-		text-align: right;
-		font-variant-numeric: tabular-nums;
-	}
-	.links {
-		margin: var(--s2) 0 0;
-		font-size: var(--fs-s);
 	}
 	.walk {
 		width: 100%;

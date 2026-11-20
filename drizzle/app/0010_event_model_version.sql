@@ -1,0 +1,1 @@
+ALTER TABLE `position_events` ADD `model_version_id` integer;

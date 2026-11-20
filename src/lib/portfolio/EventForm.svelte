@@ -27,6 +27,8 @@
 		position?: Pos | null;
 		securityId?: number | null;
 		hypothesisId?: number | null;
+		/** T-020: a trade from a quarterly model's candidate card */
+		modelVariant?: 'A' | 'B' | null;
 		lastFee?: Record<string, number>;
 		/** the portfolio's currency: the whole purchase cost of a transferred position is in it */
 		portfolioCurrency?: string;
@@ -35,7 +37,7 @@
 		onsaved: (positionId: number) => void;
 		oncancel: () => void;
 	}
-	let { portfolioId, kind, position = null, securityId = null, hypothesisId = null, lastFee = {}, portfolioCurrency = 'ILS', edit = null, onsaved, oncancel }: Props = $props();
+	let { portfolioId, kind, position = null, securityId = null, hypothesisId = null, modelVariant = null, lastFee = {}, portfolioCurrency = 'ILS', edit = null, onsaved, oncancel }: Props = $props();
 	let costTotal = $state('');
 	let warning = $state<string | null>(null);
 
@@ -125,6 +127,7 @@
 			costTotal: kind === 'basis' ? costTotal : undefined,
 			note,
 			hypothesisId: edit ? undefined : hypothesisId,
+			modelVariant: edit ? undefined : (modelVariant ?? undefined),
 			confirm
 		};
 		try {

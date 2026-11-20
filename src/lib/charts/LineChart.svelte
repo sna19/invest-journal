@@ -41,8 +41,11 @@
 		onmarker?: (id: string) => void;
 		/** how the price reads in the legend */
 		format?: (v: number) => string;
+		/** T-020: periods shaded on the chart (a quarter in each year), dates inclusive */
+		bands?: { from: string; to: string }[];
 	}
-	let { lines, marks = [], percent = false, height = 260, onmarker, format }: Props = $props();
+	let { lines, marks = [], percent = false, height = 260, onmarker, format, bands = [] }: Props = $props();
+	let bandSeries: ISeriesApi<'Histogram'> | null = null;
 
 	let el: HTMLDivElement;
 	let chart: IChartApi | null = null;
@@ -70,6 +73,21 @@
 		for (const s of series) chart.removeSeries(s);
 		series = [];
 		markersApi = null;
+		if (bandSeries) chart.removeSeries(bandSeries);
+		bandSeries = null;
+		const main = lines.find((l) => l.main) ?? lines[0];
+		if (bands.length && main) {
+			// a full-height column on each day inside a band, on its own hidden scale behind the lines
+			bandSeries = chart.addSeries(lib.HistogramSeries, {
+				priceScaleId: 'bands',
+				color: 'rgba(91, 156, 255, 0.18)',
+				priceLineVisible: false,
+				lastValueVisible: false
+			});
+			chart.priceScale('bands').applyOptions({ visible: false, scaleMargins: { top: 0, bottom: 0 } });
+			const inBand = (d: string) => bands.some((b) => d >= b.from && d <= b.to);
+			bandSeries.setData(main.points.map((p) => (inBand(p.date) ? { time: p.date as Time, value: 1 } : { time: p.date as Time })));
+		}
 		for (const l of lines) {
 			const s = chart.addSeries(lib.LineSeries, {
 				color: l.color ?? css('--accent'),
@@ -148,6 +166,7 @@
 		// redraw when the data changes
 		void lines;
 		void marks;
+		void bands;
 		draw();
 	});
 	void markersApi;
