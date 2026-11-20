@@ -45,6 +45,11 @@ function versionOf(app: Database.Database, v: Variant, p: Params, sourceId: numb
 	return Number(app.prepare('insert into model_versions (variant, params, source_id) values (?, ?, ?)').run(v, json, sourceId).lastInsertRowid);
 }
 
+/** the version of the variant's saved parameters now — a trade from a candidate's card refers to it (T-020) */
+export function modelVersionNow(app: Database.Database, v: Variant): number {
+	return versionOf(app, v, readParams(app, v), sourceOf(app, v));
+}
+
 export const quarterKey = (year: number, q: number) => `${year}-Q${q}`;
 
 /** the last day of a quarter: 2027-Q1 → 2027-03-31 */

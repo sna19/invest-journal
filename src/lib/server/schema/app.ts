@@ -216,6 +216,8 @@ export const positionEvents = sqliteTable(
 		costTotal: real(),
 		note: text(),
 		hypothesisId: integer().references(() => hypotheses.id),
+		/** T-020: a trade made from a model's candidate card — the model's version (its variant and parameters) */
+		modelVersionId: integer(),
 		/** reverse: the event it cancels (storno); both stay in the history */
 		reversesEventId: integer(),
 		/** written by the app (an automatic portfolio), not by a person */

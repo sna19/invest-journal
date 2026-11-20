@@ -6,6 +6,6 @@ For the chosen quarter the model takes every share of the base and looks at how 
 
 **Selection.** Shares that rose in at least K of 10 years remain. In variant B «rise» means beating the market (S&P 500 for the US, TA-125 for Israel) or the average of the share's sector. The rest are sorted by the mean (median, worst year), and the 10 best are taken, at most 2 per sector and 7 per market.
 
-**Each candidate** has 10 quarterly results, the mean, the median and the worst year. Tap a row to see the years next to the market: a mean can rest on one exceptional year.
+**Each candidate** has 10 quarterly results, the mean, the median and the worst year. A tap on a row opens the security's card with the model's block: the years next to the market (a mean can rest on one exceptional year), the chart with the quarter shaded and the trade buttons.
 
 The data update once a month, at night.

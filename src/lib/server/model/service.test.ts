@@ -56,6 +56,17 @@ describe('the quarterly model in the journal', () => {
 		expect(() => app.sqlite.prepare('update hypotheses set model_version_id = 99').run()).toThrow(/model version/);
 	});
 
+	it('a trade from a candidate card is linked to the model\'s version (T-020)', async () => {
+		const { app, market } = setup();
+		const { createPortfolio, addEvent } = await import('../portfolio.js');
+		const p = createPortfolio(app.sqlite, { name: 'Тест', kind: 'real', currency: 'USD' });
+		const id = (market.sqlite.prepare(`select id from ref_securities where symbol = 'T0'`).get() as { id: number }).id;
+		market.sqlite.prepare(`insert into market_prices_daily (security_id, date, low, high, close, provider_code) values (?, '2026-11-02', 1, 100, 50, 'test')`).run(id);
+		addEvent(app.sqlite, market.sqlite, { portfolioId: p.id, securityId: id, kind: 'buy', date: '2026-11-02', qty: 1, price: 50, fee: 0, modelVariant: 'B', confirm: true }, new Date('2026-11-03T10:00:00Z'));
+		const e = app.sqlite.prepare(`select model_version_id as v from position_events where kind = 'buy'`).get() as { v: number };
+		expect(app.sqlite.prepare('select variant from model_versions where id = ?').get(e.v)).toMatchObject({ variant: 'B' });
+	});
+
 	it('parameters are saved per variant and kept in their limits', () => {
 		const { app } = setup();
 		expect(readParams(app.sqlite, 'B').k).toBe(9);
