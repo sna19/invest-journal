@@ -130,6 +130,7 @@
 		quotes: tx('Котировки в течение дня', 'Intraday quotes'),
 		fx: tx('Курс доллара (Банк Израиля)', 'Dollar rate (Bank of Israel)'),
 		monthly: tx('Месячные цены для модели', 'Monthly prices for the model'),
+		events: tx('Календарь отчётов и дивидендов для модели', 'Report and dividend calendar for the model'),
 		profiles: tx('Профили бумаг: сектор, отрасль, страна', 'Security profiles: sector, industry, country'),
 		prices: tx('Дневные цены', 'Daily prices'),
 		history: tx('Историческая загрузка', 'History load'),

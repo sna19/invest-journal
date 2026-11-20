@@ -19,7 +19,7 @@
 	 * 1М…10Л. A tap on a mark opens the hypothesis or the position.
 	 */
 	interface ModelBlock {
-		variant: 'A' | 'B' | 'C' | 'D';
+		variant: 'A' | 'B' | 'C' | 'D' | 'G';
 		quarter: number;
 		forYear: number;
 		years: number[];
@@ -37,6 +37,7 @@
 		own: { mean: number | null; median: number | null; up: number; years: number };
 		sma10: number | null;
 		trendOk: boolean;
+		reasons: { earnings: boolean | null; dividend: boolean | null; sector: boolean };
 		rank: number | null;
 		params: { k: number; years: number; compareWith: string };
 		versionId: number | null;
@@ -75,7 +76,7 @@
 	let loadMs = $state<number | null>(null);
 	let allHyps = $state(false);
 	// T-020: opened from the quarterly model — its block on top, the trade linked to the model
-	const modelVariant = $derived(((['A', 'B', 'C', 'D'] as const).find((v) => v === page.url.searchParams.get('model')) ?? null) as 'A' | 'B' | 'C' | 'D' | null);
+	const modelVariant = $derived(((['A', 'B', 'C', 'D', 'G'] as const).find((v) => v === page.url.searchParams.get('model')) ?? null) as 'A' | 'B' | 'C' | 'D' | 'G' | null);
 	let model = $state<ModelBlock | null>(null);
 	let highlight = $state<number | null>(null);
 	async function loadModel() {
@@ -120,6 +121,13 @@
 	let cmp = $state<{ periods: string[]; security: Record<string, number | null>; refs: CmpRef[] } | null>(null);
 	let shown = $state<number[]>([]);
 	let refLines = $state<Record<number, { date: string; value: number }[]>>({});
+	const VARIANT_NAME: Record<string, [string, string]> = {
+		A: ['А. Рост цены', 'A. Price rise'],
+		B: ['Б. Против рынка', 'B. Against the market'],
+		C: ['В. Оценка', 'C. Score'],
+		G: ['Г. С причиной', 'G. With a reason'],
+		D: ['Д. Против тренда', 'D. Against its trend']
+	};
 	// T-018 (5): SMA 20, 50, 200 days on the chart — chosen on this device
 	let smaOn = $state<string[]>([]);
 	function toggleSma(n: string) {
@@ -384,7 +392,7 @@
 
 {#if c}
 	{#if model}
-		<Fold key="sec-model" title={`${tx('Квартальная модель', 'Quarterly model')} · ${model.variant === 'A' ? tx('А. Рост цены', 'A. Price rise') : model.variant === 'B' ? tx('Б. Против рынка', 'B. Against the market') : tx('В. Оценка', 'C. Score')} · Q${model.quarter} ${model.forYear}`} summary={model.rank ? tx(`Кандидат №${model.rank}`, `Candidate №${model.rank}`) : undefined}>
+		<Fold key="sec-model" title={`${tx('Квартальная модель', 'Quarterly model')} · ${tx(...VARIANT_NAME[model.variant])} · Q${model.quarter} ${model.forYear}`} summary={model.rank ? tx(`Кандидат №${model.rank}`, `Candidate №${model.rank}`) : undefined}>
 			{#snippet aside()}<HelpIcon topicKey="model.quarterly" label={tx('как считается', 'how it is computed')} />{/snippet}
 			<div class="model">
 			<p class="muted small">
@@ -416,6 +424,10 @@
 					<HelpIcon topicKey="model.own_quarter" label={tx('обычный квартал', 'usual quarter')} />
 				</p>
 			{/if}
+			<p class="sum small">
+				{tx('Метки причины', 'Reason labels')}: {[model.reasons.earnings ? tx('отчёт в этом квартале', 'a report in this quarter') : '', model.reasons.dividend ? tx('дивиденд в этом квартале', 'a dividend in this quarter') : '', model.reasons.sector ? tx('сектор сезонен', 'the sector is seasonal') : ''].filter(Boolean).join(' · ') || (model.reasons.earnings === null ? tx('календарь отчётов ещё не загружен', 'the report calendar is not loaded yet') : tx('нет', 'none'))}
+				<HelpIcon topicKey="model.reason" label={tx('метки причины', 'reason labels')} />
+			</p>
 			<p class="sum small">
 				{tx('По месяцам квартала, в среднем', 'By month of the quarter, mean')}: {model.months.map((m, i) => `${tx('м', 'm')}${i + 1} ${pctText(m)}`).join(' · ')} <HelpIcon topicKey="model.months" label={tx('по месяцам', 'by month')} />
 				{#if model.sma10 !== null}<br />{tx('Последнее месячное закрытие', 'The last monthly close')} {model.sma10 >= 0 ? tx('выше', 'above') : tx('ниже', 'below')} SMA 10 {tx('мес.', 'mo')} {tx('на', 'by')} {Math.abs(model.sma10).toFixed(1).replace('.', tx(',', '.'))}%{#if !model.trendOk}{' · '}{tx('фильтр тренда не пройден', 'the trend filter is not passed')}{/if}{/if}

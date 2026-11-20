@@ -10,7 +10,8 @@
 	import { sectorName } from '#lib/allocation.js';
 
 	/** Spec section 21, T-009 — the quarterly model: parameters with «?», a live preview, the candidates. */
-	type Variant = 'A' | 'B' | 'C' | 'D';
+	type Variant = 'A' | 'B' | 'C' | 'D' | 'G';
+	const isScored = (v: Variant) => v === 'C' || v === 'G';
 	interface Params {
 		years: number;
 		k: number;
@@ -49,6 +50,7 @@
 		months: (number | null)[];
 		own: { mean: number | null; median: number | null; up: number; years: number };
 		sma10: number | null;
+		reasons: { earnings: boolean | null; dividend: boolean | null; sector: boolean };
 	}
 	interface Data {
 		variant: Variant;
@@ -197,7 +199,7 @@
 		const r = await fetch(`/api/model/compare?quarter=${q}`).catch(() => null);
 		if (r?.ok) compareV = (await r.json()).items;
 	}
-	const VNAME: Record<Variant, [string, string]> = { A: ['А. Рост', 'A. Rise'], B: ['Б. Рынок', 'B. Market'], C: ['В. Оценка', 'C. Score'], D: ['Д. Тренд', 'D. Trend'] };
+	const VNAME: Record<Variant, [string, string]> = { A: ['А. Рост', 'A. Rise'], B: ['Б. Рынок', 'B. Market'], C: ['В. Оценка', 'C. Score'], D: ['Д. Тренд', 'D. Trend'], G: ['Г. Причина', 'G. Reason'] };
 	const FNAME: Record<string, [string, string]> = { none: ['без фильтра', 'no filter'], price_sma10: ['цена > SMA10', 'price > SMA10'], sma3_sma10: ['SMA3 > SMA10', 'SMA3 > SMA10'] };
 	const VERDICT: Record<string, [string, string]> = { signal: ['сигнал', 'signal'], unclear: ['неясно', 'unclear'], chance: ['случайность', 'chance'] };
 	const LAG: Record<string, [string, string]> = { catch_up: ['отставшие догоняют', 'laggards catch up'], no: ['отставшие не догоняют', 'laggards do not catch up'], unclear: ['неясно', 'unclear'] };
@@ -228,7 +230,7 @@
 		} catch {
 			kept = {};
 		}
-		variant = kept.variant ?? ((['A', 'B', 'C', 'D'] as const).find((v) => v === read('model-variant', 'A')) ?? 'A');
+		variant = kept.variant ?? ((['A', 'B', 'C', 'D', 'G'] as const).find((v) => v === read('model-variant', 'A')) ?? 'A');
 		if (kept.quarter && [1, 2, 3, 4].includes(kept.quarter)) quarter = kept.quarter;
 		open(variant);
 	});
@@ -362,6 +364,7 @@
 	<button role="radio" aria-checked={variant === 'A'} class:on={variant === 'A'} onclick={() => setVariant('A')}>{tx('А. Рост цены', 'A. Price rise')}</button>
 	<button role="radio" aria-checked={variant === 'B'} class:on={variant === 'B'} onclick={() => setVariant('B')}>{tx('Б. Против рынка', 'B. Against the market')}</button>
 	<button role="radio" aria-checked={variant === 'C'} class:on={variant === 'C'} onclick={() => setVariant('C')}>{tx('В. Оценка', 'C. Score')}</button>
+	<button role="radio" aria-checked={variant === 'G'} class:on={variant === 'G'} onclick={() => setVariant('G')}>{tx('Г. С причиной', 'G. With a reason')}</button>
 	<button role="radio" aria-checked={variant === 'D'} class:on={variant === 'D'} onclick={() => setVariant('D')}>{tx('Д. Против тренда', 'D. Against its trend')}</button>
 	<HelpIcon topicKey="model.variants" label={tx('варианты', 'variants')} />
 </div>
@@ -373,9 +376,9 @@
 </div>
 
 {#if params}
-	<Fold key="model-params" title={tx('Параметры', 'Parameters')} summary={`${variant === 'C' ? '' : `K ${params.k} · `}${tx(`${params.years} лет`, `${params.years} years`)} · ${tx(`${params.count} кандидатов`, `${params.count} candidates`)}${changed ? tx(' · не сохранены', ' · not saved') : ''}`}>
+	<Fold key="model-params" title={tx('Параметры', 'Parameters')} summary={`${isScored(variant) ? '' : `K ${params.k} · `}${tx(`${params.years} лет`, `${params.years} years`)} · ${tx(`${params.count} кандидатов`, `${params.count} candidates`)}${changed ? tx(' · не сохранены', ' · not saved') : ''}`}>
 		{#snippet aside()}{#if busy}<span class="muted small">{tx('считаю…', 'computing…')}</span>{/if}{/snippet}
-		{#each PARAMS.filter((f) => variant !== 'C' || f.key !== 'k') as f (f.key)}
+		{#each PARAMS.filter((f) => !isScored(variant) || f.key !== 'k') as f (f.key)}
 			<div class="prow">
 				<span class="pl">{tx(f.ru, f.en)} <HelpIcon topicKey={f.help} label={tx(f.ru, f.en)} /></span>
 				<span class="stepper">
@@ -391,7 +394,7 @@
 				{#each TURNOVER as t (t)}<option value={t}>{t ? money(t) : tx('без порога', 'no threshold')}</option>{/each}
 			</select>
 		</div>
-		{#if variant !== 'C'}<div class="prow">
+		{#if !isScored(variant)}<div class="prow">
 			<span class="pl">{tx('Сортировка', 'Sort by')} <HelpIcon topicKey="model.param.sort" label={tx('сортировка', 'sort')} /></span>
 			<select value={params.sort} onchange={(e) => set('sort', e.currentTarget.value as Params['sort'])}>
 				<option value="mean">{tx('по среднему', 'mean')}</option>
@@ -437,7 +440,7 @@
 				<option value="sma3">{tx('продать, если закрытие месяца ниже SMA 3 мес.', 'sell if a month closes below SMA 3 mo')}</option>
 			</select>
 		</div>
-		{#if variant === 'B' || variant === 'C'}
+		{#if variant === 'B' || isScored(variant)}
 			<div class="prow">
 				<span class="pl">{tx('Сравнивать', 'Compare with')} <HelpIcon topicKey="model.param.compare_with" label={tx('сравнение', 'comparison')} /></span>
 				<select value={params.compareWith} onchange={(e) => set('compareWith', e.currentTarget.value as Params['compareWith'])}>
@@ -471,7 +474,7 @@
 	<Fold key="model-candidates" title={`${tx('Кандидаты', 'Candidates')} Q${res.quarter} ${res.forYear}`} summary={res.candidates.map((x) => x.symbol).join(' · ')}>
 		{#snippet aside()}<HelpIcon topicKey="model.quarterly" label={tx('как считается', 'how it is computed')} />{/snippet}
 		<p class="sum">
-			{tx('Выборка', 'Universe')} <b>{res.universe}</b> {tx('акций', 'shares')} · {variant === 'C' ? tx('балл ≥ 2', 'score ≥ 2') : tx('прошли фильтр', 'passed')} <b>{res.passed}</b>{#if variant === 'C'} <HelpIcon topicKey="model.score" label={tx('балл', 'score')} />{/if}
+			{tx('Выборка', 'Universe')} <b>{res.universe}</b> {tx('акций', 'shares')} · {isScored(variant) ? tx('балл ≥ 2', 'score ≥ 2') : tx('прошли фильтр', 'passed')} <b>{res.passed}</b>{#if isScored(variant)} <HelpIcon topicKey="model.score" label={tx('балл', 'score')} />{/if}
 		</p>
 		<p class="placebo {res.placebo.verdict}">
 			<span class="badge">{res.placebo.verdict === 'signal' ? tx('сигнал', 'signal') : res.placebo.verdict === 'unclear' ? tx('неясно', 'unclear') : tx('похоже на случайность', 'looks like chance')}</span>
@@ -488,7 +491,7 @@
 		{#if verdict === 'chance'}
 			<p class="warn">{tx('Пустышка находит столько же: кандидаты этого варианта не лучше случайных.', 'The placebo finds as many: these candidates are no better than random ones.')}</p>
 		{:else if verdict === 'none'}
-			<p class="warn">{variant === 'C' ? tx('Ни у одной бумаги балл не выше 2 — кандидаты ниже показаны по баллу, но уверенности нет.', 'No share has a score of 2 or more — the candidates below are ranked by score, without confidence.') : tx('Фильтр не прошла ни одна бумага — ослабьте K или пороги.', 'No share passed — lower K or the thresholds.')}</p>
+			<p class="warn">{isScored(variant) ? tx('Ни у одной бумаги балл не выше 2 — кандидаты ниже показаны по баллу, но уверенности нет.', 'No share has a score of 2 or more — the candidates below are ranked by score, without confidence.') : tx('Фильтр не прошла ни одна бумага — ослабьте K или пороги.', 'No share passed — lower K or the thresholds.')}</p>
 		{/if}
 		{#if res.trendOut}<p class="muted small">{tx(`Фильтр тренда отсёк ${res.trendOut} из прошедших.`, `The trend filter left out ${res.trendOut} of those that passed.`)}</p>{/if}
 		{#if res.candidates.length && res.months.some((m) => m !== null)}
@@ -502,7 +505,7 @@
 				<li>
 					<button class="crow" onclick={() => goto(`/security/${c.id}?model=${variant}&q=${res.quarter}&${previewQuery()}`)}>
 						<span class="n">{i + 1}</span>
-						<span class="who"><b>{c.symbol}</b><span class="muted small block name">{c.name}</span><span class="muted small block">{c.market === 'US' ? tx('США', 'US') : tx('Израиль', 'Israel')} {' · '}{c.sector ? sectorName(c.sector, tx) : tx('сектор неизвестен', 'sector unknown')}{#if c.capUsd}{' · '}{capText(c.capUsd)}, {capName(c.capGroup)}{/if}{' · '}{c.up}/{res.years.length}</span><span class="muted small block">{tx('по месяцам', 'by month')} {c.months.map((m) => pct(m)).join(' · ')}{#if c.sma10 !== null}{' · '}{c.sma10 >= 0 ? tx('над', 'above') : tx('под', 'below')} SMA10 {pct(c.sma10)}{/if}</span>{#if c.own.mean !== null && variant !== 'D'}<span class="muted small block" class:warnline={Math.abs(c.own.mean) < 1 || c.own.up < 6}>{tx('к обычному кварталу', 'vs usual quarter')} {pct(c.own.mean)} · {tx('выше в', 'above in')} {c.own.up}/{c.own.years}</span>{/if}</span>
+						<span class="who"><b>{c.symbol}</b><span class="muted small block name">{c.name}</span><span class="muted small block">{c.market === 'US' ? tx('США', 'US') : tx('Израиль', 'Israel')} {' · '}{c.sector ? sectorName(c.sector, tx) : tx('сектор неизвестен', 'sector unknown')}{#if c.capUsd}{' · '}{capText(c.capUsd)}, {capName(c.capGroup)}{/if}{' · '}{c.up}/{res.years.length}</span><span class="muted small block">{tx('по месяцам', 'by month')} {c.months.map((m) => pct(m)).join(' · ')}{#if c.sma10 !== null}{' · '}{c.sma10 >= 0 ? tx('над', 'above') : tx('под', 'below')} SMA10 {pct(c.sma10)}{/if}</span>{#if c.reasons.earnings || c.reasons.dividend || c.reasons.sector}<span class="reasons">{#if c.reasons.earnings}<i>{tx('отчёт', 'report')}</i>{/if}{#if c.reasons.dividend}<i>{tx('дивиденд', 'dividend')}</i>{/if}{#if c.reasons.sector}<i>{tx('сектор сезонен', 'sector seasonal')}</i>{/if}</span>{/if}{#if c.own.mean !== null && variant !== 'D'}<span class="muted small block" class:warnline={Math.abs(c.own.mean) < 1 || c.own.up < 6}>{tx('к обычному кварталу', 'vs usual quarter')} {pct(c.own.mean)} · {tx('выше в', 'above in')} {c.own.up}/{c.own.years}</span>{/if}</span>
 						<span class="nums">{#if c.score !== null}<span class="score">{tx('балл', 'score')} {c.score.toFixed(1)}</span>{/if}<b class:up={c.mean > 0}>{pct(c.mean)}</b><span class="muted small block">{tx('мед.', 'med.')} {pct(c.median)}</span><span class="muted small block">{tx('худш.', 'worst')} {pct(c.worst)}</span></span>
 					</button>
 					<span class="tvpos"><TvLink exchange={c.exchange} symbol={c.symbol} /></span>
@@ -656,7 +659,7 @@
 	<Fold key="model-recorded" title={tx('Записанные кварталы', 'Recorded quarters')} summary={String(data.recorded.length)}>
 		<ul class="plain">
 			{#each data.recorded as r (r.variant + r.quarter)}
-				<li>{r.quarter} · {r.variant === 'A' ? tx('А. Рост цены', 'A. Price rise') : r.variant === 'B' ? tx('Б. Против рынка', 'B. Against the market') : r.variant === 'C' ? tx('В. Оценка', 'C. Score') : tx('Д. Против тренда', 'D. Against its trend')} · {tx('гипотез', 'hypotheses')} {r.hypotheses}</li>
+				<li>{r.quarter} · {r.variant === 'A' ? tx('А. Рост цены', 'A. Price rise') : r.variant === 'B' ? tx('Б. Против рынка', 'B. Against the market') : r.variant === 'C' ? tx('В. Оценка', 'C. Score') : r.variant === 'G' ? tx('Г. С причиной', 'G. With a reason') : tx('Д. Против тренда', 'D. Against its trend')} · {tx('гипотез', 'hypotheses')} {r.hypotheses}</li>
 			{/each}
 		</ul>
 		<p class="muted small"><a href="/sources">{tx('Статистика вариантов — в «Источниках»', 'Variant stats — in «Sources»')}</a></p>
@@ -957,6 +960,19 @@
 	}
 	.scroll {
 		overflow-x: auto;
+	}
+	.reasons {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin: 2px 0;
+	}
+	.reasons i {
+		font-style: normal;
+		font-size: var(--fs-xs);
+		padding: 0 6px;
+		border-radius: var(--r-pill);
+		background: color-mix(in srgb, var(--accent) 14%, transparent);
 	}
 	.trend td,
 	.trend th {

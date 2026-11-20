@@ -28,7 +28,7 @@
 		securityId?: number | null;
 		hypothesisId?: number | null;
 		/** T-020: a trade from a quarterly model's candidate card */
-		modelVariant?: 'A' | 'B' | 'C' | 'D' | null;
+		modelVariant?: 'A' | 'B' | 'C' | 'D' | 'G' | null;
 		lastFee?: Record<string, number>;
 		/** the portfolio's currency: the whole purchase cost of a transferred position is in it */
 		portfolioCurrency?: string;

@@ -13,7 +13,10 @@ import type Database from 'better-sqlite3';
  * A — the rise (the owner's scheme), B — over the market or sector, C — the score (T-011): no K, ranked by a t-like
  * score; D — against its own trend (T-018): the quarter over the mean of the same share's quarters of that year
  */
-export type Variant = 'A' | 'B' | 'C' | 'D';
+export type Variant = 'A' | 'B' | 'C' | 'D' | 'G';
+
+/** C and G rank by the score, without K (G — «Г. С причиной»: as C, only shares with a reason label, T-013) */
+export const scored = (v: Variant) => v === 'C' || v === 'G';
 
 /** T-018: the trend filter at the choice (monthly closes) and the early exit inside the quarter */
 export type TrendFilter = 'none' | 'price_sma10' | 'sma3_sma10';
@@ -163,6 +166,8 @@ export interface Series {
 	adj: Float64Array;
 	close: Float64Array;
 	volume: Float64Array;
+	/** T-013: the months (month index) with an earnings report and with a dividend's ex-date; absent — not loaded */
+	events?: { earnings: Set<number>; dividends: Set<number> };
 }
 
 export interface Universe {
@@ -291,6 +296,14 @@ export function loadUniverse(market: Database.Database): Universe {
 		}
 		return { id: m.id, symbol: m.symbol, name: m.name, market: m.country === 'IL' ? 'IL' : 'US', exchange: m.exchange, sector: m.sector, ...capOf(m.cap, m.capCur, unit0(m.unit, close)), unit: m.unit, start, adj, close, volume };
 	};
+	// T-013: the calendar of reports and dividends, by month
+	const ev = new Map<number, { earnings: Set<number>; dividends: Set<number> }>();
+	for (const r of market.prepare(`select security_id as id from ops_events_loads where status in ('ok', 'none')`).all() as { id: number }[])
+		ev.set(r.id, { earnings: new Set(), dividends: new Set() });
+	for (const [id, kind, date] of market.prepare('select security_id, kind, date from ref_security_events').raw().iterate() as Iterable<[number, string, string]>) {
+		const e = ev.get(id);
+		if (e) (kind === 'earnings' ? e.earnings : e.dividends).add(monthIndex(date.slice(0, 7)));
+	}
 	const stocks: Series[] = [];
 	let US: Series | null = null;
 	let IL: Series | null = null;
@@ -300,7 +313,11 @@ export function loadUniverse(market: Database.Database): Universe {
 		if (m.bench) {
 			if (m.country === 'IL') IL = s;
 			else US = s;
-		} else if (m.type === 'stock' && !isFund(m)) stocks.push(s);
+		} else if (m.type === 'stock' && !isFund(m)) {
+			const e = ev.get(m.id);
+			if (e) s.events = e;
+			stocks.push(s);
+		}
 	}
 	return { stocks, bench: { US, IL }, lastMonth: last, usdIls, builtAt: new Date().toISOString() };
 }
@@ -353,6 +370,55 @@ export function ownQuarter(s: Series, years: number[], quarter: number, lastMont
 	return { mean: xs.length ? r(xs.reduce((a, b) => a + b, 0) / xs.length) : null, median: xs.length ? r(median(xs)) : null, up: xs.filter((v) => v > 0).length, years: xs.length };
 }
 
+// ── T-013: the reason labels ────────────────────────────────────────────────────
+
+export interface Reasons {
+	/** a report in this quarter in most years (null — the calendar is not loaded) */
+	earnings: boolean | null;
+	/** a dividend's ex-date in this quarter in most years */
+	dividend: boolean | null;
+	/** the share's whole sector beats the market in this quarter (the sector passes K as a share of variant B would) */
+	sector: boolean;
+}
+
+/** months of quarter q of year y: month indexes */
+const quarterMonths = (y: number, q: number) => [0, 1, 2].map((k) => y * 12 + (q - 1) * 3 + k);
+
+/**
+ * A label holds in at least 70% of the years: reports — of the years the calendar covers (it has a report that year;
+ * Yahoo's calendar ends in May 2025), at least three; dividends — of all the window's years.
+ */
+export function reasonLabels(s: Series, quarter: number, years: number[], sectorSeasonal: Set<string>): Reasons {
+	const sector = !!s.sector && sectorSeasonal.has(s.sector);
+	if (!s.events) return { earnings: null, dividend: null, sector };
+	const inQ = (set: Set<number>, y: number) => quarterMonths(y, quarter).some((i) => set.has(i));
+	const inYear = (set: Set<number>, y: number) => [1, 2, 3, 4].some((q) => quarterMonths(y, q).some((i) => set.has(i)));
+	const covered = years.filter((y) => inYear(s.events!.earnings, y));
+	const earnings = covered.length >= 3 ? covered.filter((y) => inQ(s.events!.earnings, y)).length >= 0.7 * covered.length : null;
+	const dividend = years.filter((y) => inQ(s.events!.dividends, y)).length >= 0.7 * years.length;
+	return { earnings, dividend, sector };
+}
+
+/** the sectors (at least 5 shares) whose equal-weighted mean beats the market in this quarter in at least K years */
+export function seasonalSectors(u: Universe, rows: { s: Series; r: number[] }[], years: number[], quarter: number, k: number): Set<string> {
+	const by = new Map<string, { s: Series; r: number[] }[]>();
+	for (const x of rows) if (x.s.sector) (by.get(x.s.sector) ?? by.set(x.s.sector, []).get(x.s.sector)!).push(x);
+	const out = new Set<string>();
+	for (const [sec, list] of by) {
+		if (list.length < 5) continue;
+		let up = 0;
+		years.forEach((y, j) => {
+			// each share against its own market, then the sector's mean
+			const ex = list.map((x) => x.r[j] - (u.bench[x.s.market] ? quarterReturn(u.bench[x.s.market]!, y, quarter) : NaN)).filter((v) => Number.isFinite(v));
+			if (ex.length && ex.reduce((a, b) => a + b, 0) / ex.length > 0) up++;
+		});
+		if (up >= k) out.add(sec);
+	}
+	return out;
+}
+
+const hasReason = (r: Reasons) => !!(r.earnings || r.dividend || r.sector);
+
 export function binomTail(n: number, k: number, p: number) {
 	let sum = 0;
 	let c = 1; // C(n, i)
@@ -388,6 +454,8 @@ export interface Candidate {
 	own: OwnQuarter;
 	/** T-018 (4): the last monthly close against its SMA 10 months, % */
 	sma10: number | null;
+	/** T-013: the reason labels */
+	reasons: Reasons;
 }
 
 export interface OwnQuarter {
@@ -458,13 +526,13 @@ function rng(seed: number) {
  * runs every share's year takes the measure of a random quarter of that year (a quarter not complete yet is not
  * drawn). Seasonality cannot survive this, so what passes K there passes by luck alone.
  */
-export function placebo(u: Universe, rows: Row[], years: number[], quarter: number, variant: Variant, p: Params, real: number, runs = 100): Placebo {
+export function placebo(u: Universe, rows: Row[], years: number[], quarter: number, variant: Variant, p: Params, real: number, runs = 100, only?: boolean[]): Placebo {
 	// measure[q][row][year] — each quarter measured as the real calculation measures its own quarter
 	const byQ = [1, 2, 3, 4].map((q) => {
 		const rq = rows.map((r) => ({ ...r, r: years.map((y) => quarterReturn(r.s, y, q)) }));
 		return measures(u, rq, years, q, variant, p.compareWith);
 	});
-	const rand = rng(quarter * 7919 + (variant === 'B' ? 104729 : variant === 'C' ? 209459 : 0) + p.k * 31 + p.years);
+	const rand = rng(quarter * 7919 + (variant === 'B' ? 104729 : variant === 'C' ? 209459 : variant === 'G' ? 314159 : 0) + p.k * 31 + p.years);
 	// for each share and year: the measures of the quarters available — drawn from in every run
 	const cells: number[][][] = rows.map((_, i) => years.map((_, j) => [0, 1, 2, 3].map((q) => byQ[q][i][j]).filter((v) => Number.isFinite(v))));
 	let ge = 0;
@@ -472,8 +540,11 @@ export function placebo(u: Universe, rows: Row[], years: number[], quarter: numb
 	const drawn: number[] = [];
 	for (let run = 0; run < runs; run++) {
 		let passed = 0;
-		for (const share of cells) {
-			if (variant === 'C') {
+		for (let i = 0; i < cells.length; i++) {
+			const share = cells[i];
+			// G: only the shares with a reason label take part (the labels belong to the share, not to the draw)
+			if (only && !only[i]) continue;
+			if (scored(variant)) {
 				// variant C passes by its score, not by K
 				drawn.length = 0;
 				for (const avail of share) if (avail.length) drawn.push(avail[Math.floor(rand() * avail.length)]);
@@ -583,6 +654,10 @@ export function runModel(u: Universe, variant: Variant, quarter: number, input: 
 		capCounts[g] = (capCounts[g] ?? 0) + 1;
 	}
 	const kept = (r: Row) => !p.capGroups.length || p.capGroups.includes(groupsNow.get(r) ?? '');
+	// T-013: the reason labels — the sectors seasonal in this quarter, the reports and dividends of each share
+	const sectorSet = seasonalSectors(u, rows, years, quarter, p.k);
+	const reasonsOf = new Map(rows.map((r) => [r, reasonLabels(r.s, quarter, years, sectorSet)]));
+	const labelOk = (r: Row) => variant !== 'G' || hasReason(reasonsOf.get(r)!);
 	let capOut = 0;
 	let universeN = 0;
 	let ups = 0;
@@ -597,16 +672,17 @@ export function runModel(u: Universe, variant: Variant, quarter: number, input: 
 		ups += up;
 		all += m.length;
 		// C: no K — every share is ranked by its score; «passed» are those with a score of at least SCORE_MIN
-		if (variant === 'C') {
+		if (scored(variant)) {
 			const sc = tScore(m);
+			if (!labelOk(row)) return;
 			if (sc !== null) ranked.push({ s: row.s, score: sc, m, row });
 			if (sc !== null && sc >= SCORE_MIN) passed.push({ s: row.s, score: sc, m, row });
 		} else if (up >= p.k) passed.push({ s: row.s, score: scoreOf(m, p.sort), m, row });
 	});
 	const prob = all ? ups / all : 0;
 	// T-018: the trend filter at the last month of the data (the choice is redone when the quarter is recorded)
-	const pool = (variant === 'C' ? ranked : passed).filter((x) => trendOk(x.s, u.lastMonth, p.trendFilter));
-	const trendOut = (variant === 'C' ? ranked : passed).length - pool.length;
+	const pool = (scored(variant) ? ranked : passed).filter((x) => trendOk(x.s, u.lastMonth, p.trendFilter));
+	const trendOut = (scored(variant) ? ranked : passed).length - pool.length;
 	const { chosen, capped } = pick(pool, p);
 	const monthsOf = (x: Series) => [0, 1, 2].map((k) => {
 		const xs = years.map((y) => monthReturns(x, y, quarter)[k]).filter((v) => Number.isFinite(v));
@@ -632,7 +708,7 @@ export function runModel(u: Universe, variant: Variant, quarter: number, input: 
 		capOut,
 		passed: passed.length,
 		expected: Math.round(universeN * binomTail(p.years, p.k, prob) * 10) / 10,
-		placebo: placebo(u, rows.filter(kept), years, quarter, variant, p, passed.length),
+		placebo: placebo(u, rows.filter(kept), years, quarter, variant, p, passed.length, 100, variant === 'G' ? rows.filter(kept).map((r) => hasReason(reasonsOf.get(r)!)) : undefined),
 		p: Math.round(prob * 1000) / 1000,
 		candidates: chosen.map((x) => ({
 			id: x.s.id,
@@ -650,14 +726,15 @@ export function runModel(u: Universe, variant: Variant, quarter: number, input: 
 			priceUsd: Math.round(x.row.priceUsd * 100) / 100,
 			capUsd: x.s.capUsd,
 			capGroup: groupsNow.get(x.row) ?? null,
-			score: variant === 'C' ? Math.round(x.score * 100) / 100 : null,
+			score: scored(variant) ? Math.round(x.score * 100) / 100 : null,
 			months: monthsOf(x.s).map((v) => (Number.isFinite(v) ? pct(v) : null)),
 			own: ownQuarter(x.s, years, quarter, u.lastMonth),
-			sma10: vsSma10(x.s, u.lastMonth)
+			sma10: vsSma10(x.s, u.lastMonth),
+			reasons: reasonsOf.get(x.row)!
 		})),
 		capped,
 		bench: { US: bench('US'), IL: bench('IL') },
-		walk: walkForward(rows, ms, years, p, variant, quarter, (t) => capGroupMap(rows, p, (r) => capAt(r.s, quarterEnd(years[t], quarter) - 3, u.usdIls))),
+		walk: walkForward(rows, ms, years, p, variant, quarter, (row) => labelOk(row), (t) => capGroupMap(rows, p, (r) => capAt(r.s, quarterEnd(years[t], quarter) - 3, u.usdIls))),
 		dataMonth: monthName(u.lastMonth),
 		trendOut,
 		months: [0, 1, 2].map((k) => {
@@ -716,8 +793,11 @@ export function securityResult(u: Universe, id: number, variant: Variant, quarte
 		inUniverse,
 		capUsd: s.capUsd,
 		capGroup: capGroupMap(all, p, (r) => r.s.capUsd).get(target) ?? null,
-		score: variant === 'C' ? (() => { const sc = tScore(m); return sc === null ? null : Math.round(sc * 100) / 100; })() : null,
-		passed: inUniverse && (variant === 'C' ? (tScore(m) ?? 0) >= SCORE_MIN : ok.filter((v) => v > 0).length >= p.k),
+		score: scored(variant) ? (() => { const sc = tScore(m); return sc === null ? null : Math.round(sc * 100) / 100; })() : null,
+		passed:
+			inUniverse &&
+			(scored(variant) ? (tScore(m) ?? 0) >= SCORE_MIN : ok.filter((v) => v > 0).length >= p.k) &&
+			(variant !== 'G' || hasReason(reasonLabels(s, quarter, years, seasonalSectors(u, rows, years, quarter, p.k)))),
 		rank: run.candidates.findIndex((c) => c.id === id) + 1 || null,
 		params: p,
 		months: [0, 1, 2].map((k) => {
@@ -726,7 +806,8 @@ export function securityResult(u: Universe, id: number, variant: Variant, quarte
 		}),
 		own: ownQuarter(s, years, quarter, u.lastMonth),
 		sma10: vsSma10(s, u.lastMonth),
-		trendOk: trendOk(s, u.lastMonth, p.trendFilter)
+		trendOk: trendOk(s, u.lastMonth, p.trendFilter),
+		reasons: reasonLabels(s, quarter, years, seasonalSectors(u, rows, years, quarter, p.k))
 	};
 }
 
@@ -735,7 +816,7 @@ export function securityResult(u: Universe, id: number, variant: Variant, quarte
  * years before it (K lowered by as many years as are dropped) and measured in that year, which the choice did
  * not see. Only for reference: shares that vanished in 10 years are not in the base.
  */
-function walkForward(rows: Row[], ms: number[][], years: number[], p: Params, variant: Variant, quarter: number, groupsAt: (t: number) => Map<Row, string | null>): Walk[] {
+function walkForward(rows: Row[], ms: number[][], years: number[], p: Params, variant: Variant, quarter: number, lab: (row: Row) => boolean, groupsAt: (t: number) => Map<Row, string | null>): Walk[] {
 	const train = 7;
 	if (years.length < train + 1) return [];
 	const k = Math.max(1, p.k - (p.years - train));
@@ -751,12 +832,12 @@ function walkForward(rows: Row[], ms: number[][], years: number[], p: Params, va
 				return {
 					s: row.s,
 					m,
-					score: variant === 'C' ? (tScore(m) ?? -Infinity) : scoreOf(m, p.sort),
+					score: scored(variant) ? (tScore(m) ?? -Infinity) : scoreOf(m, p.sort),
 					test: ms[i][t] + (Number.isFinite(exitGap) ? exitGap : 0),
-					keep: (!groups || p.capGroups.includes(groups.get(row) ?? '')) && trendOk(row.s, quarterEnd(years[t], quarter) - 3, p.trendFilter)
+					keep: (!groups || p.capGroups.includes(groups.get(row) ?? '')) && trendOk(row.s, quarterEnd(years[t], quarter) - 3, p.trendFilter) && lab(row)
 				};
 			})
-			.filter((x) => x.keep && (variant === 'C' ? Number.isFinite(x.score) : x.m.filter((v) => v > 0).length >= k));
+			.filter((x) => x.keep && (scored(variant) ? Number.isFinite(x.score) : x.m.filter((v) => v > 0).length >= k));
 		const { chosen } = pick(list, p);
 		const avg = (xs: number[]) => (xs.length ? Math.round((xs.reduce((a, b) => a + b, 0) / xs.length) * 10000) / 100 : null);
 		out.push({
@@ -817,7 +898,11 @@ let cachedAt = 0;
  * is kept for 30 minutes; the monthly job drops it when it ends (`dropUniverse`).
  */
 export function universe(market: Database.Database): Universe {
-	const k = market.prepare(`select (select count(*) from ops_monthly_loads where status = 'ok') || '|' || (select count(*) from ref_security_profiles where sector is not null) as k`).get() as { k: string | null };
+	const k = market
+		.prepare(
+			`select (select count(*) from ops_monthly_loads where status = 'ok') || '|' || (select count(*) from ref_security_profiles where sector is not null) || '|' || (select count(*) from ops_events_loads) as k`
+		)
+		.get() as { k: string | null };
 	const key = k.k ?? '';
 	if (!cached || (key !== cachedKey && Date.now() - cachedAt > 30 * 60_000)) {
 		cached = loadUniverse(market);
@@ -939,19 +1024,23 @@ export function costRun(u: Universe, variant: Variant, input: Params, n = 12): C
 		}
 		const ms = measures(u, rows, yrs, qq, variant, p.compareWith);
 		const groups = p.capGroups.length ? capGroupMap(rows, p, (r) => capAt(r.s, quarterEnd(yy, qq) - 3, u.usdIls)) : null;
+		// G: the reason labels of the training years
+		const trainYrs = yrs.slice(0, train);
+		const sectorsG = variant === 'G' ? seasonalSectors(u, rows.map((r) => ({ s: r.s, r: r.r.slice(0, train) })), trainYrs, qq, k) : null;
 		const list = rows
+			.filter((row) => !sectorsG || hasReason(reasonLabels(row.s, qq, trainYrs, sectorsG)))
 			.map((row, i) => {
 				const m = ms[i].slice(0, train);
 				const r = p.trendExit === 'none' ? row.r[train] : quarterPath(row.s, yy, qq, p.trendExit).ret;
 				return {
 					s: row.s,
 					m,
-					score: variant === 'C' ? (tScore(m) ?? -Infinity) : scoreOf(m, p.sort),
+					score: scored(variant) ? (tScore(m) ?? -Infinity) : scoreOf(m, p.sort),
 					r: Number.isFinite(r) ? r : row.r[train],
 					keep: (!groups || p.capGroups.includes(groups.get(row) ?? '')) && trendOk(row.s, quarterEnd(yy, qq) - 3, p.trendFilter)
 				};
 			})
-			.filter((x) => x.keep && (variant === 'C' ? Number.isFinite(x.score) : x.m.filter((v) => v > 0).length >= k));
+			.filter((x) => x.keep && (scored(variant) ? Number.isFinite(x.score) : x.m.filter((v) => v > 0).length >= k));
 		return pick(list, p).chosen.map((x) => ({ id: x.s.id, r: x.r }));
 	};
 	const fee = (amount: number) => (amount > 0 ? Math.max((amount * p.commissionPct) / 100, p.commissionMinUsd) : 0);
@@ -1117,8 +1206,8 @@ export function trendTable(u: Universe, variant: Variant, quarter: number, input
 	const ok = FILTERS.map((f) => rows.map((row) => years.map((y) => trendOk(row.s, quarterEnd(y, quarter) - 3, f))));
 	const groups = p.capGroups.length ? years.map((y) => capGroupMap(rows, p, (r) => capAt(r.s, quarterEnd(y, quarter) - 3, u.usdIls))) : null;
 	const capOk = (i: number, t: number) => !groups || p.capGroups.includes(groups[t].get(rows[i]) ?? '');
-	const score = (m: number[]) => (variant === 'C' ? (tScore(m) ?? -Infinity) : scoreOf(m, p.sort));
-	const passes = (m: number[], k: number) => (variant === 'C' ? Number.isFinite(score(m)) : m.filter((v) => v > 0).length >= k);
+	const score = (m: number[]) => (scored(variant) ? (tScore(m) ?? -Infinity) : scoreOf(m, p.sort));
+	const passes = (m: number[], k: number) => (scored(variant) ? Number.isFinite(score(m)) : m.filter((v) => v > 0).length >= k);
 
 	type Pool = { i: number; s: Series; score: number }[];
 	/** one year: the pool filtered by trend and cap, picked; the candidates' excess, path and count */
@@ -1155,8 +1244,11 @@ export function trendTable(u: Universe, variant: Variant, quarter: number, input
 		};
 	};
 	// in sample: the pool of the whole window
+	// G: only shares with a reason label (labels of the whole window)
+	const sectorsG = variant === 'G' ? seasonalSectors(u, rows, years, quarter, p.k) : null;
+	const lab = rows.map((r) => !sectorsG || hasReason(reasonLabels(r.s, quarter, years, sectorsG)));
 	const poolAll: Pool = [];
-	for (let i = 0; i < n; i++) if (passes(ms[i], p.k)) poolAll.push({ i, s: rows[i].s, score: score(ms[i]) });
+	for (let i = 0; i < n; i++) if (lab[i] && passes(ms[i], p.k)) poolAll.push({ i, s: rows[i].s, score: score(ms[i]) });
 	// without peeking: each of the last 3 years on the 7 before it
 	const train = 7;
 	const kw = Math.max(1, p.k - (p.years - train));
@@ -1165,7 +1257,7 @@ export function trendTable(u: Universe, variant: Variant, quarter: number, input
 		const pool: Pool = [];
 		for (let i = 0; i < n; i++) {
 			const m = ms[i].slice(t - train, t);
-			if (passes(m, kw)) pool.push({ i, s: rows[i].s, score: score(m) });
+			if (lab[i] && passes(m, kw)) pool.push({ i, s: rows[i].s, score: score(m) });
 		}
 		return pool;
 	});
@@ -1194,7 +1286,7 @@ export function trendTable(u: Universe, variant: Variant, quarter: number, input
 				const a = cells[i][j];
 				m[j] = a.length ? a[Math.floor(rand() * a.length)] : NaN;
 			}
-			if (passes(m, p.k)) pool.push({ i, s: rows[i].s, score: score(m) });
+			if (lab[i] && passes(m, p.k)) pool.push({ i, s: rows[i].s, score: score(m) });
 		}
 		combos.forEach(([fi, ei], c) => {
 			const xs = years.map((_, t) => year(pool, t, fi, ei).excess).filter((v) => Number.isFinite(v));
