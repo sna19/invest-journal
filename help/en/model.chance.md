@@ -6,4 +6,4 @@ Among thousands of shares there are always some that rose in one quarter almost 
 
 **Example.** N = 2,000, p = 55%, K = 9: about 2,000 × 0.023 ≈ 46 shares would pass by chance. If 50 passed, what was found is almost entirely luck. If 200 did, there seems to be seasonality, but even then some candidates are random.
 
-This is an approximate formula: it treats the years as independent. The placebo check (the model's next sub-stage) is more exact.
+This is an approximate formula: it treats the years as independent. The model screen now shows the placebo check instead — it is more exact.
