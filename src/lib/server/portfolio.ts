@@ -89,6 +89,13 @@ export function marketView(market: Database.Database): Market & {
 	liveFxTime: string | null;
 	/** when the app last fetched quotes (not the exchange's time) */
 	fetchedAt: string | null;
+	/**
+	 * T-019: the day's move of a security — the live quote against the previous close, or, without a live quote
+	 * (the exchange has not opened, quotes are off), the last close against the one before, with its date
+	 */
+	dayMove(securityId: number): { now: number; prev: number; date: string; live: boolean } | null;
+	/** the dollar's day move the same way: today's live rate against the previous one, or the bank's last two */
+	fxMove(date: string, live: boolean): { now: number; prev: number };
 } {
 	const quotes = readQuotes(market);
 	const today = israelDate();
@@ -97,6 +104,8 @@ export function marketView(market: Database.Database): Market & {
 	const priceQ = market.prepare('select close from market_prices_daily where security_id = ? and date <= ? order by date desc limit 1');
 	const dayQ = market.prepare('select date, low, high, close from market_prices_daily where security_id = ? and date <= ? order by date desc limit 1');
 	const lastQ = market.prepare('select date, close, provider_code as providerCode from market_prices_daily where security_id = ? order by date desc limit 1');
+	const beforeQ = market.prepare('select date, close from market_prices_daily where security_id = ? and date < ? order by date desc limit 1');
+	const fxBeforeQ = market.prepare(`select rate from market_fx_daily where pair = 'USD/ILS' and date < ? order by date desc limit 1`);
 	const splitQ = market.prepare(`select ex_date as date, ratio from market_corporate_actions where security_id = ? and kind = 'split' and ratio > 0`);
 	const divQ = market.prepare(
 		`select ex_date as date, amount from market_corporate_actions where security_id = ? and kind = 'dividend' and ex_date > ? and ex_date <= ? order by ex_date`
@@ -131,6 +140,26 @@ export function marketView(market: Database.Database): Market & {
 			const close = lastQ.get(id) as { date: string } | undefined;
 			return !close || date >= close.date ? { date, price: q.price, time: q.marketTime } : null;
 		},
+		dayMove(id) {
+			const last = lastQ.get(id) as { date: string; close: number } | undefined;
+			const q = quotes.get(`sec:${id}`);
+			const qDate = q ? israelDate(new Date(q.marketTime)) : null;
+			if (q && qDate && (!last || qDate >= last.date)) {
+				// the quote's own previous close; else the last daily close before the quote's day
+				const prev = q.prevClose ?? (beforeQ.get(id, qDate) as { close: number } | undefined)?.close ?? (last && last.date < qDate ? last.close : null);
+				return prev ? { now: q.price, prev, date: qDate, live: true } : null;
+			}
+			if (!last) return null;
+			const before = beforeQ.get(id, last.date) as { close: number } | undefined;
+			return before ? { now: last.close, prev: before.close, date: last.date, live: false } : null;
+		},
+		fxMove(date, live) {
+			if (live && fxLiveToday) {
+				const prev = fxLiveToday.prevClose ?? (fxBeforeQ.get(today) as { rate: number } | undefined)?.rate ?? fxLiveToday.price;
+				return { now: fxLiveToday.price, prev };
+			}
+			return { now: usd(date), prev: (fxBeforeQ.get(date) as { rate: number } | undefined)?.rate ?? usd(date) };
+		},
 		liveFxTime: fxLiveToday?.marketTime ?? null,
 		fetchedAt: [...quotes.values()].map((q) => q.fetchedAt).sort().at(-1) ?? null,
 		dividends: (id, after, upTo) => divQ.all(id, after, upTo) as never
@@ -143,6 +172,36 @@ export function benchmarkId(market: Database.Database, key: 'benchmark:SPX' | 'b
 			| { id: number }
 			| undefined
 	)?.id;
+}
+
+/**
+ * T-019: the portfolio's change for the day — the sum of the positions' day money and the rate's move of cash
+ * kept in another currency, against the value at the previous close; the date is the newest of the positions'.
+ */
+function dayOfPortfolio(
+	positions: { dayPc: number | null; dayBase: number | null; dayDate: string | null }[],
+	balances: { currency: string; amount: number; valuePc: number }[],
+	pc: string,
+	m: ReturnType<typeof marketView>
+) {
+	const moved = positions.filter((x) => x.dayPc !== null);
+	if (!moved.length) return null;
+	const date = moved.map((x) => x.dayDate!).sort().at(-1)!;
+	const live = date >= israelDate();
+	let money = moved.reduce((n, x) => n + x.dayPc!, 0);
+	let base = moved.reduce((n, x) => n + x.dayBase!, 0);
+	for (const b of balances) {
+		// cash below zero (purchases without the deposits entered) would shrink the base and blow up the %
+		if (b.currency === pc) {
+			base += Math.max(0, b.amount);
+			continue;
+		}
+		const fx = m.fxMove(date, live);
+		const at = (rate: number) => (pc === 'ILS' ? b.amount * rate : b.amount / rate);
+		money += at(fx.now) - at(fx.prev);
+		base += Math.max(0, at(fx.prev));
+	}
+	return { money, pct: base > EPS ? (money / base) * 100 : null, date, positions: moved.length };
 }
 
 // ── rows ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -372,6 +431,12 @@ export function portfolioView(app: Database.Database, market: Database.Database,
 		const live = effective(list);
 		const plan = [...live].reverse().find((e) => e.kind === 'plan_buy' || e.kind === 'plan_sell' || e.kind === 'watch');
 		const hyps = [...new Set(list.map((e) => e.hypothesisId).filter((x): x is number => !!x))];
+		// T-019: today's move — the price's and, for a security in another currency, the rate's too
+		const mv = h.qty > EPS ? m.dayMove(r.security_id) : null;
+		const fxm = mv && r.currency !== pc ? m.fxMove(mv.date, mv.live) : null;
+		const conv = (x: number, fx: number) => (r.currency === pc ? x : pc === 'ILS' ? x * fx : x / fx);
+		const dayPc = mv ? h.qty * f * (conv(mv.now, fxm?.now ?? 1) - conv(mv.prev, fxm?.prev ?? 1)) : null;
+		const dayBase = mv ? h.qty * f * conv(mv.prev, fxm?.prev ?? 1) : null;
 		return {
 			id: r.id,
 			securityId: r.security_id,
@@ -409,7 +474,12 @@ export function portfolioView(app: Database.Database, market: Database.Database,
 			hypotheses: hyps,
 			lastEventAt: live.at(-1)?.date ?? r.opened_at,
 			weight: 0,
-			profile: null as ProfileView | null
+			profile: null as ProfileView | null,
+			/** T-019: the day's change of the price, %, its money in the portfolio's currency (with the rate), its date */
+			dayPct: mv ? (mv.now / mv.prev - 1) * 100 : null,
+			dayPc,
+			dayBase,
+			dayDate: mv?.date ?? null
 		};
 	});
 	const held = positions.reduce((n, x) => n + x.valuePc, 0);
@@ -440,6 +510,7 @@ export function portfolioView(app: Database.Database, market: Database.Database,
 			unrealizedPc: positions.reduce((n, x) => n + x.unrealizedPc, 0),
 			fromTransfer: positions.some((x) => x.fromTransfer && x.qty > EPS),
 			fxUsd: r4(m.usd(today)),
+			day: dayOfPortfolio(positions, balances, pc, m),
 			pricesAsOf: positions.map((x) => x.lastClose).filter(Boolean).sort().at(-1) ?? null,
 			/** the newest live quote among the positions, and the live dollar's time */
 			quotesAt: positions.filter((x) => x.qty > EPS).map((x) => x.priceTime).filter(Boolean).sort().at(-1) ?? null,

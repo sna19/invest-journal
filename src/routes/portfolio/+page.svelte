@@ -40,6 +40,9 @@
 	}
 	interface Pos {
 		profile: AllocProfile | null;
+		dayPct: number | null;
+		dayPc: number | null;
+		dayDate: string | null;
 		id: number;
 		securityId: number;
 		symbol: string;
@@ -66,6 +69,7 @@
 	interface View {
 		portfolio: P;
 		summary: {
+			day: { money: number; pct: number | null; date: string; positions: number } | null;
 			value: number;
 			cash: number;
 			held: number;
@@ -408,8 +412,10 @@
 	 * Sorting of the positions (owner's request, 18.11.2026): by the money put in, by ticker, by the change, by the
 	 * whole profit. A second tap on the chosen key turns the order; the choice is remembered on this device.
 	 */
-	type SortKey = 'cost' | 'symbol' | 'change' | 'profit';
+	type SortKey = 'value' | 'day' | 'cost' | 'symbol' | 'change' | 'profit';
 	const SORTS: { key: SortKey; label: string }[] = [
+		{ key: 'value', label: 'Стоимость' },
+		{ key: 'day', label: 'За день' },
 		{ key: 'cost', label: 'Вложено' },
 		{ key: 'symbol', label: 'Тикер' },
 		{ key: 'change', label: 'Изменение' },
@@ -446,7 +452,17 @@
 		if (!sortKey) return rows;
 		const k = sortKey;
 		const val = (p: Pos): number | string | null =>
-			k === 'symbol' ? p.symbol : k === 'cost' ? (p.qty > 0 ? costOf(p) : null) : k === 'change' ? p.unrealizedPct : profitOf(p);
+			k === 'symbol'
+				? p.symbol
+				: k === 'value'
+					? (p.qty > 0 ? p.valuePc : null)
+					: k === 'day'
+						? p.dayPct
+						: k === 'cost'
+							? (p.qty > 0 ? costOf(p) : null)
+							: k === 'change'
+								? p.unrealizedPct
+								: profitOf(p);
 		return [...rows].sort((a, b) => {
 			const x = val(a);
 			const y = val(b);
@@ -457,6 +473,8 @@
 			return (sortDesc ? -c : c) || a.symbol.localeCompare(b.symbol);
 		});
 	}
+	/** «за день» today, «за 19 нояб.» when the change is of an earlier trading day (the exchange has not opened) */
+	const dayWord = (date: string | null) => (!date || date >= israelDate() ? tx('за день', 'today') : `${tx('за', 'on')} ${d(date)}`);
 	const by = (s: Stage) => sorted(v?.positions.filter((p) => p.stage === s) ?? []);
 	// «17 нояб.» this year, «17 нояб. 2025» before it
 	const d = (s: string) =>
@@ -499,6 +517,7 @@
 		<div class="value">
 			<span class="k">{tx('Стоимость', 'Value')}</span>
 			<b>{money(s.value, s.currency)}</b>
+			{#if s.day}<span class="dayall">{dayWord(s.day.date)} <Pct value={s.day.pct} /> <span class="dm">{money(s.day.money, s.currency, true)}</span></span>{/if}
 			<span class="sub">{tx('в бумагах', 'in securities')} {money(s.held, s.currency)}</span>
 			{#each s.balances as bl (bl.currency)}
 				<span class="sub" class:neg={bl.amount < 0}
@@ -574,8 +593,9 @@
 									<b>{p.symbol}</b>
 									<span class="grow"></span>
 									{#if st === 'holding' || st === 'plan_sell'}
-										<span>{money(p.valuePc, v.summary.currency)}</span>
-										<b class="res"><Pct value={p.unrealizedPct} /></b>
+										<span class="val">{money(p.valuePc, v.summary.currency)}</span>
+										<span class="day" title={tx('за день', 'today')}><Pct value={p.dayPct} /></span>
+										<b class="res" title={tx('с покупки', 'since purchase')}><Pct value={p.unrealizedPct} /></b>
 										<span class="src" class:live={p.livePrice} title={p.livePrice && p.priceTime ? `${tx('котировка', 'quote')} ${hm(p.priceTime)}` : p.lastClose ? `${tx('закрытие', 'close')} ${d(p.lastClose)}` : tx('нет цены', 'no price')}></span>
 									{:else if st === 'closed'}
 										<span class="sub">{p.closedAt ? d(p.closedAt) : ''}</span>
@@ -587,7 +607,7 @@
 									{/if}
 								</span>
 								<span class="mid">
-									{p.name}{#if st === 'holding' || st === 'plan_sell'} · {qtyText(p.qty)} {tx('шт.', 'pcs')} · {Math.round(p.weight ?? 0)}%{#if sortKey === 'cost'} · {tx('вложено', 'invested')} {money(costOf(p), v.summary.currency)}{:else if sortKey === 'profit'} · {tx('прибыль', 'profit')} {money(profitOf(p), v.summary.currency, true)}{/if}{#if p.fromTransfer} · {tx('с даты переноса', 'since carry-over')}{/if}{#if p.eventPrice} · {tx('цена переноса', 'carry-over price')}{/if}{/if}
+									{#if (st === 'holding' || st === 'plan_sell') && p.dayPc !== null}<span class="dayline">{dayWord(p.dayDate)} {money(p.dayPc, v.summary.currency, true)}</span>{' · '}{/if}{p.name}{#if st === 'holding' || st === 'plan_sell'}{' · '}{qtyText(p.qty)} {tx('шт.', 'pcs')} · {tx('доля', 'weight')} {Math.round(p.weight ?? 0)}%{#if sortKey === 'cost'} · {tx('вложено', 'invested')} {money(costOf(p), v.summary.currency)}{:else if sortKey === 'profit'} · {tx('прибыль', 'profit')} {money(profitOf(p), v.summary.currency, true)}{/if}{#if p.fromTransfer} · {tx('с даты переноса', 'since carry-over')}{/if}{#if p.eventPrice} · {tx('цена переноса', 'carry-over price')}{/if}{/if}
 								</span>
 								{#if p.plan?.note && st !== 'closed' && st !== 'holding'}<span class="note">{p.plan.note}</span>{/if}
 								<ChevronRight size={18} />
@@ -864,6 +884,28 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45`)}</pre>
 {/if}
 
 <style>
+	.day {
+		font-size: var(--fs-s);
+	}
+	.val {
+		white-space: nowrap;
+	}
+	.dayline {
+		white-space: nowrap;
+		color: var(--text);
+	}
+	.dayall {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 6px;
+		font-size: var(--fs-s);
+		font-weight: 600;
+	}
+	.dayall .dm {
+		font-weight: 400;
+		color: var(--muted);
+	}
 	.switch {
 		display: flex;
 		gap: var(--s2);
