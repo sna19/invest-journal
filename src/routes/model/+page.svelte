@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Fold from '#lib/Fold.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import TopBar from '#lib/TopBar.svelte';
@@ -304,8 +305,8 @@
 </div>
 
 {#if params}
-	<section class="card params">
-		<h2>{tx('Параметры', 'Parameters')} {#if busy}<span class="muted small">· {tx('считаю…', 'computing…')}</span>{/if}</h2>
+	<Fold key="model-params" title={tx('Параметры', 'Parameters')} summary={`${variant === 'C' ? '' : `K ${params.k} · `}${tx(`${params.years} лет`, `${params.years} years`)} · ${tx(`${params.count} кандидатов`, `${params.count} candidates`)}${changed ? tx(' · не сохранены', ' · not saved') : ''}`}>
+		{#snippet aside()}{#if busy}<span class="muted small">{tx('считаю…', 'computing…')}</span>{/if}{/snippet}
 		{#each PARAMS.filter((f) => variant !== 'C' || f.key !== 'k') as f (f.key)}
 			<div class="prow">
 				<span class="pl">{tx(f.ru, f.en)} <HelpIcon topicKey={f.help} label={tx(f.ru, f.en)} /></span>
@@ -380,15 +381,12 @@
 			</div>
 			<p class="muted small">{tx('Меняйте параметры не чаще раза в квартал и до его начала: новая версия параметров — новая строка в статистике.', 'Change the parameters at most once a quarter and before it starts: a new version is a new row in the stats.')}</p>
 		{/if}
-	</section>
+	</Fold>
 {/if}
 
 {#if res}
-	<section class="card">
-		<h2>
-			{tx('Кандидаты', 'Candidates')} Q{res.quarter} {res.forYear}
-			<HelpIcon topicKey="model.quarterly" label={tx('как считается', 'how it is computed')} />
-		</h2>
+	<Fold key="model-candidates" title={`${tx('Кандидаты', 'Candidates')} Q${res.quarter} ${res.forYear}`} summary={res.candidates.map((x) => x.symbol).join(' · ')}>
+		{#snippet aside()}<HelpIcon topicKey="model.quarterly" label={tx('как считается', 'how it is computed')} />{/snippet}
 		<p class="sum">
 			{tx('Выборка', 'Universe')} <b>{res.universe}</b> {tx('акций', 'shares')} · {variant === 'C' ? tx('балл ≥ 2', 'score ≥ 2') : tx('прошли фильтр', 'passed')} <b>{res.passed}</b>{#if variant === 'C'} <HelpIcon topicKey="model.score" label={tx('балл', 'score')} />{/if}
 		</p>
@@ -423,11 +421,11 @@
 				</li>
 			{/each}
 		</ul>
-	</section>
+	</Fold>
 
 	{#if res.walk.length}
-		<section class="card">
-			<h2>{tx('Проверка без подглядывания', 'Check without peeking')} <HelpIcon topicKey="model.walk" label={tx('проверка', 'check')} /></h2>
+		<Fold key="model-walk" title={tx('Проверка без подглядывания', 'Check without peeking')} summary={res.walk.map((w) => `${w.year}: ${pct(w.pickedMean)}`).join(' · ')}>
+			{#snippet aside()}<HelpIcon topicKey="model.walk" label={tx('проверка', 'check')} />{/snippet}
 			<table class="walk">
 				<thead><tr><th>{tx('Год', 'Year')}</th><th>{tx('Выбрано', 'Picked')}</th><th>{tx('Они', 'They')}</th><th>{tx('Все', 'All')}</th></tr></thead>
 				<tbody>
@@ -438,14 +436,14 @@
 			</table>
 			{#if params?.capGroups.length}<p class="warn small">{tx('Капитализация в прошлом — приблизительно: сегодняшнее число акций × цена тогда. Это подглядывание: компании, которые потом выросли, попадают в крупные задним числом.', 'The past market cap is approximate: today\'s number of shares × the price then. This peeks: companies that grew later count as large in hindsight.')}</p>{/if}
 			<p class="muted small">{tx('Кандидаты выбраны по 7 годам до проверяемого и измерены в нём. Только для справки: в базе нет бумаг, исчезнувших за эти годы, поэтому прошлое выглядит лучше, чем было.', 'Candidates chosen on the 7 years before the tested one and measured in it. For reference only: shares that vanished in those years are not in the base, so the past looks better than it was.')}</p>
-		</section>
+		</Fold>
 	{/if}
 {/if}
 
 {#if costs?.costs}
 	{@const c = costs.costs}
-	<section class="card">
-		<h2>{tx('Издержки и оборот', 'Costs and turnover')} {#if costsBusy}<span class="muted small">· {tx('считаю…', 'computing…')}</span>{/if} <HelpIcon topicKey="model.costs" label={tx('издержки', 'costs')} /></h2>
+	<Fold key="model-costs" title={tx('Издержки и оборот', 'Costs and turnover')} summary={tx(`${pct(c.gross)} в год до издержек, ${pct(c.hold.cagr)} после`, `${pct(c.gross)} a year before costs, ${pct(c.hold.cagr)} after`)}>
+		{#snippet aside()}{#if costsBusy}<span class="muted small">{tx('считаю…', 'computing…')}</span>{/if}<HelpIcon topicKey="model.costs" label={tx('издержки', 'costs')} />{/snippet}
 		<p class="muted small">{tx(`Портфель варианта за последние ${c.quarters.length} кварталов: каждый квартал — его кандидаты поровну, ${usd(c.start)} на старте.`, `The variant's portfolio over the last ${c.quarters.length} quarters: each quarter its candidates in equal parts, ${usd(c.start)} at the start.`)}</p>
 		<ul class="books">
 			<li><span>{tx('До издержек', 'Before costs')}</span><b>{pct(c.gross)}</b><span class="muted small">{tx('в год', 'a year')}</span></li>
@@ -478,19 +476,18 @@
 		{#if costs.portfolios.length}
 			<p class="small">{tx('Виртуальные портфели варианта ведутся с теми же издержками:', 'The variant\'s virtual portfolios are kept with the same costs:')} {#each costs.portfolios as pf (pf.id)}<a href="/portfolio?p={pf.id}">«{pf.name}»</a>{' '}{/each}</p>
 		{/if}
-	</section>
+	</Fold>
 {/if}
 
 {#if data?.recorded.length}
-	<section class="card">
-		<h2>{tx('Записанные кварталы', 'Recorded quarters')}</h2>
+	<Fold key="model-recorded" title={tx('Записанные кварталы', 'Recorded quarters')} summary={String(data.recorded.length)}>
 		<ul class="plain">
 			{#each data.recorded as r (r.variant + r.quarter)}
 				<li>{r.quarter} · {r.variant === 'A' ? tx('А. Рост цены', 'A. Price rise') : r.variant === 'B' ? tx('Б. Против рынка', 'B. Against the market') : tx('В. Оценка', 'C. Score')} · {tx('гипотез', 'hypotheses')} {r.hypotheses}</li>
 			{/each}
 		</ul>
 		<p class="muted small"><a href="/sources">{tx('Статистика вариантов — в «Источниках»', 'Variant stats — in «Sources»')}</a></p>
-	</section>
+	</Fold>
 {/if}
 
 <style>

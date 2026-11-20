@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Fold from '#lib/Fold.svelte';
 	import TvLink from '#lib/TvLink.svelte';
 	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onDestroy, onMount } from 'svelte';
@@ -86,7 +87,7 @@
 {#if !stats}
 	<div class="skeleton tall"></div>
 {:else}
-	<section class="card">
+	<Fold key="tickers-base" title={tx('База бумаг', 'Securities base')} summary={`${fmt.format(total)} ${tx('акций и ETF', 'stocks and ETFs')}`}>
 		<p class="big">{fmt.format(total)} <span>{tx('акций и ETF', 'stocks and ETFs')}</span></p>
 		<p class="muted">{tx('Обновлено', 'Updated')}: {when(stats.updatedAt)}</p>
 		{#each groups as g (g.title)}
@@ -105,11 +106,11 @@
 				</tbody>
 			</table>
 		{/each}
-	</section>
+	</Fold>
 
 	{#if stats.runs.length}
-		<section class="card runs">
-			<h2>{tx('Последняя загрузка', 'Last load')}</h2>
+		<Fold key="tickers-runs" title={tx('Последняя загрузка', 'Last load')} summary={when(stats.updatedAt)}>
+			<div class="runs">
 			{#each stats.runs as r (r.provider)}
 				<div class="run">
 					<b>{tl(PROVIDER[r.provider] ?? r.provider)}</b>
@@ -120,7 +121,8 @@
 					{#if r.error}<span class="err">{r.error}</span>{/if}
 				</div>
 			{/each}
-		</section>
+		</div>
+		</Fold>
 	{/if}
 {/if}
 
@@ -228,10 +230,6 @@
 	td:first-child {
 		text-align: left;
 		padding-left: 0;
-	}
-	h2 {
-		margin: 0 0 var(--s2);
-		font-size: var(--fs-m);
 	}
 	.run {
 		display: flex;

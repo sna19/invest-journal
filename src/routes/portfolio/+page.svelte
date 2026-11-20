@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Fold from '#lib/Fold.svelte';
 	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onDestroy, onMount } from 'svelte';
 	import { page } from '$app/state';
@@ -586,11 +587,8 @@
 	{#each STAGES as st (st)}
 		{@const rows = by(st)}
 		{#if rows.length}
-			<details class="stage" open={st !== 'closed'}>
-				<summary>
-					<h2>{STAGE_LABEL[st]} <span class="n">{rows.length}</span></h2>
-					{#if st === 'holding'}<HelpIcon topicKey="portfolio.stages" label={tx('этапы позиции', 'position stages')} />{/if}
-				</summary>
+			<Fold key="portfolio-stage-{st}" title={`${STAGE_LABEL[st]} · ${rows.length}`} open={st !== 'closed'} summary={rows.map((r) => r.symbol).join(' · ')}>
+				{#snippet aside()}{#if st === 'holding'}<HelpIcon topicKey="portfolio.stages" label={tx('этапы позиции', 'position stages')} />{/if}{/snippet}
 				<ul class="list">
 					{#each rows as p (p.id)}
 						<li>
@@ -622,13 +620,13 @@
 						</li>
 					{/each}
 				</ul>
-			</details>
+			</Fold>
 		{/if}
 	{/each}
 
 	{#if chart && chart[0]?.points.length > 1}
-		<section class="card">
-			<div class="ch-head"><h2>{tx('Доходность', 'Return')}</h2><HelpIcon topicKey="portfolio.chart" label={tx('график доходности', 'return chart')} /></div>
+		<Fold key="portfolio-chart" title={tx('Доходность', 'Return')}>
+			{#snippet aside()}<HelpIcon topicKey="portfolio.chart" label={tx('график доходности', 'return chart')} />{/snippet}
 			<LineChart {lines} percent height={220} />
 			<div class="toggles">
 				{#each chart.slice(1).filter((sr) => sr.kind === 'benchmark') as sr (sr.key)}
@@ -638,7 +636,7 @@
 					<button class:on={compare.includes(p.id)} aria-pressed={compare.includes(p.id)} onclick={() => toggleCompare(p.id)}>{p.name}</button>
 				{/each}
 			</div>
-		</section>
+		</Fold>
 	{/if}
 
 	{#if v.positions.some((p) => p.valuePc > 0) || v.summary.cash > 0}
@@ -647,8 +645,7 @@
 
 
 	{#if v.cash.length}
-		<details class="stage">
-			<summary><h2>{tx('Деньги', 'Cash')} <span class="n">{v.cash.filter((c) => !c.cancelledAt && c.kind !== 'reverse').length}</span></h2></summary>
+		<Fold key="portfolio-cash" title={`${tx('Деньги', 'Cash')} · ${v.cash.filter((c) => !c.cancelledAt && c.kind !== 'reverse').length}`} open={false}>
 			<ul class="list cash">
 				{#each v.cash as c (c.id)}
 					<li class:off={c.cancelledAt || c.reversedBy || c.kind === 'reverse'}>
@@ -675,7 +672,7 @@
 					</li>
 				{/each}
 			</ul>
-		</details>
+		</Fold>
 	{/if}
 	<button class="delete edit" onclick={openExport}><FileJson size={16} /> {tx('Экспорт для AI', 'Export for AI')}</button>
 	<button class="delete edit" onclick={startRename}><Pencil size={16} /> {tx('Название и валюта портфеля', 'Portfolio name and currency')}</button>
@@ -1226,21 +1223,6 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45`)}</pre>
 	}
 	.stage {
 		margin-bottom: var(--s3);
-	}
-	.stage summary {
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		min-height: var(--tap);
-		list-style: none;
-		cursor: pointer;
-	}
-	.stage summary::-webkit-details-marker {
-		display: none;
-	}
-	h2 {
-		margin: 0;
-		font-size: var(--fs-m);
 	}
 	.n {
 		color: var(--muted);

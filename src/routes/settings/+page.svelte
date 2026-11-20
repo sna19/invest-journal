@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Fold from '#lib/Fold.svelte';
 	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onDestroy, onMount } from 'svelte';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
@@ -154,8 +155,7 @@
 
 <TopBar title={tx('Настройки', 'Settings')} back={{ href: '/more', label: tx('Ещё', 'More') }} />
 
-<section class="card">
-	<h2>{tx('Бенчмарки и пороги', 'Benchmarks and thresholds')}</h2>
+<Fold key="settings-bench" title={tx('Бенчмарки и пороги', 'Benchmarks and thresholds')} summary={tx('S&P 500 · ТА-125', 'S&P 500 · TA-125')}>
 	<dl>
 		<dt>{tx('Бумаги США', 'US securities')}</dt>
 		<dd>S&P 500</dd>
@@ -164,12 +164,11 @@
 		<dt>{tx('Оценка источника', 'Source rating')}</dt>
 		<dd>{tx('от 10 закрытых гипотез — «предварительно», от 30 — без пометки', 'from 10 closed hypotheses — «preliminary», from 30 — unmarked')}</dd>
 	</dl>
-</section>
+</Fold>
 
 {#if problem}<p class="warn" role="alert">{problem}</p>{/if}
 
-<section class="card">
-	<h2>{tx('Обновление данных', 'Data updates')}</h2>
+<Fold key="settings-updates" title={tx('Обновление данных', 'Data updates')}>
 	{#if !data}
 		<div class="skeleton"></div>
 	{:else}
@@ -223,15 +222,14 @@
 			</div>
 		{/if}
 	{/if}
-</section>
+</Fold>
 
-<section class="card">
-	<div class="head">
-		<h2>{tx('Данные', 'Data')}</h2>
+<Fold key="settings-data" title={tx('Данные', 'Data')} summary={data ? tx(`${fmt.format(data.ringSize)} бумаг, проблем качества: ${data.issues.open}`, `${fmt.format(data.ringSize)} securities, quality issues: ${data.issues.open}`) : undefined}>
+	{#snippet aside()}
 		<button class="btn" onclick={() => run('prices')} disabled={data?.running.includes('prices')}>
 			<span class:spin={data?.running.includes('prices')}><RefreshCw size={16} /></span>{data?.running.includes('prices') ? tx('Обновляется…', 'Refreshing…') : tx('Обновить сейчас', 'Refresh now')}
 		</button>
-	</div>
+	{/snippet}
 	{#if !data}
 		<div class="skeleton"></div>
 	{:else}
@@ -293,7 +291,7 @@
 			{tx('Дневные цены загружаются каждое утро в', 'Daily prices load every morning at')} {data.schedule.pricesAt} {tx('по Израилю, пропущенные дни догружаются; списки бумаг — по воскресеньям; пропуски проверяются по субботам. Копия журнала — каждую ночь (30 копий), рыночных данных — по воскресеньям (2 копии).', 'Israel time, missed days are filled in; security lists — on Sundays; gaps are checked on Saturdays. A journal backup — every night (30 copies), market data — on Sundays (2 copies).')}
 		</p>
 	{/if}
-</section>
+</Fold>
 
 <style>
 	.sched {
@@ -355,10 +353,6 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: var(--s2);
-	}
-	h2 {
-		margin: 0 0 var(--s2);
-		font-size: var(--fs-l);
 	}
 	h3 {
 		margin: var(--s4) 0 var(--s2);

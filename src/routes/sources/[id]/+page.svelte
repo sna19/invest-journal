@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Fold from '#lib/Fold.svelte';
 	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
@@ -118,8 +119,7 @@
 
 	{#snippet table(title: string, parts: Part[])}
 		{#if parts.length}
-			<section class="card">
-				<h2>{title}</h2>
+			<Fold key="source-{title}" title={title} summary={parts.map((p) => tl(p.label)).join(' · ')}>
 				<ul class="parts">
 					{#each parts as p (p.key)}
 						<li>
@@ -129,7 +129,7 @@
 						</li>
 					{/each}
 				</ul>
-			</section>
+			</Fold>
 		{/if}
 	{/snippet}
 	{@render table(tx('По типу сигнала', 'By signal type'), card.byType)}
@@ -137,8 +137,7 @@
 	{@render table(tx('По сроку', 'By term'), card.byHorizon)}
 	{@render table(tx('По режиму', 'By mode'), card.byMode)}
 
-	<section class="card">
-		<h2>{tx('Статьи и гипотезы', 'Articles and hypotheses')}</h2>
+	<Fold key="source-articles" title={tx('Статьи и гипотезы', 'Articles and hypotheses')} summary={tx(`статей: ${card.articles.length}`, `articles: ${card.articles.length}`)}>
 		{#if !card.articles.length}
 			<p class="meta">{tx('Гипотез по этому источнику пока нет.', 'No hypotheses from this source yet.')}</p>
 		{/if}
@@ -172,7 +171,7 @@
 				</ul>
 			</div>
 		{/each}
-	</section>
+	</Fold>
 {:else if !problem}
 	<div class="skeleton"></div>
 {/if}
@@ -248,10 +247,6 @@
 		background: var(--text);
 		border-color: var(--text);
 		color: var(--bg);
-	}
-	h2 {
-		margin: 0 0 var(--s2);
-		font-size: var(--fs-m);
 	}
 	.parts,
 	.hyps {

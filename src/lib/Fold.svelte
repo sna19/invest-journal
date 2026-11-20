@@ -14,9 +14,11 @@
 		open?: boolean;
 		aside?: Snippet;
 		summary?: string;
+		/** inside a card of its own (a draggable block): no background and padding */
+		bare?: boolean;
 		children: Snippet;
 	}
-	let { key, title, open: start = true, aside, summary, children }: Props = $props();
+	let { key, title, open: start = true, aside, summary, bare = false, children }: Props = $props();
 	let open = $state(true);
 	const storeKey = () => `fold:${key}`;
 	onMount(() => {
@@ -39,7 +41,7 @@
 	const bodyId = `fold-${Math.random().toString(36).slice(2)}`;
 </script>
 
-<section class="fold" class:closed={!open}>
+<section class="fold" class:closed={!open} class:bare>
 	<div class="bar">
 		<button class="title" aria-expanded={open} aria-controls={bodyId} onclick={toggle}>
 			<span class="chev" class:open><ChevronDown size={18} /></span>
@@ -55,10 +57,15 @@
 
 <style>
 	.fold {
-		margin: var(--s4) 0;
-		padding: var(--s3) var(--s4);
+		margin: 0 0 var(--s4);
+		padding: var(--s2) var(--s4) var(--s3);
 		border-radius: var(--r3);
 		background: var(--surface);
+	}
+	.fold.bare {
+		margin: 0;
+		padding: 0;
+		background: none;
 	}
 	.bar {
 		display: flex;

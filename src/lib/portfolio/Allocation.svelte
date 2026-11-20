@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Fold from '#lib/Fold.svelte';
 	import ChartBar from '@lucide/svelte/icons/chart-bar-big';
 	import ChartPie from '@lucide/svelte/icons/chart-pie';
 	import HelpIcon from '../HelpIcon.svelte';
@@ -73,16 +74,14 @@
 	const hovered = $derived(rows.find((r) => r.key === hover) ?? null);
 </script>
 
-<section class="card">
-	<div class="head">
-		<h2>{tx('Распределение', 'Allocation')}</h2>
+<Fold key="portfolio-allocation" title={tx('Распределение', 'Allocation')} summary={labels[metric]}>
+	{#snippet aside()}
 		<HelpIcon topicKey="portfolio.allocation" label={tx('распределение', 'allocation')} />
-		<span class="grow"></span>
 		<div class="view" role="radiogroup" aria-label={tx('Вид графика', 'Chart view')}>
 			<button role="radio" aria-checked={!pie} class:on={!pie} onclick={() => setPie(false)} title={tx('Полосы', 'Bars')} aria-label={tx('Полосы', 'Bars')}><ChartBar size={16} /></button>
 			<button role="radio" aria-checked={pie} class:on={pie} onclick={() => setPie(true)} title={tx('Круг', 'Pie')} aria-label={tx('Круг', 'Pie')}><ChartPie size={16} /></button>
 		</div>
-	</div>
+	{/snippet}
 
 	<div class="metrics" role="radiogroup" aria-label={tx('Мера распределения', 'Allocation measure')}>
 		{#each METRICS as m (m)}
@@ -135,27 +134,9 @@
 	{#if metric === 'sector' && positions.some((p) => p.profile?.sectorWeights)}
 		<p class="note">{tx('Фонды разложены по секторам по своему составу.', 'Funds are split across sectors by what they hold.')}</p>
 	{/if}
-</section>
+</Fold>
 
 <style>
-	.card {
-		margin-bottom: var(--s4);
-		padding: var(--s4);
-		border-radius: var(--r3);
-		background: var(--surface);
-	}
-	.head {
-		display: flex;
-		align-items: center;
-		gap: var(--s1, 4px);
-	}
-	h2 {
-		margin: 0;
-		font-size: var(--fs-l);
-	}
-	.grow {
-		flex: 1;
-	}
 	.view {
 		display: inline-flex;
 		border: 1px solid var(--line);
