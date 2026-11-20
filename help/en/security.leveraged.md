@@ -1,0 +1,3 @@
+# Leveraged and inverse ETFs
+
+Funds to play the share's move harder than usual or against it. **Up ×2** — over a day the fund moves about twice the share's change. **Down ×1** — rises when the share falls. First come the funds on the share itself, then on its industry, sector and index. If there are no funds on the share itself, its industry can be played. The leverage is reset every day. Over weeks and months the result drifts from ×N: with strong swings the fund loses even if the share comes back to where it was. So these are tools for short trades, not for long holding. A fund is matched by the share's symbol or the company's name in the fund's name; the leverage and the direction come from the name too. Tap a fund's symbol to open its card and chart.
