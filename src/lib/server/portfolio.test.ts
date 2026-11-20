@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { openApp, openMarket } from './db.js';
+import { israelDate } from '../hypothesis.js';
 import { InputError, LockedError } from './journal.js';
 import {
 	addCash,
@@ -313,7 +314,8 @@ describe('live quotes in the portfolio (owner 19.11.2026)', () => {
 		const now = new Date().toISOString();
 		put.run(`sec:${s.us}`, s.us, 125, 110, now, now);
 		put.run('fx:USD/ILS', null, 3.9, 3.8, now, now);
-		const today = new Date().toISOString().slice(0, 10);
+		// the app's «today» is Israel's: at night the UTC date is still yesterday
+		const today = israelDate();
 		let v = positionView(s.app, s.market, positionId, today)!;
 		expect(v.position.lastPrice).toBe(125);
 		expect(v.position.livePrice).toBe(true);
