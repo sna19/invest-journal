@@ -5,6 +5,7 @@
 	import { page } from '$app/state';
 	import TopBar from '#lib/TopBar.svelte';
 	import HelpIcon from '#lib/HelpIcon.svelte';
+	import Fold from '#lib/Fold.svelte';
 	import Pct from '#lib/Pct.svelte';
 	import TvLink from '#lib/TvLink.svelte';
 	import LineChart, { colorOf, type Line, type Mark } from '#lib/charts/LineChart.svelte';
@@ -114,6 +115,36 @@
 	let cmp = $state<{ periods: string[]; security: Record<string, number | null>; refs: CmpRef[] } | null>(null);
 	let shown = $state<number[]>([]);
 	let refLines = $state<Record<number, { date: string; value: number }[]>>({});
+	// leveraged and inverse ETFs on the share, its industry, sector and indices (owner's request 20.11.2026)
+	interface Lev {
+		id: number;
+		symbol: string;
+		name: string;
+		exchange: string;
+		dir: 'long' | 'short';
+		x: number;
+		level: 'stock' | 'industry' | 'sector' | 'index';
+		label: string;
+	}
+	let lev = $state<Lev[] | null>(null);
+	let levDir = $state<'long' | 'short'>('long');
+	async function loadLev() {
+		const r = await fetch(`/api/securities/${page.params.id}/leveraged`).catch(() => null);
+		if (r?.ok) lev = (await r.json()).items;
+	}
+	function setLevDir(d: 'long' | 'short') {
+		levDir = d;
+		try {
+			localStorage.setItem('lev-dir', d);
+		} catch {
+			/* ignore */
+		}
+	}
+	const LEVELS: Lev['level'][] = ['stock', 'industry', 'sector', 'index'];
+	const levelName = (l: Lev) =>
+		l.level === 'stock' ? tx(`На саму ${l.label}`, `On ${l.label} itself`) : l.level === 'industry' ? `${tx('Отрасль', 'Industry')}: ${l.label}` : l.level === 'sector' ? `${tx('Сектор', 'Sector')}: ${sectorName(l.label, tx)}` : `${tx('Индекс', 'Index')}: ${l.label}`;
+	const xText = (x: number) => `×${String(x).replace('.', tx(',', '.'))}`;
+
 	async function loadCompare() {
 		const r = await fetch(`/api/securities/${page.params.id}/compare`).catch(() => null);
 		if (r?.ok) cmp = await r.json();
@@ -160,6 +191,12 @@
 		load();
 		loadModel();
 		loadCompare();
+		loadLev();
+		try {
+			if (localStorage.getItem('lev-dir') === 'short') levDir = 'short';
+		} catch {
+			/* ignore */
+		}
 	});
 	function setPeriod(p: string) {
 		period = p;
@@ -217,11 +254,9 @@
 
 {#if c}
 	{#if model}
-		<section class="model">
-			<h2>
-				{tx('Квартальная модель', 'Quarterly model')} · {model.variant === 'A' ? tx('А. Рост цены', 'A. Price rise') : model.variant === 'B' ? tx('Б. Против рынка', 'B. Against the market') : tx('В. Оценка', 'C. Score')} · Q{model.quarter} {model.forYear}
-				<HelpIcon topicKey="model.quarterly" label={tx('как считается', 'how it is computed')} />
-			</h2>
+		<Fold key="sec-model" title={`${tx('Квартальная модель', 'Quarterly model')} · ${model.variant === 'A' ? tx('А. Рост цены', 'A. Price rise') : model.variant === 'B' ? tx('Б. Против рынка', 'B. Against the market') : tx('В. Оценка', 'C. Score')} · Q${model.quarter} ${model.forYear}`} summary={model.rank ? tx(`Кандидат №${model.rank}`, `Candidate №${model.rank}`) : undefined}>
+			{#snippet aside()}<HelpIcon topicKey="model.quarterly" label={tx('как считается', 'how it is computed')} />{/snippet}
+			<div class="model">
 			<p class="muted small">
 				{#if model.rank}{tx(`Кандидат №${model.rank}`, `Candidate №${model.rank}`)}{:else if model.passed}{tx('Прошла фильтр, но не вошла из-за ограничений по сектору и рынку', 'Passed the filter but left out by the sector and market caps')}{:else if model.inUniverse && model.variant === 'C'}{tx(`Не вошла в первые по баллу: балл ${model.score?.toFixed(1) ?? '—'}`, `Not among the top by score: score ${model.score?.toFixed(1) ?? '—'}`)}{:else if model.inUniverse}{tx(`Не прошла фильтр: ${model.up} из ${model.years.length} лет при K = ${model.params.k}`, `Did not pass: ${model.up} of ${model.years.length} years at K = ${model.params.k}`)}{:else}{tx('Не в выборке модели: нет 10 лет истории, мало оборота или цена ниже порога', 'Not in the model universe: no 10-year history, little turnover or the price below the threshold')}{/if}
 				· {model.preview ? tx('параметры предпросмотра, не сохранены', 'preview parameters, not saved') : model.versionId ? tx(`версия параметров №${model.versionId}`, `parameters version №${model.versionId}`) : tx('параметры ещё не записаны версией', 'the parameters are not a version yet')}
@@ -244,7 +279,8 @@
 			<p class="sum small">
 				{#if model.score !== null}{tx('Балл', 'Score')} <b>{model.score.toFixed(1)}</b> <HelpIcon topicKey="model.score" label={tx('балл', 'score')} /> · {/if}{tx(model.variant === 'A' ? 'Рост' : 'Сверх рынка', model.variant === 'A' ? 'Rise' : 'Over the market')}: {tx('лет', 'years')} {model.up}/{model.years.length} · {tx('среднее', 'mean')} <b>{pctText(model.mean)}</b> · {tx('медиана', 'median')} {pctText(model.median)} · {tx('худший год', 'worst year')} {pctText(model.worst)}
 			</p>
-		</section>
+			</div>
+		</Fold>
 	{/if}
 
 	<div class="head">
@@ -262,6 +298,7 @@
 		</p>
 	{/if}
 
+	<Fold key="sec-chart" title={tx('График', 'Chart')} summary={PERIODS.find((p) => p[0] === period)?.[1]}>
 	<div class="periods" role="radiogroup" aria-label={tx('Период', 'Period')}>
 		{#each PERIODS as [k, ru, en] (k)}
 			<button role="radio" aria-checked={period === k} class:on={period === k} onclick={() => setPeriod(k)}>{tx(ru, en)}</button>
@@ -278,10 +315,12 @@
 			● {tx('вход гипотезы', 'hypothesis entry')} · ■ {tx('выход', 'exit')} · <span class="up">▲</span> {tx('купил', 'bought')} · <span class="down">▼</span> {tx('продал', 'sold')}{#if sources.length} · {#each sources as [id, name] (id)}<span class="src"><i style:background={colorOf(id)}></i>{tl(name)}</span>{/each}{/if}
 		</p>
 	{/if}
+	</Fold>
 
 	{#if cmp && cmp.refs.length}
-		<section class="cmp">
-			<h2>{tx('С чем сравнить', 'Compare with')} <HelpIcon topicKey="security.compare" label={tx('сравнение', 'comparison')} /></h2>
+		<Fold key="sec-compare" title={tx('С чем сравнить', 'Compare with')} summary={cmp.refs.map((r) => r.symbol).join(' · ')}>
+			{#snippet aside()}<HelpIcon topicKey="security.compare" label={tx('сравнение', 'comparison')} />{/snippet}
+			<div class="cmp">
 			<div class="scroll"><table>
 				<thead><tr><th></th>{#each cmp.periods as p (p)}<th>{tx(PERIODS.find((x) => x[0] === p)?.[1] ?? p, p)}</th>{/each}</tr></thead>
 				<tbody>
@@ -310,7 +349,40 @@
 				{tx(`Под доходностью ориентира — на сколько п.п. ${c.security.symbol} была лучше (+) или хуже (−). Галочка — линия на графике.`, `Under a reference's return — by how many pp ${c.security.symbol} did better (+) or worse (−). The tick puts its line on the chart.`)}
 				{#if cmp.refs.some((r) => !r.loaded)}{tx(' Часть ориентиров ещё загружается — откройте карточку позже.', ' Some references are still loading — open the card later.')}{/if}
 			</p>
-		</section>
+			</div>
+		</Fold>
+	{/if}
+
+	{#if lev && lev.length}
+		{@const ups = lev.filter((l) => l.dir === 'long')}
+		{@const downs = lev.filter((l) => l.dir === 'short')}
+		{@const list = levDir === 'long' ? ups : downs}
+		<Fold key="sec-lev" title={tx('ETF с плечом и на падение', 'Leveraged and inverse ETFs')} summary={tx(`${ups.length} на рост · ${downs.length} на падение`, `${ups.length} up · ${downs.length} down`)}>
+			{#snippet aside()}<HelpIcon topicKey="security.leveraged" label={tx('плечо', 'leverage')} />{/snippet}
+			<div class="levseg" role="radiogroup" aria-label={tx('Направление', 'Direction')}>
+				<button role="radio" aria-checked={levDir === 'long'} class:on={levDir === 'long'} onclick={() => setLevDir('long')}>▲ {tx('На рост', 'Up')} · {ups.length}</button>
+				<button role="radio" aria-checked={levDir === 'short'} class:on={levDir === 'short'} onclick={() => setLevDir('short')}>▼ {tx('На падение', 'Down')} · {downs.length}</button>
+			</div>
+			{#if !list.length}<p class="muted small">{levDir === 'long' ? tx('ETF на рост с плечом не нашлось.', 'No leveraged ETFs up.') : tx('ETF на падение не нашлось.', 'No inverse ETFs.')}</p>{/if}
+			{#each LEVELS as level (level)}
+				{@const rows = list.filter((l) => l.level === level).sort((a, b) => b.x - a.x)}
+				{#each [...new Set(rows.map((r) => r.label))] as label (label)}
+					{@const group = rows.filter((r) => r.label === label)}
+					<p class="levhead muted small">{levelName(group[0])}</p>
+					<ul class="levlist">
+						{#each group as l (l.id)}
+							<li>
+								<span class="x" class:up={l.dir === 'long'} class:down={l.dir === 'short'}>{l.dir === 'long' ? '▲' : '▼'} {xText(l.x)}</span>
+								<a href="/security/{l.id}"><b>{l.symbol}</b></a>
+								<span class="muted small nm">{l.name}</span>
+								<TvLink exchange={l.exchange} symbol={l.symbol} />
+							</li>
+						{/each}
+					</ul>
+				{/each}
+			{/each}
+			<p class="muted small">{tx('Плечо — дневное: за один день фонд движется как акция ×N (на падение — против неё). За недели и месяцы итог расходится с ×N, тем сильнее, чем сильнее колебания. Это инструменты для коротких сделок.', 'The leverage is daily: over one day the fund moves as the share ×N (inverse — against it). Over weeks and months the result drifts from ×N, the more so the stronger the swings. These are tools for short trades.')}</p>
+		</Fold>
 	{/if}
 
 	<div class="buttons">
@@ -321,7 +393,7 @@
 	</div>
 
 	{#if c.hypotheses.length}
-		<h2>{tx('Гипотезы', 'Hypotheses')}</h2>
+		<Fold key="sec-hyps" title={tx('Гипотезы', 'Hypotheses')} summary={String(c.hypotheses.length)}>
 		<ul class="list">
 			{#each allHyps ? [...c.hypotheses].reverse() : [...c.hypotheses].reverse().slice(0, 10) as h (h.id)}
 				<li>
@@ -335,9 +407,10 @@
 			{/each}
 		</ul>
 		{#if c.hypotheses.length > 10 && !allHyps}<button class="more" onclick={() => (allHyps = true)}>{tx('Показать все', 'Show all')} — {c.hypotheses.length}</button>{/if}
+		</Fold>
 	{/if}
 	{#if c.positions.length}
-		<h2>{tx('В портфелях', 'In portfolios')}</h2>
+		<Fold key="sec-positions" title={tx('В портфелях', 'In portfolios')} summary={c.positions.map((p) => p.portfolio).join(' · ')}>
 		<ul class="list">
 			{#each c.positions as p (p.id)}
 				<li>
@@ -345,6 +418,7 @@
 				</li>
 			{/each}
 		</ul>
+		</Fold>
 	{/if}
 	{#if loadMs !== null}<p class="muted tiny">{tx('данные графика', 'chart data')} — {loadMs} {tx('мс', 'ms')}</p>{/if}
 {:else if !problem}
@@ -352,18 +426,56 @@
 {/if}
 
 <style>
-	.cmp {
-		margin: var(--s4) 0;
-		padding: var(--s3) var(--s4);
-		border-radius: var(--r3);
-		background: var(--surface);
-	}
-	.cmp h2 {
+	.levseg {
 		display: flex;
-		align-items: center;
-		gap: 4px;
+		gap: var(--s2);
 		margin: 0 0 var(--s2);
-		font-size: var(--fs-m);
+	}
+	.levseg button {
+		min-height: 36px;
+		padding: 0 var(--s3);
+		border: 1px solid var(--line);
+		border-radius: var(--r-pill);
+		background: var(--surface);
+		cursor: pointer;
+	}
+	.levseg button.on {
+		background: var(--text);
+		border-color: var(--text);
+		color: var(--bg);
+	}
+	.levhead {
+		margin: var(--s3) 0 var(--s1);
+	}
+	.levlist {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.levlist li {
+		display: grid;
+		grid-template-columns: 4.2em auto 1fr auto;
+		align-items: center;
+		gap: var(--s2);
+		padding: 6px 0;
+		border-bottom: 1px solid var(--line);
+	}
+	.levlist .x {
+		font-variant-numeric: tabular-nums;
+		font-weight: 600;
+		white-space: nowrap;
+	}
+	.levlist .x.up {
+		color: var(--up);
+	}
+	.levlist .x.down {
+		color: var(--down);
+	}
+	.levlist .nm {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
 	}
 	.cmp .scroll {
 		overflow-x: auto;
@@ -404,18 +516,7 @@
 		color: var(--down);
 	}
 	.model {
-		margin: 0 0 var(--s4);
-		padding: var(--s3) var(--s4);
-		border-radius: var(--r3);
-		background: var(--surface);
-	}
-	.model h2 {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 4px;
-		margin: 0 0 4px;
-		font-size: var(--fs-m);
+		margin: 0;
 	}
 	.yr {
 		display: grid;
@@ -579,10 +680,6 @@
 		color: var(--text);
 		font-weight: 600;
 		text-decoration: none;
-	}
-	h2 {
-		margin: var(--s4) 0 var(--s2);
-		font-size: var(--fs-m);
 	}
 	.list {
 		list-style: none;
