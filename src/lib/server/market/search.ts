@@ -119,6 +119,18 @@ export function searchSecurities(
 	return rows.map((r) => ({ ...r, active: !!r.active }));
 }
 
+/** one security as the ticker field shows it — for a form opened with the security already chosen */
+export function securityHit(sqlite: Database.Database, id: number): SecurityHit | null {
+	const r = sqlite
+		.prepare(
+			`select s.id, s.symbol, s.name_en as nameEn, s.name_he as nameHe, s.exchange_code as exchangeCode, e.name as exchangeName, s.type, s.currency,
+			        s.price_unit as priceUnit, s.active, p.sector, null as capUsd
+			   from ref_securities s join ref_exchanges e on e.code = s.exchange_code left join ref_security_profiles p on p.security_id = s.id where s.id = ?`
+		)
+		.get(id) as (Omit<SecurityHit, 'active'> & { active: number }) | undefined;
+	return r ? { ...r, active: !!r.active } : null;
+}
+
 /** Counts for the «Тикеры» screen. */
 export function tickerStats(sqlite: Database.Database) {
 	const byExchange = sqlite

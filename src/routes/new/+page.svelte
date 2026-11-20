@@ -94,6 +94,13 @@
 	onMount(async () => {
 		const r = await fetch('/api/sources').then((r) => r.json()).catch(() => ({ items: [] }));
 		sources = r.items;
+		// T-022: «Записать гипотезу» from a news item — the security and the type «Новость» come chosen
+		const secId = Number(page.url.searchParams.get('security'));
+		if (secId) {
+			const hit = await fetch(`/api/securities?id=${secId}`).then((r) => r.json()).catch(() => null);
+			if (hit?.items?.[0]) void choose(hit.items[0]);
+		}
+		if (page.url.searchParams.get('signal') === 'news') setSignal('news');
 		const fromShare = page.url.searchParams.get('url') ?? page.url.searchParams.get('text');
 		if (fromShare) {
 			url = extractUrl(fromShare) ?? fromShare;

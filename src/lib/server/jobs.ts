@@ -18,7 +18,8 @@ import { ringSecurities } from './market/rings.js';
 import { tase } from './market/tase.js';
 import { loadFx, USD_ILS, type FxSummary } from './market/boi.js';
 import { updateHypotheses, type Summary } from './results.js';
-import { syncAuto } from './portfolio.js';
+import { marketView, syncAuto } from './portfolio.js';
+import { atrPct, attribution, collect, triggers } from './news/service.js';
 
 /**
  * Background jobs (spec sections 10 and 14): node-cron inside the app, Israel time, each run written to
@@ -542,6 +543,53 @@ export function lastListings(): Date | null {
 	return oldest;
 }
 
+// ── T-022: strong moves of the securities one follows ───────────────────────────
+
+/** the securities a user follows: positions held, watched or planned, and open hypotheses */
+export function watchedIds(app: import('better-sqlite3').Database): number[] {
+	const ids = new Set<number>();
+	for (const r of app.prepare(`select distinct security_id as id from positions where stage in ('holding', 'watch', 'plan_buy', 'plan_sell')`).all() as { id: number }[]) ids.add(r.id);
+	for (const r of app.prepare(`select distinct security_id as id from hypotheses where status = 'open'`).all() as { id: number }[]) ids.add(r.id);
+	return [...ids];
+}
+
+/**
+ * Every quarter of an hour: a followed security that moved today by at least max(2 ATR%, 3%) gets its move split
+ * (market / sector / itself) recorded once a day, and its news collected; the screens show it as a banner.
+ */
+export function runMovesJob(now = new Date()) {
+	return single('moves', async () => {
+		const m = getMarket().sqlite;
+		const mv = marketView(m);
+		const ids = [...new Set((await forEachUser(() => watchedIds(getApp().sqlite))).flat())];
+		const has = m.prepare('select 1 from news_moves where security_id = ? and date = ?');
+		const put = m.prepare(
+			`insert into news_moves (security_id, date, move_pct, atr_pct, market_pct, sector_pct, own_pct, news, top_title, created_at) values (?, ?, ?, ?, ?, ?, ?, 0, null, ?)`
+		);
+		const found = m.prepare(
+			`select count(distinct n.id) as n, (select n2.title from news_links l2 join news_items n2 on n2.id = l2.news_id where l2.security_id = ? and l2.role = 'stock' and n2.published_at >= ? order by n2.published_at desc limit 1) as top
+			   from news_links l join news_items n on n.id = l.news_id where l.security_id = ? and n.published_at >= ?`
+		);
+		let hits = 0;
+		for (const id of ids) {
+			const d = mv.dayMove(id);
+			if (!d || !(d.prev > 0)) continue;
+			const pct = (d.now / d.prev - 1) * 100;
+			const atr = atrPct(m, id, d.date);
+			if (!triggers(pct, atr) || has.get(id, d.date)) continue;
+			const a = attribution(m, id, (x) => mv.dayMove(x));
+			put.run(id, d.date, Math.round(pct * 100) / 100, atr === null ? null : Math.round(atr * 100) / 100, a?.market ?? null, a?.sector ?? null, a?.own ?? null, now.toISOString());
+			await collect(m, id, { minutes: 10 }).catch((e) => console.error(`moves: news ${id}: ${e}`));
+			const since = new Date(now.getTime() - 36 * 3600_000).toISOString();
+			const f = found.get(id, since, id, since) as { n: number; top: string | null };
+			m.prepare('update news_moves set news = ?, top_title = ? where security_id = ? and date = ?').run(f.n, f.top, id, d.date);
+			hits++;
+		}
+		if (hits) console.log(`moves: ${hits} strong moves of ${ids.length} followed securities`);
+		return hits;
+	});
+}
+
 let started = false;
 const tasks: { stop: () => unknown }[] = [];
 let pricesTask: { stop: () => unknown } | null = null;
@@ -569,6 +617,8 @@ export function startScheduler() {
 	reschedulePrices();
 	// live quotes: checked every minute, run when due by the settings
 	at('* * * * *', 'quotes', () => (quotesDue() ? runQuotesJob() : undefined));
+	// T-022: strong moves of the followed securities — their news and a banner
+	at('*/15 * * * *', 'moves', () => runMovesJob());
 	at('30 6 * * 0', 'listings', runListingsJob);
 	at('20 8 * * *', 'profiles', runProfilesJob);
 	// monthly bars for the model: every night hour, a portion each, until all are fresh
