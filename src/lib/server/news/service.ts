@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { compareRefs } from '../compare.js';
+import { splitScale } from '../market/splits.js';
 import { google, GLOBES_MARKETS, httpGet, maya, mayaCompany, rss, THEMARKER, yahoo, type FeedItem, type Get } from './feeds.js';
 
 /**
@@ -248,9 +249,10 @@ type DayMove = { now: number; prev: number; date: string; live: boolean } | null
 
 /** the change of a security's daily close on `date` against the close before */
 function dailyChange(market: Database.Database, id: number, date: string): number | null {
-	const d = market.prepare('select close from market_prices_daily where security_id = ? and date = ?').get(id, date) as { close: number } | undefined;
-	const b = market.prepare('select close from market_prices_daily where security_id = ? and date < ? order by date desc limit 1').get(id, date) as { close: number } | undefined;
-	return d && b && b.close > 0 ? (d.close / b.close - 1) * 100 : null;
+	const d = market.prepare('select date, close from market_prices_daily where security_id = ? and date = ?').get(id, date) as { date: string; close: number } | undefined;
+	const b = market.prepare('select date, close from market_prices_daily where security_id = ? and date < ? order by date desc limit 1').get(id, date) as { date: string; close: number } | undefined;
+	const k = splitScale(market, id);
+	return d && b && b.close > 0 ? (d.close / k(d.date) / (b.close / k(b.date)) - 1) * 100 : null;
 }
 
 /**
@@ -291,11 +293,17 @@ export function attribution(market: Database.Database, id: number, dayMove: (id:
 
 /** the average true range of the last 14 days, % of the close */
 export function atrPct(market: Database.Database, id: number, upTo?: string): number | null {
+	const scale = splitScale(market, id);
 	const rows = (
 		market
 			.prepare(`select date, low, high, close from market_prices_daily where security_id = ? ${upTo ? 'and date < ?' : ''} order by date desc limit 15`)
 			.all(...(upTo ? [id, upTo] : [id])) as { date: string; low: number | null; high: number | null; close: number }[]
-	).reverse();
+	)
+		.reverse()
+		.map((r) => {
+			const k = scale(r.date);
+			return k === 1 ? r : { ...r, low: r.low === null ? null : r.low / k, high: r.high === null ? null : r.high / k, close: r.close / k };
+		});
 	if (rows.length < 6) return null;
 	const tr: number[] = [];
 	for (let i = 1; i < rows.length; i++) {

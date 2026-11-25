@@ -153,8 +153,14 @@ export function marketView(market: Database.Database): Market & {
 				return prev ? { now: q.price, prev, date: qDate, live: true } : null;
 			}
 			if (!last) return null;
-			const before = beforeQ.get(id, last.date) as { close: number } | undefined;
-			return before ? { now: last.close, prev: before.close, date: last.date, live: false } : null;
+			const before = beforeQ.get(id, last.date) as { date: string; close: number } | undefined;
+			if (!before) return null;
+			// a split between the two closes that the history was not adjusted for: the previous close in the new scale
+			let prev = before.close;
+			for (const sp of splitQ.all(id) as { date: string; ratio: number }[]) {
+				if (sp.date > before.date && sp.date <= last.date && Math.abs(Math.log(prev / last.close) - Math.log(sp.ratio)) < Math.abs(Math.log(prev / last.close))) prev /= sp.ratio;
+			}
+			return { now: last.close, prev, date: last.date, live: false };
 		},
 		fxMove(date, live) {
 			if (live && fxLiveToday) {

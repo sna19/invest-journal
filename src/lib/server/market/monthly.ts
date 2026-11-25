@@ -49,7 +49,23 @@ export function parseMonthly(body: string, now = new Date()): { unit: string | n
 		// the last bar of a month can repeat (a forming bar): the later one wins
 		by.set(month, { month, close, adjClose: a, volume: typeof v === 'number' ? v : null });
 	});
-	return { unit: r.meta?.currency ?? null, rows: [...by.values()].sort((x, y) => x.month.localeCompare(y.month)) };
+	const rows = [...by.values()].sort((x, y) => x.month.localeCompare(y.month));
+	// a split Yahoo has not adjusted the history for (EMBJ 4:1, 16.11.2026): the months before it into the new scale
+	// — only when the jump around it is nearer the ratio than to no change (an adjusted history is left as it is)
+	for (const sp of Object.values((r.events?.splits ?? {}) as Record<string, { date: number; numerator: number; denominator: number }>)) {
+		const ratio = sp.numerator / sp.denominator;
+		if (!(ratio > 0) || ratio === 1) continue;
+		const m = monthOf(sp.date, tz);
+		const i = rows.findIndex((x) => x.month >= m);
+		if (i <= 0) continue;
+		// the month of the split mixes both scales: compare the month before with the month after it, if there is one
+		const a = rows[i - 1].close;
+		const b = (rows[i].month === m ? rows[i + 1] ?? rows[i] : rows[i]).close;
+		const jump = Math.log(a / b);
+		if (Math.abs(jump - Math.log(ratio)) >= Math.abs(jump)) continue;
+		for (let j = 0; j < rows.length && rows[j].month < m; j++) rows[j] = { ...rows[j], close: rows[j].close / ratio, adjClose: rows[j].adjClose / ratio };
+	}
+	return { unit: r.meta?.currency ?? null, rows };
 }
 
 export interface MonthlySec {

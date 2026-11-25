@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { israelDate } from '../hypothesis.js';
+import { splitScale } from './market/splits.js';
 
 /**
  * «С чем сравнить» on a security's card (owner's request 20.11.2026): what the share belongs to — its sector,
@@ -129,16 +130,17 @@ const PERIOD_DAYS: [string, number][] = [
 /** the table: the share's and each reference's return over 1M, 3M, 1Y, 5Y, by daily closes (split-adjusted) */
 export function compareTable(market: Database.Database, id: number, benchId: number | null, today = israelDate()) {
 	const refs = compareRefs(market, id);
-	const at = market.prepare('select close from market_prices_daily where security_id = ? and date <= ? order by date desc limit 1');
+	const at = market.prepare('select date, close from market_prices_daily where security_id = ? and date <= ? order by date desc limit 1');
 	const last = market.prepare('select date, close from market_prices_daily where security_id = ? order by date desc limit 1');
 	const ret = (sid: number) => {
 		const l = last.get(sid) as { date: string; close: number } | undefined;
+		const scale = splitScale(market, sid);
 		return Object.fromEntries(
 			PERIOD_DAYS.map(([k, days]) => {
 				if (!l) return [k, null];
 				const from = new Date(Date.parse(l.date + 'T12:00:00Z') - days * 86_400_000).toISOString().slice(0, 10);
-				const x = at.get(sid, from) as { close: number } | undefined;
-				return [k, x ? Math.round((l.close / x.close - 1) * 10000) / 100 : null];
+				const x = at.get(sid, from) as { date: string; close: number } | undefined;
+				return [k, x ? Math.round((l.close / scale(l.date) / (x.close / scale(x.date)) - 1) * 10000) / 100 : null];
 			})
 		) as Record<string, number | null>;
 	};
