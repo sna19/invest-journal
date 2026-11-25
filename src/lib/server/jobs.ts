@@ -754,7 +754,14 @@ export function startScheduler() {
 				r.securities.forEach((s, i) => (groups.get(find(i)) ?? groups.set(find(i), []).get(find(i))!).push(s.role === 'job' ? `[job ${s.symbol}]` : s.symbol));
 				console.log(
 					`risk: user ${u.id} portfolio ${p.id}: ${r.now.held} positions, ${r.now.bets.toFixed(1)} bets, vol ${(r.now.vol * 100).toFixed(0)}%, job ${r.now.job?.toFixed(2) ?? '—'}, δ ${r.delta}, ${Math.round(performance.now() - t)} ms; clusters: ` +
-						[...groups.values()].filter((g) => g.length > 1).map((g) => g.join('+')).join(' | ')
+						[...groups.values()].filter((g) => g.length > 1).map((g) => g.join('+')).join(' | ') +
+						` ; weeks: ${r.securities.map((s) => `${s.symbol} ${s.weeks}`).join(', ')} ; top ties: ` +
+						r.securities
+							.flatMap((a, i) => r.securities.map((b, j) => ({ i, j, c: r.corr[i][j] })).filter((x) => x.i < x.j).map((x) => ({ ...x, a: a.symbol, b: r.securities[x.j].symbol })))
+							.sort((x, y) => y.c - x.c)
+							.slice(0, 8)
+							.map((x) => `${x.a}-${x.b} ${x.c.toFixed(2)}`)
+							.join(', ')
 				);
 			}
 		}).catch((e) => console.error(`risk: ${e}`));
