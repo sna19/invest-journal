@@ -6,6 +6,7 @@
 	import TopBar from '#lib/TopBar.svelte';
 	import HelpIcon from '#lib/HelpIcon.svelte';
 	import Fold from '#lib/Fold.svelte';
+	import RiskLabel from '#lib/RiskLabel.svelte';
 	import Pct from '#lib/Pct.svelte';
 	import TvLink from '#lib/TvLink.svelte';
 	import LineChart, { colorOf, type Line, type Mark } from '#lib/charts/LineChart.svelte';
@@ -244,6 +245,7 @@
 	}
 
 	let levRetried = false;
+	let riskLabel = $state<{ label: string; twin: string | null; portfolio: string; portfolioId: number } | null>(null);
 	const LEVELS: Lev['level'][] = ['stock', 'industry', 'sector', 'index'];
 	const feeText = (x: number | null) => (x === null ? '—' : `${(x * 100).toFixed(2).replace('.', tx(',', '.'))}%`);
 	const byFee = (a: Lev, b: Lev) => (a.expenseRatio ?? 9) - (b.expenseRatio ?? 9) || b.x - a.x;
@@ -299,6 +301,13 @@
 		loadCompare();
 		loadLev();
 		loadNews();
+		void fetch(`/api/risk/labels?ids=${page.params.id}`)
+			.then((r) => r.json())
+			.then((r) => {
+				const x = r?.items?.[Number(page.params.id)];
+				if (x) riskLabel = { ...x, portfolio: r.portfolio?.name ?? '', portfolioId: r.portfolio?.id };
+			})
+			.catch(() => {});
 		try {
 			const v = JSON.parse(localStorage.getItem('chart-sma') ?? '[]');
 			if (Array.isArray(v)) smaOn = v.filter((x) => ['20', '50', '200'].includes(x));
@@ -445,6 +454,9 @@
 		<span class="chg">{PERIODS.find((p) => p[0] === period)?.[1]}: <Pct value={c.change} />{#if c.benchmark && c.benchChange !== null} <span class="muted small">{c.benchmark.label} <Pct value={c.benchChange} plain /></span>{/if}</span>
 	</div>
 
+	{#if riskLabel && riskLabel.label !== 'held'}
+		<p class="muted small facts">{tx(`Для риска «${riskLabel.portfolio}»`, `For «${riskLabel.portfolio}» risk`)}: <RiskLabel label={riskLabel.label} twin={riskLabel.twin} /> <a href="/portfolio/risk?p={riskLabel.portfolioId}">{tx('что если?', 'what if?')}</a></p>
+	{/if}
 	{#if c.profile && (c.profile.sector || c.profile.capUsd)}
 		<p class="muted small facts">
 			{[c.profile.sector ? sectorName(c.profile.sector, tx) : '', c.profile.industry ?? '', c.profile.capUsd ? `${tx('капитализация', 'market cap')} ${capText(c.profile.capUsd)}` : '', c.profile.country ?? ''].filter(Boolean).join(' · ')}
