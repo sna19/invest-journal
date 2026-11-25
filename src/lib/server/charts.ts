@@ -1,5 +1,6 @@
 import { readProfiles } from './market/profiles.js';
 import type Database from 'better-sqlite3';
+import { adjustRows } from './market/splits.js';
 import { israelDate } from '../hypothesis.js';
 import { cashFlow, effective, splitFactor, valueOn } from '../portfolio.js';
 import { benchmarkId, book, marketView, security } from './portfolio.js';
@@ -38,8 +39,8 @@ export interface Marker {
 
 /** the simple moving averages of the daily closes from `from` on (the 200 days before are read for the start) */
 function smaLines(market: Database.Database, id: number, from: string) {
-	const before = (market.prepare('select close from market_prices_daily where security_id = ? and date < ? order by date desc limit 199').all(id, from) as { close: number }[]).reverse();
-	const after = market.prepare('select date, close from market_prices_daily where security_id = ? and date >= ? order by date').all(id, from) as { date: string; close: number }[];
+	const before = adjustRows(market, id, (market.prepare('select date, close from market_prices_daily where security_id = ? and date < ? order by date desc limit 199').all(id, from) as { date: string; close: number }[]).reverse());
+	const after = adjustRows(market, id, market.prepare('select date, close from market_prices_daily where security_id = ? and date >= ? order by date').all(id, from) as { date: string; close: number }[]);
 	const closes = [...before.map((r) => r.close), ...after.map((r) => r.close)];
 	const offset = before.length;
 	const out: Record<'20' | '50' | '200', { date: string; value: number }[]> = { '20': [], '50': [], '200': [] };
@@ -72,6 +73,8 @@ export function securityChart(app: Database.Database, market: Database.Database,
 			(r) => ({ date: lastDayOf(r.month), close: r.close })
 		);
 	if (monthly) rows = monthRows(id, from);
+	// a split the history was not adjusted for: the closes before it in the current scale (EMBJ 4:1, 16.11.2026)
+	else rows = adjustRows(market, id, rows);
 	let bench: { date: string; value: number }[] = [];
 	if (benchId && benchId !== id && rows.length) {
 		const b = monthly

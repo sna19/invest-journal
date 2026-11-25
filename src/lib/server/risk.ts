@@ -2,6 +2,7 @@ import type Database from 'better-sqlite3';
 import { israelDate } from '../hypothesis.js';
 import { corrOf, covariance, mds, mdsPlace, minVariance, riskParity, stats, type Matrix } from '../risk.js';
 import { marketView, portfolioView } from './portfolio.js';
+import { adjustRows } from './market/splits.js';
 
 /**
  * T-023 «Карта риска» on the server: weekly returns in the portfolio's currency (daily closes, split-adjusted — the
@@ -48,7 +49,7 @@ export function weeklyReturns(market: Database.Database, ids: number[], pc: stri
 		const c = cur.get(id) as { currency: string; unit: string } | undefined;
 		const currency = c?.unit === 'ILA' || c?.currency === 'ILS' ? 'ILS' : 'USD';
 		const lastOfWeek = new Map<number, number>();
-		for (const r of q.all(id, from, today) as { date: string; close: number }[]) {
+		for (const r of adjustRows(market, id, q.all(id, from, today) as { date: string; close: number }[])) {
 			if (!(r.close > 0)) continue;
 			lastOfWeek.set(weekOf(r.date), r.close * (currency === pc ? 1 : m.conv(currency, pc, r.date)));
 		}
