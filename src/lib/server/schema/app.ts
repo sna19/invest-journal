@@ -326,3 +326,22 @@ export const autoCarries = sqliteTable(
 	},
 	(t) => [primaryKey({ columns: [t.portfolioId, t.hypothesisId] })]
 );
+
+/** a user's own settings, key → value (T-023: «employer» — the symbol of the employer's share, the job's risk) */
+export const userSettings = sqliteTable('user_settings', {
+	key: text().primaryKey(),
+	value: text().notNull(),
+	updatedAt: now()
+});
+
+/** T-023: a saved «Что если?» scenario — the securities, the amount and where the money comes from */
+export const riskScenarios = sqliteTable('risk_scenarios', {
+	id: integer().primaryKey({ autoIncrement: true }),
+	portfolioId: integer()
+		.notNull()
+		.references(() => portfolios.id),
+	name: text().notNull(),
+	/** JSON: { adds: [{ securityId, symbol }], amountPct, source: 'cash' | positionSecurityId } */
+	data: text().notNull(),
+	createdAt: now()
+});

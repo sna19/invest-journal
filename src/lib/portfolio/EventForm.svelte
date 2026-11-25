@@ -4,6 +4,7 @@
 	import TickerSearch, { rememberSecurity, type Security } from '../TickerSearch.svelte';
 	import { israelDate } from '../hypothesis.js';
 	import { EVENT_LABEL, money, qtyText, unitFactor } from '../portfolio.js';
+	import RiskLabel from '../RiskLabel.svelte';
 
 	/**
 	 * Spec section 18 «Быстрый ввод» — one form for every step of a position. «Купил / Продал» in under 30 s:
@@ -34,10 +35,12 @@
 		portfolioCurrency?: string;
 		/** «Изменить» (owner's request, 18.11.2026): the event to correct — its date and numbers, in place */
 		edit?: { id: number; date: string; qty: number | null; price: number | null; fee: number | null; amount: number | null; costTotal?: number | null; note: string | null } | null;
+		/** T-023: a note to start from (a «Что если?» scenario) */
+		initialNote?: string | null;
 		onsaved: (positionId: number) => void;
 		oncancel: () => void;
 	}
-	let { portfolioId, kind, position = null, securityId = null, hypothesisId = null, modelVariant = null, lastFee = {}, portfolioCurrency = 'ILS', edit = null, onsaved, oncancel }: Props = $props();
+	let { portfolioId, kind, position = null, securityId = null, hypothesisId = null, modelVariant = null, lastFee = {}, portfolioCurrency = 'ILS', edit = null, initialNote = null, onsaved, oncancel }: Props = $props();
 	let costTotal = $state('');
 	let warning = $state<string | null>(null);
 
@@ -71,13 +74,24 @@
 	}
 	let priceTouched = false;
 
+	// T-023 (4): what the purchase does to this portfolio's risk
+	let risk = $state<{ label: string; twin: string | null } | null>(null);
+	async function loadRisk(id: number) {
+		risk = null;
+		if (kind !== 'buy' && kind !== 'plan_buy') return;
+		const r = await fetch(`/api/risk/labels?ids=${id}&portfolio=${portfolioId}`).then((x) => x.json()).catch(() => null);
+		if (sec?.id === id && r?.items?.[id]) risk = r.items[id];
+	}
+
 	function use(s: { id: number; symbol: string; name: string; currency: string; priceUnit: string }) {
 		sec = s;
+		void loadRisk(s.id);
 		if (trade && fee === '') fee = lastFee[s.currency] !== undefined ? String(lastFee[s.currency]) : '';
 		quote();
 	}
 
 	onMount(async () => {
+		if (initialNote && !edit) note = initialNote;
 		if (edit) {
 			const t = (x: number | null | undefined) => (x === null || x === undefined ? '' : String(x));
 			date = edit.date;
@@ -167,6 +181,9 @@
 		<p class="sec"><b>{sec.symbol}</b> <span class="muted">{sec.name}</span></p>
 	{/if}
 
+	{#if sec && risk && risk.label !== 'held'}
+		<p class="risk">{tx('Для риска портфеля', 'For the portfolio\'s risk')}: <RiskLabel label={risk.label} twin={risk.twin} /></p>
+	{/if}
 	{#if sec}
 		<div class="row">
 			<label>
@@ -363,5 +380,10 @@
 	.small {
 		font-size: var(--fs-s);
 		margin: 0;
+	}
+	.risk {
+		margin: 0 0 var(--s2);
+		font-size: var(--fs-xs);
+		color: var(--muted);
 	}
 </style>

@@ -20,6 +20,7 @@ import { tase } from './market/tase.js';
 import { loadFx, USD_ILS, type FxSummary } from './market/boi.js';
 import { updateHypotheses, type Summary } from './results.js';
 import { marketView, syncAuto } from './portfolio.js';
+import { riskView } from './risk.js';
 import { atrPct, attribution, collect, triggers } from './news/service.js';
 
 /**
@@ -739,6 +740,24 @@ export function startScheduler() {
 		} catch (e) {
 			console.error(`model: ${e}`);
 		}
+		// T-023: the risk map of each real portfolio — the clusters of tickers only, no amounts
+		await forEachUser((u) => {
+			for (const p of getApp().sqlite.prepare(`select id from portfolios where kind = 'real' and archived_at is null and auto_source_id is null`).all() as { id: number }[]) {
+				const t = performance.now();
+				const r = riskView(getApp().sqlite, getMarket().sqlite, p.id);
+				if (!r || r.now.held < 2) continue;
+				// clusters: the positions joined by ties above 0.7
+				const parent = r.securities.map((_, i) => i);
+				const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+				for (const [a, b] of r.links) parent[find(a)] = find(b);
+				const groups = new Map<number, string[]>();
+				r.securities.forEach((s, i) => (groups.get(find(i)) ?? groups.set(find(i), []).get(find(i))!).push(s.role === 'job' ? `[job ${s.symbol}]` : s.symbol));
+				console.log(
+					`risk: user ${u.id} portfolio ${p.id}: ${r.now.held} positions, ${r.now.bets.toFixed(1)} bets, vol ${(r.now.vol * 100).toFixed(0)}%, job ${r.now.job?.toFixed(2) ?? '—'}, δ ${r.delta}, ${Math.round(performance.now() - t)} ms; clusters: ` +
+						[...groups.values()].filter((g) => g.length > 1).map((g) => g.join('+')).join(' | ')
+				);
+			}
+		}).catch((e) => console.error(`risk: ${e}`));
 		const bApp = lastRun('backup-app');
 		if (!bApp || Date.now() - bApp.getTime() > 26 * 3600 * 1000) await runBackupJob('app');
 		const bMarket = lastRun('backup-market');

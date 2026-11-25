@@ -5,6 +5,7 @@
 	import TopBar from '#lib/TopBar.svelte';
 	import HelpIcon from '#lib/HelpIcon.svelte';
 	import TvLink from '#lib/TvLink.svelte';
+	import RiskLabel from '#lib/RiskLabel.svelte';
 	import { showToast } from '#lib/toast.svelte.js';
 	import { loc, tx } from '#lib/i18n.js';
 	import { sectorName } from '#lib/allocation.js';
@@ -116,6 +117,7 @@
 		void loadCosts(q, my);
 		void loadTrend(q, my);
 		void loadCompare();
+		void loadRisk();
 		if (!quarter && data!.result) quarter = data!.result.quarter;
 	}
 	// T-012: the variant's portfolio over the last 12 quarters before and after the costs
@@ -193,6 +195,16 @@
 		afterCosts: number | null;
 	}
 	let compareV = $state<VRow[] | null>(null);
+	// T-023 (4): what each candidate does to the largest real portfolio's risk
+	let riskLabels = $state<Record<number, { label: string; twin: string | null }>>({});
+	let riskPortfolio = $state<string | null>(null);
+	async function loadRisk() {
+		const ids = data?.result?.candidates.map((c) => c.id) ?? [];
+		if (!ids.length) return;
+		const r = await fetch(`/api/risk/labels?ids=${ids.join(',')}`).then((x) => x.json()).catch(() => null);
+		riskLabels = r?.items ?? {};
+		riskPortfolio = r?.portfolio?.name ?? null;
+	}
 	async function loadCompare() {
 		const q = quarter || data?.result?.quarter;
 		if (!q) return;
@@ -493,6 +505,7 @@
 		{:else if verdict === 'none'}
 			<p class="warn">{isScored(variant) ? tx('Ни у одной бумаги балл не выше 2 — кандидаты ниже показаны по баллу, но уверенности нет.', 'No share has a score of 2 or more — the candidates below are ranked by score, without confidence.') : tx('Фильтр не прошла ни одна бумага — ослабьте K или пороги.', 'No share passed — lower K or the thresholds.')}</p>
 		{/if}
+		{#if riskPortfolio}<p class="muted small">{tx(`Метка риска — для портфеля «${riskPortfolio}», покупка на 5% из свободных денег.`, `The risk label — for the portfolio «${riskPortfolio}», a purchase of 5% from cash.`)} <HelpIcon topicKey="portfolio.whatif" label={tx('что если', 'what if')} /></p>{/if}
 		{#if res.trendOut}<p class="muted small">{tx(`Фильтр тренда отсёк ${res.trendOut} из прошедших.`, `The trend filter left out ${res.trendOut} of those that passed.`)}</p>{/if}
 		{#if res.candidates.length && res.months.some((m) => m !== null)}
 			<p class="muted small">{tx('Рост кандидатов по месяцам квартала, в среднем за годы окна:', 'The candidates\' rise by month of the quarter, mean over the window:')} {res.months.map((m, i) => `${tx('м', 'm')}${i + 1} ${pct(m)}`).join(' · ')} <HelpIcon topicKey="model.months" label={tx('по месяцам', 'by month')} /></p>
@@ -508,7 +521,7 @@
 						<span class="who"><b>{c.symbol}</b><span class="muted small block name">{c.name}</span><span class="muted small block">{c.market === 'US' ? tx('США', 'US') : tx('Израиль', 'Israel')} {' · '}{c.sector ? sectorName(c.sector, tx) : tx('сектор неизвестен', 'sector unknown')}{#if c.capUsd}{' · '}{capText(c.capUsd)}, {capName(c.capGroup)}{/if}{' · '}{c.up}/{res.years.length}</span><span class="muted small block">{tx('по месяцам', 'by month')} {c.months.map((m) => pct(m)).join(' · ')}{#if c.sma10 !== null}{' · '}{c.sma10 >= 0 ? tx('над', 'above') : tx('под', 'below')} SMA10 {pct(c.sma10)}{/if}</span>{#if c.reasons.earnings || c.reasons.dividend || c.reasons.sector}<span class="reasons">{#if c.reasons.earnings}<i>{tx('отчёт', 'report')}</i>{/if}{#if c.reasons.dividend}<i>{tx('дивиденд', 'dividend')}</i>{/if}{#if c.reasons.sector}<i>{tx('сектор сезонен', 'sector seasonal')}</i>{/if}</span>{/if}{#if c.own.mean !== null && variant !== 'D'}<span class="muted small block" class:warnline={Math.abs(c.own.mean) < 1 || c.own.up < 6}>{tx('к обычному кварталу', 'vs usual quarter')} {pct(c.own.mean)} · {tx('выше в', 'above in')} {c.own.up}/{c.own.years}</span>{/if}</span>
 						<span class="nums">{#if c.score !== null}<span class="score">{tx('балл', 'score')} {c.score.toFixed(1)}</span>{/if}<b class:up={c.mean > 0}>{pct(c.mean)}</b><span class="muted small block">{tx('мед.', 'med.')} {pct(c.median)}</span><span class="muted small block">{tx('худш.', 'worst')} {pct(c.worst)}</span></span>
 					</button>
-					<span class="tvpos"><TvLink exchange={c.exchange} symbol={c.symbol} /></span>
+					<span class="tvpos">{#if riskLabels[c.id]}<RiskLabel small label={riskLabels[c.id].label} twin={riskLabels[c.id].twin} />{/if}<TvLink exchange={c.exchange} symbol={c.symbol} /></span>
 				</li>
 			{/each}
 		</ul>

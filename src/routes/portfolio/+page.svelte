@@ -140,7 +140,7 @@
 		}
 	}
 	let createError = $state<string | null>(null);
-	let adding = $state<{ kind: string; securityId: number | null; hypothesisId: number | null; model?: 'A' | 'B' | 'C' | 'D' | 'G' | null } | null>(null);
+	let adding = $state<{ kind: string; securityId: number | null; hypothesisId: number | null; model?: 'A' | 'B' | 'C' | 'D' | 'G' | null; note?: string | null } | null>(null);
 	let opened = $state<number | null>(null);
 	let cashing = $state(false);
 	// deleting a portfolio whole (owner's request): the name is typed back, the app copies the journal first
@@ -300,7 +300,7 @@
 			const kind = k === 'buy' || k === 'watch' ? k : 'plan_buy';
 			// T-020: from a model's candidate card — the trade is linked to the model and its version
 			const mv = page.url.searchParams.get('model');
-			adding = { kind, securityId: add, hypothesisId: Number(page.url.searchParams.get('hyp')) || null, model: mv === 'A' || mv === 'B' || mv === 'C' || mv === 'D' || mv === 'G' ? mv : null };
+			adding = { kind, securityId: add, hypothesisId: Number(page.url.searchParams.get('hyp')) || null, model: mv === 'A' || mv === 'B' || mv === 'C' || mv === 'D' || mv === 'G' ? mv : null, note: page.url.searchParams.get('note') };
 			replaceState('/portfolio', {});
 			if (!real) creating = true;
 		}
@@ -569,6 +569,7 @@
 			<button onclick={() => ((transferring = true), (transferPreview = null), (transferError = null))}>{tx('Перенос позиций', 'Carry over positions')}</button>
 			<a class="together" href="/portfolio/together">{tx('Всё вместе', 'All together')}</a>
 			<a class="together" href="/portfolio/report?p={v.portfolio.id}">{tx('Отчёт', 'Report')}</a>
+			<a class="together" href="/portfolio/risk?p={v.portfolio.id}">{tx('Риск', 'Risk')}</a>
 		</div>
 	{/if}
 
@@ -712,6 +713,7 @@
 			securityId={adding.securityId}
 			hypothesisId={adding.hypothesisId}
 			modelVariant={adding.model ?? null}
+			initialNote={adding.note ?? null}
 			lastFee={v.lastFee}
 			onsaved={(pid) => {
 				adding = null;

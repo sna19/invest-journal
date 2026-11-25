@@ -1330,6 +1330,7 @@ export function deletePortfolio(app: Database.Database, id: number, confirmName:
 		const ev = app.prepare('delete from position_events where position_id in (select id from positions where portfolio_id = ?)').run(id).changes;
 		const cash = app.prepare('delete from cash_events where portfolio_id = ?').run(id).changes;
 		app.prepare('delete from auto_carries where portfolio_id = ?').run(id);
+		app.prepare('delete from risk_scenarios where portfolio_id = ?').run(id);
 		const pos = app.prepare('delete from positions where portfolio_id = ?').run(id).changes;
 		app.prepare('delete from portfolios where id = ?').run(id);
 		app.prepare('delete from portfolio_purge where portfolio_id = ?').run(id);
