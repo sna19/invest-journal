@@ -761,6 +761,17 @@ export function startScheduler() {
 							.sort((x, y) => y.c - x.c)
 							.slice(0, 8)
 							.map((x) => `${x.a}-${x.b} ${x.c.toFixed(2)}`)
+							.join(', ') +
+						' ; map neighbours: ' +
+						r.securities
+							.map((a) => {
+								const near = r.securities
+									.filter((b) => b !== a)
+									.map((b) => ({ b, d: Math.hypot(a.xy[0] - b.xy[0], a.xy[1] - b.xy[1]) }))
+									.sort((x, y) => x.d - y.d)
+									.slice(0, 2);
+								return `${a.symbol}→${near.map((x) => x.b.symbol).join('/')}`;
+							})
 							.join(', ')
 				);
 			}
