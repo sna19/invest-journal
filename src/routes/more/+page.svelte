@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Star from '@lucide/svelte/icons/star';
+	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import TopBar from '#lib/TopBar.svelte';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Database from '@lucide/svelte/icons/database';
@@ -14,6 +15,7 @@
 <TopBar title={t('tab.more')} />
 <ul class="menu">
 	<li><a href="/model"><CalendarRange size={20} /><span>{tx('Квартальная модель', 'Quarterly model')}</span><ChevronRight size={18} /></a></li>
+	<li><a href="/rules"><ListChecks size={20} /><span>{tx('Мои правила', 'My rules')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/shortlist"><Star size={20} /><span>{tx('Отмеченные', 'Picked')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/tickers"><Database size={20} /><span>{t('more.tickers')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/settings"><Settings size={20} /><span>{t('more.settings')}</span><ChevronRight size={18} /></a></li>

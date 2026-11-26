@@ -57,7 +57,7 @@
 			const ids = items!.map((x) => x.id);
 			// the ratios: 8 a call are loaded from the provider — ask until all are there
 			for (let k = 0; k < 5; k++) {
-				const s = await fetch(`/api/stats?ids=${ids.join(',')}`).then((x) => x.json()).catch(() => null);
+				const s = await fetch(`/api/ratios?ids=${ids.join(',')}`).then((x) => x.json()).catch(() => null);
 				const got = s?.items ?? {};
 				stats = Object.fromEntries(Object.entries(got).map(([id, v]) => [Number(id), (v as { stats: Stat | null }).stats]));
 				if (ids.every((id) => id in got)) break;

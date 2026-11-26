@@ -27,6 +27,7 @@ import { InputError, LockedError } from './journal.js';
 import type { Errors } from '../hypothesis.js';
 import { fxOn } from './market/boi.js';
 import { readQuotes } from './market/quotes.js';
+import { checkPlan, checkReview, insertPlan, insertReview, planOf, signals, type PlanInput } from './discipline.js';
 
 /**
  * Spec section 18 — portfolios on the server: events in, positions and returns out. Plain SQL on both files:
@@ -607,7 +608,15 @@ export function positionView(app: Database.Database, market: Database.Database, 
 		return { ...h, fromIdea, fromBuy, pauseDays, buyDate: firstBuy?.date ?? null };
 	});
 	const hasOpening = effective(list).some((e) => e.kind === 'opening');
+	// T-015: the trade's conditions, the reviews of its sales, its signals
+	const reviews = Object.fromEntries(
+		(app.prepare(`select event_id as eventId, reason, followed from trade_reviews where event_id in (select id from position_events where position_id = ?)`).all(id) as { eventId: number; reason: string; followed: number }[]).map((r) => [r.eventId, r])
+	);
 	return {
+		plan: planOf(app, id),
+		reviews,
+		signals: signals(app, market, today).filter((s) => s.positionId === id),
+		portfolioValue: view.summary.value,
 		position: pos,
 		portfolio: view.portfolio,
 		events,
@@ -653,6 +662,12 @@ export interface EventInput {
 	modelVariant?: unknown;
 	/** the person looked again at a price far from the day's range */
 	confirm?: unknown;
+	/** T-015: the conditions of a purchase (buy, plan_buy) */
+	plan?: PlanInput;
+	/** T-015: the review at a sale */
+	review?: unknown;
+	/** T-015: a purchase or a sale typed in the form — the thesis, the stop (or «без стопа») and the review are required */
+	discipline?: unknown;
 }
 
 const KINDS = ['watch', 'plan_buy', 'buy', 'plan_sell', 'sell', 'drop', 'note', 'opening', 'basis'];
@@ -742,6 +757,12 @@ export function addEvent(app: Database.Database, market: Database.Database, inpu
 	const hypothesisId = input.hypothesisId ? Number(input.hypothesisId) : null;
 	if (hypothesisId && !app.prepare('select 1 from hypotheses where id = ?').get(hypothesisId)) throw bad({ hypothesisId: 'Гипотезы нет' });
 
+	// T-015: the conditions of a purchase and the review at a sale
+	const strict = input.discipline === true && !auto;
+	const fallbackKind = input.modelVariant ? ('model' as const) : hypothesisId ? ('hypothesis' as const) : ('own' as const);
+	const plan = (kind === 'buy' || kind === 'plan_buy') && !auto && (input.plan || strict) ? checkPlan(input.plan ?? {}, { entry: price, date, strict, fallbackKind }) : null;
+	const review = kind === 'sell' && !auto ? checkReview(input.review, strict) : null;
+
 	const modelVersionId = (input.modelVariant === 'A' || input.modelVariant === 'B' || input.modelVariant === 'C' || input.modelVariant === 'D' || input.modelVariant === 'G') ? modelVersionNow(app, input.modelVariant) : null;
 	const insert = app.prepare(
 		`insert into position_events (position_id, kind, date, qty, price, currency, fee, fx_rate, amount, cost_total, note, hypothesis_id, auto, model_version_id)
@@ -767,6 +788,8 @@ export function addEvent(app: Database.Database, market: Database.Database, inpu
 		// an opening with its purchase price: the price goes in as a «basis» event right after it
 		if (kind === 'opening' && (costTotal !== null || basisPrice !== null))
 			insert.run(pos!.id, 'basis', date, null, basisPrice, pos!.currency, null, fxRate, null, costTotal, null, null, 0, null);
+		if (plan) insertPlan(app, pos!.id, ev.id, plan);
+		if (review) insertReview(app, ev.id, review);
 		// no point in time may hold less than nothing
 		try {
 			fifo(trades(eventsOf(app, pos!.id), m.splits(pos!.security_id), f), f);
@@ -1315,6 +1338,8 @@ export function deletePosition(app: Database.Database, market: Database.Database
 		const events = app.prepare('delete from position_events where position_id = ?').run(id).changes;
 		const cash = app.prepare('delete from cash_events where position_id = ?').run(id).changes;
 		app.prepare('delete from auto_carries where position_id = ?').run(id);
+		app.prepare('delete from trade_reviews where event_id not in (select id from position_events)').run();
+		app.prepare('delete from trade_plans where position_id = ?').run(id);
 		app.prepare('delete from positions where id = ?').run(id);
 		app.prepare('delete from portfolio_purge where portfolio_id = ?').run(pos.portfolio_id);
 		return { events, cash };
@@ -1337,6 +1362,8 @@ export function deletePortfolio(app: Database.Database, id: number, confirmName:
 		const cash = app.prepare('delete from cash_events where portfolio_id = ?').run(id).changes;
 		app.prepare('delete from auto_carries where portfolio_id = ?').run(id);
 		app.prepare('delete from risk_scenarios where portfolio_id = ?').run(id);
+		app.prepare('delete from trade_reviews where event_id not in (select id from position_events)').run();
+		app.prepare('delete from trade_plans where position_id in (select id from positions where portfolio_id = ?)').run(id);
 		const pos = app.prepare('delete from positions where portfolio_id = ?').run(id).changes;
 		app.prepare('delete from portfolios where id = ?').run(id);
 		app.prepare('delete from portfolio_purge where portfolio_id = ?').run(id);

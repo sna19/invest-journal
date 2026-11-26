@@ -8,6 +8,8 @@
 	import HelpIcon from '../HelpIcon.svelte';
 	import Pct from '../Pct.svelte';
 	import EventForm from './EventForm.svelte';
+	import TradePlan, { newDraft, planBody, PLAN_KIND_LABEL, type PlanDraft, type PlanKind } from './TradePlan.svelte';
+	import { israelDate } from '../hypothesis.js';
 	import { CASH_LABEL, EVENT_LABEL, money, priceText, qtyText, STAGE_LABEL, type Stage } from '../portfolio.js';
 	import { showToast } from '../toast.svelte.js';
 
@@ -87,7 +89,59 @@
 		hypotheses: { id: number; symbol: string; direction: string; entryDate: string; fromIdea: number | null; fromBuy: number | null; pauseDays: number | null; buyDate: string | null }[];
 		lastFee: Record<string, number>;
 		fxUsd: number;
+		portfolioValue: number;
+		plan: { id: number; kind: PlanKind; thesis: string | null; wrongIf: string | null; stop: number | null; target: number | null; reviewDate: string | null; noStopReason: string | null; reason: string | null; createdAt: string } | null;
+		reviews: Record<string, { reason: string; followed: number }>;
+		signals: { kind: 'stop' | 'target' | 'review' | 'model_end'; price: number | null; priceDate: string | null }[];
 	}
+
+	// T-015: the trade's conditions — filled later or changed by «Пересмотрел»
+	let planning = $state(false);
+	let draft = $state<PlanDraft>(newDraft('own', israelDate()));
+	let planReason = $state('');
+	let planErrors = $state<Record<string, string>>({});
+	function startPlan() {
+		if (!v) return;
+		const x = v.plan;
+		const t = (n: number | null | undefined) => (n === null || n === undefined ? '' : String(n));
+		draft = x
+			? { kind: x.kind, thesis: x.thesis ?? '', wrongIf: x.wrongIf ?? '', stop: t(x.stop), stopPct: false, target: t(x.target), targetPct: false, reviewDate: x.reviewDate ?? '', noStop: x.stop === null && !!x.noStopReason, noStopReason: x.noStopReason ?? '' }
+			: newDraft('own', israelDate());
+		planReason = '';
+		planErrors = {};
+		step = null;
+		planning = true;
+	}
+	async function savePlan() {
+		if (!v) return;
+		planErrors = {};
+		const entry = v.position.avgPrice;
+		const r = await fetch(`/api/positions/${positionId}/plan`, { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...planBody(draft, entry), reason: planReason }) });
+		const j = await r.json().catch(() => ({}));
+		if (!r.ok) {
+			planErrors = j.errors ?? {};
+			problem = tl(j.message) || tx('Не сохранилось', 'Not saved');
+			return;
+		}
+		problem = null;
+		planning = false;
+		showToast(v.plan ? tx('Пересмотр записан', 'Review saved') : tx('Условия сделки записаны', 'Trade conditions saved'));
+		await load();
+		onchange();
+	}
+	const SIGNAL_TEXT: Record<string, [string, string]> = {
+		stop: ['Стоп пробит', 'Stop broken'],
+		target: ['Цель достигнута', 'Target reached'],
+		review: ['Пора пересмотреть', 'Time to review'],
+		model_end: ['Период модели закончился — по правилу 2 продать', 'The model\'s period is over — rule 2 says sell']
+	};
+	const EXIT_TEXT: Record<string, [string, string]> = {
+		stop: ['стоп', 'stop'],
+		target: ['цель', 'target'],
+		model: ['по модели', 'by the model'],
+		thesis_broken: ['тезис сломан', 'thesis broken'],
+		changed_mind: ['передумал', 'changed my mind']
+	};
 
 	let v = $state<View | null>(null);
 	let step = $state<string | null>(null);
@@ -202,6 +256,73 @@
 		{/if}
 	{/if}
 
+	{#if v.signals.length && !v.portfolio.auto_source_id}
+		<div class="signals" role="alert">
+			{#each v.signals as s (s.kind)}
+				<p><b>{tx(...SIGNAL_TEXT[s.kind])}</b>{#if (s.kind === 'stop' || s.kind === 'target') && s.price !== null} · {priceText(s.price, p.priceUnit)}{/if}</p>
+			{/each}
+			<div class="btns">
+				<button class="main" onclick={() => ((planning = false), (step = 'sell'))}>{tx('Продал', 'Sold')}</button>
+				<button class="ghost" onclick={startPlan}>{tx('Пересмотрел', 'Reviewed')}</button>
+			</div>
+		</div>
+	{/if}
+
+	{#if v.plan}
+		{@const x = v.plan}
+		<div class="planbox">
+			<p class="ph">
+				<span>{tx('Условия сделки', 'Trade conditions')} · {tx(...PLAN_KIND_LABEL[x.kind])}</span>
+				{#if x.stop === null}<span class="nostop">{tx('без стопа', 'no stop')}</span>{/if}
+				<HelpIcon topicKey="trade.stop" label={tx('стоп, цель и риск', 'stop, target and risk')} />
+			</p>
+			{#if x.thesis}<p class="th">{x.thesis}</p>{/if}
+			{#if x.wrongIf}<p class="sub">{tx('Неправ, если', 'Wrong if')}: {x.wrongIf}</p>{/if}
+			<p class="sub">
+				{tx('Стоп', 'Stop')} {x.stop !== null ? priceText(x.stop, p.priceUnit) : '—'}{#if x.stop !== null && p.lastPrice} ({Math.round((x.stop / p.lastPrice - 1) * 1000) / 10}%){/if}
+				· {tx('цель', 'target')} {x.target !== null ? priceText(x.target, p.priceUnit) : '—'}
+				· {tx('пересмотр', 'review')} {x.reviewDate ? d(x.reviewDate) : '—'}
+			</p>
+			{#if x.stop === null && x.noStopReason}<p class="sub">{tx('Без стопа', 'No stop')}: {x.noStopReason}</p>{/if}
+		</div>
+	{:else if !v.portfolio.auto_source_id && p.qty > 0}
+		<div class="planbox empty">
+			<p class="sub">{tx('У позиции нет условий выхода (правило 1).', 'The position has no exit conditions (rule 1).')}</p>
+		</div>
+	{/if}
+	{#if !v.portfolio.auto_source_id && p.qty > 0 && !planning && !v.signals.length}
+		<div class="extra"><button onclick={startPlan}>{v.plan ? tx('Пересмотрел', 'Reviewed') : tx('Задать условия сделки', 'Set the trade conditions')}</button></div>
+	{/if}
+	{#if planning}
+		<div class="stepform">
+			<h3>{v.plan ? tx('Пересмотрел', 'Reviewed') : tx('Условия сделки', 'Trade conditions')}</h3>
+			<TradePlan
+				bind:plan={draft}
+				kinds={['model', 'hypothesis', 'own', 'spec']}
+				entry={p.avgPrice}
+				qty={p.qty}
+				priceUnit={p.priceUnit}
+				currency={p.currency}
+				portfolioCurrency={pc}
+				portfolioValue={v.portfolioValue}
+				fxUsd={v.fxUsd}
+				errors={planErrors}
+				strict={false}
+			/>
+			{#if v.plan}
+				<label class="reason">
+					<span>{tx('Почему пересмотрел', 'Why reviewed')}</span>
+					<input bind:value={planReason} placeholder={tx('одной фразой — запишется в историю', 'one sentence — goes into the history')} />
+					{#if planErrors.reason}<em class="err">{planErrors.reason}</em>{/if}
+				</label>
+			{/if}
+			<div class="btns">
+				<button class="main" onclick={savePlan}>{tx('Сохранить', 'Save')}</button>
+				<button class="ghost" onclick={() => (planning = false)}>{tx('Отмена', 'Cancel')}</button>
+			</div>
+		</div>
+	{/if}
+
 	{#each v.hypotheses as h (h.id)}
 		<a class="hyp" href="/?open={h.id}">
 			<span>{tx('Гипотеза', 'Hypothesis')} №{h.id} {tx('от', 'of')} {d(h.entryDate)}{h.pauseDays !== null ? ` · ${tx(`куплено через ${h.pauseDays} дн.`, `bought ${h.pauseDays} d later`)}` : ''}</span>
@@ -240,6 +361,8 @@
 				position={{ id: p.id, securityId: p.securityId, symbol: p.symbol, name: p.name, currency: p.currency, priceUnit: p.priceUnit, qty: p.qty }}
 				lastFee={v.lastFee}
 				portfolioCurrency={pc}
+				portfolioValue={v.portfolioValue}
+				existingPlan={v.plan}
 				onsaved={async () => {
 					showToast(`${p.symbol}: ${tl(NEXT_LABEL[step!]).toLowerCase()} — ${tx('записано', 'saved')}`);
 					step = null;
@@ -275,6 +398,10 @@
 						{e.price ? `${tx('по', 'at')} ${priceText(e.price, p.priceUnit)}` : ''}{e.amount ? ` ${tx('на', 'for')} ${money(e.amount, p.currency)}` : ''}
 					{:else if e.kind === 'reverse'}
 						{tx('события от', 'of the event of')} {d(v.events.find((x) => x.id === e.reversesEventId)?.date ?? e.date)}
+					{/if}
+					{#if e.kind === 'sell' && v.reviews[e.id]}
+						{@const rv = v.reviews[e.id]}
+						<span class="note">{tx('Выход', 'Exit')}: {tx(...EXIT_TEXT[rv.reason])} · {rv.followed ? tx('правило соблюдено', 'rule kept') : tx('правило нарушено', 'rule broken')}</span>
 					{/if}
 					{#if e.note}<span class="note">{e.note}</span>{/if}
 					{#if e.cancelledAt}<span class="tag">{tx('отменено', 'cancelled')}</span>{:else if e.reversedBy}<span class="tag">{tx('сторно', 'reversed')}</span>{:else if e.auto}<span class="tag">{tx('авто', 'auto')}</span>{/if}
@@ -547,6 +674,76 @@
 	}
 	.err {
 		color: var(--down);
+	}
+	.signals {
+		margin: 0 0 var(--s3);
+		padding: var(--s3);
+		border-radius: var(--r2);
+		background: var(--warn-bg);
+		color: var(--warn-text);
+	}
+	.signals p {
+		margin: 0 0 var(--s2);
+	}
+	.btns .main {
+		flex: 1;
+		border: none;
+		background: var(--accent);
+		color: var(--accent-text);
+		font-weight: 600;
+	}
+	.planbox {
+		margin: 0 0 var(--s3);
+		padding: var(--s2) var(--s3);
+		border-radius: var(--r2);
+		background: var(--surface-2);
+	}
+	.planbox p {
+		margin: 0;
+	}
+	.planbox.empty {
+		border: 1px dashed var(--down);
+		background: none;
+	}
+	.ph {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		font-size: var(--fs-xs);
+		color: var(--muted);
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+	}
+	.planbox .th {
+		margin: 2px 0;
+	}
+	.nostop {
+		padding: 0 var(--s2);
+		border-radius: var(--r-pill);
+		background: var(--down);
+		color: #fff;
+		text-transform: none;
+		letter-spacing: 0;
+	}
+	.reason {
+		display: flex;
+		flex-direction: column;
+		gap: var(--s1);
+		margin: var(--s3) 0;
+		font-size: var(--fs-s);
+		color: var(--muted);
+	}
+	.reason input {
+		min-height: var(--tap);
+		padding: 0 var(--s3);
+		border: 1px solid var(--line);
+		border-radius: var(--r1);
+		background: var(--surface);
+		color: var(--text);
+		font: inherit;
+	}
+	.stepform .btns {
+		margin-top: var(--s3);
 	}
 	.skeleton {
 		height: 200px;

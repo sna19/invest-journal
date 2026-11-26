@@ -356,3 +356,56 @@ export const shortlist = sqliteTable('shortlist', {
 	origin: text(),
 	addedAt: now()
 });
+
+// ── T-015 — trade discipline: the exit conditions of a trade, the review at a sale, the owner's rules ──────────
+
+/**
+ * The conditions of a position's trade — kept as versions: a purchase, a «Пересмотрел» or a later fill (a carried-over
+ * position) adds a row, the newest row is the current one. The row of a purchase points at its event: «доля сделок
+ * с условием выхода» is counted on those.
+ */
+export const tradePlans = sqliteTable(
+	'trade_plans',
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		positionId: integer()
+			.notNull()
+			.references(() => positions.id),
+		/** the buy / plan_buy event it came with; null — filled or changed later from the card */
+		eventId: integer(),
+		/** model | hypothesis | own | spec */
+		kind: text().notNull(),
+		thesis: text(),
+		/** «что докажет, что я неправ» */
+		wrongIf: text(),
+		/** prices in the position's price unit */
+		stop: real(),
+		target: real(),
+		reviewDate: text(),
+		/** saved «без стопа»: why — the position gets the mark */
+		noStopReason: text(),
+		/** «Пересмотрел»: why the conditions changed */
+		reason: text(),
+		createdAt: now()
+	},
+	(t) => [index('trade_plans_position').on(t.positionId)]
+);
+
+/** The short review at a sale: the reason of the exit and whether the rule was kept */
+export const tradeReviews = sqliteTable('trade_reviews', {
+	/** the sell event */
+	eventId: integer().primaryKey(),
+	/** stop | target | model | thesis_broken | changed_mind */
+	reason: text().notNull(),
+	/** 1 — the rule was kept */
+	followed: integer().notNull(),
+	createdAt: now()
+});
+
+/** «Мои правила»: an editable list; the first three come with the migration */
+export const rules = sqliteTable('rules', {
+	id: integer().primaryKey({ autoIncrement: true }),
+	text: text().notNull(),
+	sortOrder: integer().notNull().default(0),
+	createdAt: now()
+});

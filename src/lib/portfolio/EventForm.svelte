@@ -5,6 +5,9 @@
 	import { israelDate } from '../hypothesis.js';
 	import { EVENT_LABEL, money, qtyText, unitFactor } from '../portfolio.js';
 	import RiskLabel from '../RiskLabel.svelte';
+	import Fold from '../Fold.svelte';
+	import HelpIcon from '../HelpIcon.svelte';
+	import TradePlan, { newDraft, planBody, type PlanDraft, type PlanKind } from './TradePlan.svelte';
 
 	/**
 	 * Spec section 18 «Быстрый ввод» — one form for every step of a position. «Купил / Продал» in under 30 s:
@@ -37,10 +40,14 @@
 		edit?: { id: number; date: string; qty: number | null; price: number | null; fee: number | null; amount: number | null; costTotal?: number | null; note: string | null } | null;
 		/** T-023: a note to start from (a «Что если?» scenario) */
 		initialNote?: string | null;
+		/** T-015: the portfolio's value in its currency — the trade's risk in % of it */
+		portfolioValue?: number | null;
+		/** T-015: the position's conditions so far («Хочу купить» → «Купил» keeps them) */
+		existingPlan?: { kind: PlanKind; thesis: string | null; wrongIf: string | null; stop: number | null; target: number | null; reviewDate: string | null; noStopReason: string | null } | null;
 		onsaved: (positionId: number) => void;
 		oncancel: () => void;
 	}
-	let { portfolioId, kind, position = null, securityId = null, hypothesisId = null, modelVariant = null, lastFee = {}, portfolioCurrency = 'ILS', edit = null, initialNote = null, onsaved, oncancel }: Props = $props();
+	let { portfolioId, kind, position = null, securityId = null, hypothesisId = null, modelVariant = null, lastFee = {}, portfolioCurrency = 'ILS', edit = null, initialNote = null, portfolioValue = null, existingPlan = null, onsaved, oncancel }: Props = $props();
 	let costTotal = $state('');
 	let warning = $state<string | null>(null);
 
@@ -60,6 +67,22 @@
 	let formError = $state<string | null>(null);
 
 	const trade = $derived(kind === 'buy' || kind === 'sell' || kind === 'opening');
+
+	// T-015: the conditions of a purchase, the review at a sale
+	const withPlan = $derived(!edit && (kind === 'buy' || kind === 'plan_buy'));
+	const withReview = $derived(!edit && kind === 'sell');
+	const planKinds = $derived<PlanKind[]>([...(modelVariant ? (['model'] as const) : []), ...(hypothesisId ? (['hypothesis'] as const) : []), 'own', 'spec']);
+	let tplan = $state<PlanDraft>(newDraft('own', israelDate()));
+	let exitReason = $state<string | null>(null);
+	let followed = $state<boolean | null>(null);
+	const EXIT_REASONS: [string, string, string][] = [
+		['stop', 'Стоп', 'Stop'],
+		['target', 'Цель', 'Target'],
+		['model', 'По модели', 'By the model'],
+		['thesis_broken', 'Тезис сломан', 'Thesis broken'],
+		['changed_mind', 'Передумал', 'Changed my mind']
+	];
+	let rules = $state<{ id: number; text: string }[]>([]);
 	const plan = $derived(kind === 'plan_buy' || kind === 'plan_sell');
 	const unitLabel = $derived(sec ? (sec.priceUnit === 'ILA' ? tx('агорот', 'agorot') : sec.currency === 'USD' ? '$' : '₪') : '');
 
@@ -70,7 +93,7 @@
 		quoteDate = r.date;
 		fxUsd = r.fxUsd;
 		// the price follows the date until the person types their own
-		if ((trade || kind === 'plan_buy') && kind !== 'basis' && r.close !== null && !priceTouched) price = String(r.close);
+		if ((trade || kind === 'plan_buy') && kind !== 'basis' && r.close !== null && !priceTouched) price = String(Math.round(r.close * 10000) / 10000);
 	}
 	let priceTouched = false;
 
@@ -92,6 +115,23 @@
 
 	onMount(async () => {
 		if (initialNote && !edit) note = initialNote;
+		if (withPlan) {
+			tplan = newDraft(modelVariant ? 'model' : hypothesisId ? 'hypothesis' : 'own', israelDate());
+			fetch('/api/rules').then((r) => r.json()).then((j) => (rules = j.items ?? [])).catch(() => {});
+			if (existingPlan) {
+				const t = (x: number | null) => (x === null ? '' : String(x));
+				tplan = { ...tplan, kind: planKinds.includes(existingPlan.kind) ? existingPlan.kind : tplan.kind, thesis: existingPlan.thesis ?? '', wrongIf: existingPlan.wrongIf ?? '', stop: t(existingPlan.stop), stopPct: existingPlan.stop === null, target: t(existingPlan.target), targetPct: existingPlan.target === null, reviewDate: existingPlan.reviewDate ?? tplan.reviewDate, noStop: !!existingPlan.noStopReason, noStopReason: existingPlan.noStopReason ?? '' };
+			} else if (hypothesisId) {
+				const h = await fetch(`/api/hypotheses/${hypothesisId}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+				if (h && !tplan.thesis) {
+					tplan.thesis = h.thesis ?? '';
+					tplan.wrongIf = h.invalidation ?? '';
+					if (h.horizonDate) tplan.reviewDate = h.horizonDate;
+				}
+			} else if (modelVariant && !tplan.thesis) {
+				tplan.thesis = tx(`Квартальная модель, вариант ${modelVariant}: сезонно сильный квартал — держу до конца квартала`, `Quarterly model, variant ${modelVariant}: a seasonally strong quarter — held to the quarter's end`);
+			}
+		}
 		if (edit) {
 			const t = (x: number | null | undefined) => (x === null || x === undefined ? '' : String(x));
 			date = edit.date;
@@ -142,6 +182,9 @@
 			note,
 			hypothesisId: edit ? undefined : hypothesisId,
 			modelVariant: edit ? undefined : (modelVariant ?? undefined),
+			plan: withPlan ? planBody(tplan, n(price)) : undefined,
+			review: withReview ? { reason: exitReason, followed } : undefined,
+			discipline: edit ? undefined : true,
 			confirm
 		};
 		try {
@@ -175,6 +218,15 @@
 </script>
 
 <div class="form">
+	{#if withPlan && rules.length}
+		<Fold key="buy-rules" title={tx('Мои правила', 'My rules')} open={false} summary={tx(`${rules.length} — пробеги глазами перед покупкой`, `${rules.length} — glance over them before buying`)}>
+			{#snippet aside()}<HelpIcon topicKey="trade.rules" label={tx('мои правила', 'my rules')} />{/snippet}
+			<ol class="rules">
+				{#each rules as r (r.id)}<li>{r.text}</li>{/each}
+			</ol>
+			<a class="small" href="/rules">{tx('Изменить', 'Edit')}</a>
+		</Fold>
+	{/if}
 	{#if !sec}
 		<TickerSearch onselect={picked} noIndex withManual label={tx('Бумага', 'Security')} autofocus />
 	{:else}
@@ -243,6 +295,39 @@
 			</div>
 			{#if errors.price}<em class="err">{errors.price}</em>{/if}
 			{#if !edit}<p class="muted small">{tx('История не меняется: цена покупки запишется отдельным событием, прибыль будет считаться от неё, а не с даты переноса.', 'History does not change: the purchase price is recorded as a separate event, and profit counts from it, not from the carry-over date.')}</p>{/if}
+		{/if}
+
+		{#if withPlan}
+			<TradePlan
+				bind:plan={tplan}
+				kinds={planKinds}
+				entry={n(price)}
+				qty={kind === 'buy' ? n(qty) : n(amount) && n(price) ? n(amount)! / (n(price)! * unitFactor(sec.priceUnit)) : null}
+				priceUnit={sec.priceUnit}
+				currency={sec.currency}
+				{portfolioCurrency}
+				{portfolioValue}
+				{fxUsd}
+				{errors}
+			/>
+		{/if}
+
+		{#if withReview}
+			<div class="review">
+				<span class="lbl">{tx('Причина выхода', 'Reason for the exit')} <HelpIcon topicKey="trade.review" label={tx('разбор при продаже', 'review at the sale')} /></span>
+				<div class="chips">
+					{#each EXIT_REASONS as [k, ru, en] (k)}
+						<button type="button" class:on={exitReason === k} aria-pressed={exitReason === k} onclick={() => (exitReason = k)}>{tx(ru, en)}</button>
+					{/each}
+				</div>
+				{#if errors.exitReason}<em class="err">{errors.exitReason}</em>{/if}
+				<span class="lbl">{tx('Правило соблюдено?', 'Was the rule kept?')}</span>
+				<div class="chips">
+					<button type="button" class:on={followed === true} aria-pressed={followed === true} onclick={() => (followed = true)}>{tx('Да', 'Yes')}</button>
+					<button type="button" class:on={followed === false} aria-pressed={followed === false} onclick={() => (followed = false)}>{tx('Нет', 'No')}</button>
+				</div>
+				{#if errors.followed}<em class="err">{errors.followed}</em>{/if}
+			</div>
 		{/if}
 
 		<label>
@@ -380,6 +465,43 @@
 	.small {
 		font-size: var(--fs-s);
 		margin: 0;
+	}
+	.review {
+		display: flex;
+		flex-direction: column;
+		gap: var(--s2);
+	}
+	.lbl {
+		font-size: var(--fs-s);
+		color: var(--muted);
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+	.chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--s1);
+	}
+	.chips button {
+		min-height: 36px;
+		padding: 0 var(--s3);
+		border: 1px solid var(--line);
+		border-radius: var(--r-pill);
+		background: var(--surface);
+		color: var(--text);
+		font-size: var(--fs-s);
+		cursor: pointer;
+	}
+	.chips button.on {
+		border-color: var(--accent);
+		background: var(--accent);
+		color: var(--accent-text);
+	}
+	.rules {
+		margin: 0 0 var(--s2);
+		padding-left: 1.2em;
+		font-size: var(--fs-s);
 	}
 	.risk {
 		margin: 0 0 var(--s2);

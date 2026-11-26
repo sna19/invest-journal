@@ -53,6 +53,9 @@ export interface MonthRow {
 
 export interface TradeRow {
 	positionId: number;
+	/** the purchase (or carry-over) event of the lot and the sale's event */
+	buyId: number;
+	sellId: number;
 	symbol: string;
 	name: string;
 	exchange: string;
@@ -164,6 +167,8 @@ export function portfolioReport(app: Database.Database, market: Database.Databas
 		const sellPrice = (s.proceeds + 0) / f;
 		return {
 			positionId: s.pos.id,
+			buyId: s.buyId,
+			sellId: s.sellId,
 			symbol: s.r.symbol,
 			name: s.r.security_name,
 			exchange: s.r.exchange_code,

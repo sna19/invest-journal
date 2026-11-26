@@ -26,6 +26,7 @@
 	import { israelDate } from '#lib/hypothesis.js';
 	import { CASH_LABEL, money, priceText, qtyText, STAGE_LABEL, STAGES, type Stage } from '#lib/portfolio.js';
 	import { showToast } from '#lib/toast.svelte.js';
+	import TradeSignals from '#lib/TradeSignals.svelte';
 	import LineChart, { colorOf, type Line } from '#lib/charts/LineChart.svelte';
 
 	/**
@@ -495,6 +496,7 @@
 <svelte:head><title>{tx('Портфель', 'Portfolio')} · {tx('Журнал гипотез', 'Hypothesis journal')}</title></svelte:head>
 
 <TopBar title={tx('Портфель', 'Portfolio')} help="portfolio.kinds" />
+{#if current !== null}{#key current}<TradeSignals portfolioId={current} />{/key}{/if}
 <NewsMoves />
 
 {#if list && list.length}
@@ -719,6 +721,8 @@
 			modelVariant={adding.model ?? null}
 			initialNote={adding.note ?? null}
 			lastFee={v.lastFee}
+			portfolioCurrency={v.summary.currency}
+			portfolioValue={v.summary.value}
 			onsaved={(pid) => {
 				adding = null;
 				showToast(tx('Записано', 'Saved'));

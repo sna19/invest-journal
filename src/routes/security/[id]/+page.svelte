@@ -319,7 +319,7 @@
 		loadLev();
 		loadNews();
 		void fetch('/api/shortlist').then((r) => r.json()).then((r) => (picked = (r.items ?? []).some((x: { id: number }) => x.id === Number(page.params.id)))).catch(() => {});
-		void fetch(`/api/stats?ids=${page.params.id}`).then((r) => r.json()).then((r) => ((stats = r.items?.[String(page.params.id)]?.stats ?? null), (statsLoaded = true))).catch(() => (statsLoaded = true));
+		void fetch(`/api/ratios?ids=${page.params.id}`).then((r) => r.json()).then((r) => ((stats = r.items?.[String(page.params.id)]?.stats ?? null), (statsLoaded = true))).catch(() => (statsLoaded = true));
 		void fetch(`/api/risk/labels?each=1&ids=${page.params.id}`)
 			.then((r) => r.json())
 			.then((r) => (riskLabels = r?.items ?? []))
