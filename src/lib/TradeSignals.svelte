@@ -13,6 +13,7 @@
 		flag?: string;
 		order?: boolean;
 		positionId: number;
+		planId: number;
 		portfolioId: number;
 		portfolio: string;
 		symbol: string;
@@ -41,7 +42,7 @@
 	}
 </script>
 
-{#each shown as s (`${s.positionId}|${s.kind}`)}
+{#each shown as s (`${s.positionId}|${s.kind}|${s.planId}`)}
 	<a class="sig" class:stop={s.kind === 'stop' || s.kind === 'model_end' || s.kind === 'no_stop'} href="/position/{s.positionId}">
 		<b>{s.symbol}</b> {text(s)}
 		{#if portfolioId === null}<span class="small">{s.portfolio}</span>{/if}

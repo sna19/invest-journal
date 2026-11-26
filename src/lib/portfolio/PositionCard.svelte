@@ -288,7 +288,7 @@
 
 	{#if v.signals.length && !v.portfolio.auto_source_id}
 		<div class="signals" role="alert">
-			{#each v.signals as s (s.kind)}
+			{#each v.signals as s, i (`${s.kind}|${i}`)}
 				<p><b>{tx(...SIGNAL_TEXT[s.kind])}</b>{#if (s.kind === 'stop' || s.kind === 'target') && s.price !== null} · {priceText(s.price, p.priceUnit)}{/if}</p>
 			{/each}
 			<div class="btns">
