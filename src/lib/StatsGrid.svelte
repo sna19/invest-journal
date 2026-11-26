@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { loc, tx } from './i18n.js';
+	import HelpIcon from './HelpIcon.svelte';
 
 	/**
 	 * A security's ratios (owner's request 26.11.2026), grouped; an empty value is not shown. With `now` (a diary snapshot,
@@ -16,28 +17,10 @@
 	const big = (x: unknown) => (typeof x === 'number' ? (x >= 1e9 ? `${num(x / 1e9, 0)} ${tx('млрд', 'B')}` : `${num(x / 1e6, 0)} ${tx('млн', 'M')}`) : null);
 	const REC: Record<string, [string, string]> = { strong_buy: ['активно покупать', 'strong buy'], buy: ['покупать', 'buy'], hold: ['держать', 'hold'], underperform: ['хуже рынка', 'underperform'], sell: ['продавать', 'sell'] };
 	type F = (x: S) => string | null;
-	const ROWS: { t: string; rows: [string, F][] }[] = $derived([
-		{
-			t: tx('Оценка', 'Valuation'),
-			rows: [
-				['P/E', (x) => num(x.pe)],
-				[tx('P/E прогноз', 'Forward P/E'), (x) => num(x.forwardPe)],
-				['P/S', (x) => num(x.ps)],
-				['P/B', (x) => num(x.pb)],
-				['EV/EBITDA', (x) => num(x.evEbitda)],
-				['PEG', (x) => num(x.peg, 2)]
-			]
-		},
-		{
-			t: tx('Риск', 'Risk'),
-			rows: [
-				[tx('Бета (к рынку)', 'Beta (vs market)'), (x) => num(x.beta, 2)],
-				[tx('Бета за 3 года', '3-year beta'), (x) => num(x.beta3y, 2)],
-				[tx('Шорт, % акций', 'Short, % of float'), (x) => pct(x.shortFloat)]
-			]
-		},
+	const ROWS: { t: string; help: string; rows: [string, F][] }[] = $derived([
 		{
 			t: tx('Качество', 'Quality'),
+			help: 'security.quality',
 			rows: [
 				[tx('Чистая маржа', 'Net margin'), (x) => pct(x.profitMargin)],
 				[tx('Операционная маржа', 'Operating margin'), (x) => pct(x.operatingMargin)],
@@ -50,13 +33,36 @@
 		},
 		{
 			t: tx('Рост (год к году)', 'Growth (year on year)'),
+			help: 'security.growth',
 			rows: [
 				[tx('Выручка', 'Revenue'), (x) => pct(x.revenueGrowth)],
 				[tx('Прибыль', 'Earnings'), (x) => pct(x.earningsGrowth)]
 			]
 		},
 		{
+			t: tx('Оценка', 'Valuation'),
+			help: 'security.valuation',
+			rows: [
+				['P/E', (x) => num(x.pe)],
+				[tx('P/E прогноз', 'Forward P/E'), (x) => num(x.forwardPe)],
+				['P/S', (x) => num(x.ps)],
+				['P/B', (x) => num(x.pb)],
+				['EV/EBITDA', (x) => num(x.evEbitda)],
+				['PEG', (x) => num(x.peg, 2)]
+			]
+		},
+		{
+			t: tx('Риск', 'Risk'),
+			help: 'security.risk',
+			rows: [
+				[tx('Бета (к рынку)', 'Beta (vs market)'), (x) => num(x.beta, 2)],
+				[tx('Бета за 3 года', '3-year beta'), (x) => num(x.beta3y, 2)],
+				[tx('Шорт, % акций', 'Short, % of float'), (x) => pct(x.shortFloat)]
+			]
+		},
+		{
 			t: tx('Доход и владельцы', 'Income and holders'),
+			help: 'security.income',
 			rows: [
 				[tx('Дивидендная доходность', 'Dividend yield'), (x) => pct(x.dividendYield, 2)],
 				[tx('Доля прибыли на дивиденды', 'Payout ratio'), (x) => pct(x.payoutRatio, 0)],
@@ -66,6 +72,7 @@
 		},
 		{
 			t: tx('Аналитики', 'Analysts'),
+			help: 'security.analysts',
 			rows: [
 				[tx('Цель, средняя', 'Mean target'), (x) => num(x.target, 2)],
 				[tx('Цель, разброс', 'Target range'), (x) => (typeof x.targetLow === 'number' && typeof x.targetHigh === 'number' ? `${num(x.targetLow, 0)}–${num(x.targetHigh, 0)}` : null)],
@@ -75,6 +82,7 @@
 		},
 		{
 			t: tx('Фонд', 'Fund'),
+			help: 'security.fund',
 			rows: [
 				[tx('Активы', 'Assets'), (x) => big(x.totalAssets)],
 				[tx('С начала года', 'Year to date'), (x) => pct(x.ytd)],
@@ -83,7 +91,7 @@
 		}
 	]);
 	const groups = $derived(
-		ROWS.map((g) => ({ t: g.t, rows: g.rows.map(([k, f]) => [k, f(s), now ? f(now) : null] as [string, string | null, string | null]).filter((r) => r[1] !== null) as [string, string, string | null][] })).filter((g) => g.rows.length)
+		ROWS.map((g) => ({ t: g.t, help: g.help, rows: g.rows.map(([k, f]) => [k, f(s), now ? f(now) : null] as [string, string | null, string | null]).filter((r) => r[1] !== null) as [string, string, string | null][] })).filter((g) => g.rows.length)
 	);
 </script>
 
@@ -91,7 +99,7 @@
 	{#if now}<div class="r head"><span></span><b>{tx('тогда', 'then')}</b><b>{tx('сейчас', 'now')}</b></div>{/if}
 	{#each groups as g (g.t)}
 		<div class="g">
-			<p class="gt">{g.t}</p>
+			<div class="gt"><span>{g.t}</span> <HelpIcon topicKey={g.help} label={g.t} /></div>
 			{#each g.rows as [k, val, nowVal] (k)}
 				<div class="r"><span>{k}</span><b>{val}</b>{#if now}<b class="now" class:same={nowVal === val}>{nowVal ?? '—'}</b>{/if}</div>
 			{/each}
@@ -107,7 +115,12 @@
 		gap: var(--s3);
 	}
 	.gt {
+		display: flex;
+		align-items: center;
+		gap: 2px;
 		margin: 0 0 4px;
+	}
+	.gt > span {
 		font-size: var(--fs-xs);
 		color: var(--muted);
 		font-weight: 600;

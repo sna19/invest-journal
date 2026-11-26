@@ -1,13 +1,24 @@
-# Ratios
+# Ratios: how to judge a share
 
-The security's ratios from Yahoo, refreshed every three days.
+**What it is.** The security's ratios from Yahoo (updated every three days), by group: quality, growth, valuation, risk, income and holders, analysts; funds have their own. Each group has its «?» with every ratio explained: what it means, which levels are normal, when it matters and where it misleads.
 
-**Valuation** — how much you pay for the company's results. **P/E** — the price to a year's earnings: how many years of earnings the share costs. **Forward P/E** — the same to the expected earnings. **P/S** — the price to revenue: useful when there are no earnings or they jump. **P/B** — to the book value. **EV/EBITDA** — the company's value with its debt to the operating profit. **PEG** — P/E divided by the earnings growth: around 1 — the growth justifies the price. Compare with securities of the same sector, not with the whole market.
+**The idea.** One ratio decides nothing. A cheap share can be cheap for a reason, an expensive one justly expensive. Sense appears when the numbers check each other: a good business (quality) that grows (growth) at a reasonable price (valuation), with a risk you are ready to carry.
 
-**Risk.** **Beta** — how much the security moves with the market on average: 1 — like the market, 2 — twice as much, under 1 — calmer, negative — against the market. **Short** — the share of stock sold betting on a fall.
+**How to use it.** Look in this order:
 
-**Quality.** **Margin** — what part of revenue stays as profit. **ROE** — the profit on the equity. **Debt / equity** — how much debt per unit of equity. **Current ratio** — current assets to a year's liabilities: under 1 — money may run short.
+1. **Quality** — does the company earn, and how steadily: margins, ROE, debt. Weak quality — you can stop here, a low P/E will not save it.
+2. **Growth** — do revenue and earnings grow. Revenue growing without earnings is a warning.
+3. **Valuation** — what is asked for it: P/E, forward P/E, PEG, EV/EBITDA. Compare with shares of the same sector («Compare with») and with the share's own history, not with the market as a whole.
+4. **Risk** — beta and short interest: how hard the share will swing and how many bet against it. This sets the size of the position and the stop (block «Protection»).
+5. **Income and holders** — dividends and who holds the shares.
+6. **Analysts** — last, as a check, not as a reason.
 
-**Growth** — revenue and earnings of the last quarter against the same quarter a year before. **Income** — the dividend yield and the part of earnings paid out. **Analysts** — their mean target and opinion: a reference, not a forecast.
+Write the conclusion in the diary with «To the diary»: the ratios' snapshot is kept, and in half a year you will see «then → now».
 
-For **funds** — the assets and returns. For **TASE** securities the price ratios are hidden: Yahoo divides a price in agorot by results in dollars, and the numbers make no sense.
+**What matters when.** For a mature dividend company — quality, debt, the payout ratio. For a growing tech company — revenue growth, gross margin, P/S and PEG (its P/E is often high or absent). For banks and insurers — P/B and ROE (EV/EBITDA and debt do not apply). For commodity and cyclical companies — EV/EBITDA and debt; a low P/E at the top of the cycle is a trap.
+
+**Reminder.** A good business, growing, a reasonable price, a risk you can carry — all four, not one.
+
+**Trap.** Buying because «the P/E is low» or «analysts say buy», without checking why the market gives that price.
+
+For **TASE** securities the price ratios are hidden: Yahoo divides a price in agorot by results in dollars, and the numbers are meaningless.
