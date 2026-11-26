@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { securitiesForPrices } from './prices.js';
+import { parseAbout, saveAbout } from './about.js';
 
 /**
  * Security profiles (owner's request 19.11.2026: the portfolio's allocation by sector and other measures).
@@ -124,6 +125,8 @@ export async function loadProfiles(
 			if (r.status !== 200 && r.status !== 404) throw new Error(`${r.status}`);
 			const p = r.status === 404 ? parseProfile('{}') : parseProfile(r.body);
 			put.run(sec.id, p.kind, p.sector, p.industry, p.country, p.marketCap, p.capCurrency, p.fundCategory, p.sectorWeights ? JSON.stringify(p.sectorWeights) : null, p.expenseRatio, now.toISOString());
+			// «О компании» comes in the same answer
+			if (r.status === 200) saveAbout(market, sec.id, parseAbout(r.body), now);
 			if (p.kind === 'none') s.none++;
 			else s.updated++;
 		} catch (e) {

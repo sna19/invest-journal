@@ -14,6 +14,7 @@
 	import PositionCard from '#lib/portfolio/PositionCard.svelte';
 	import Feed from '#lib/journal/Feed.svelte';
 	import History from '#lib/journal/History.svelte';
+	import About from '#lib/About.svelte';
 	import DecisionForm from '#lib/journal/DecisionForm.svelte';
 	import TvLink from '#lib/TvLink.svelte';
 	import LineChart, { colorOf, type Line, type Mark } from '#lib/charts/LineChart.svelte';
@@ -506,6 +507,12 @@
 			{#if c.profile.sector}<a class="seclink" href="/sector?sector={c.profile.sector}&country={c.security.exchange === 'TASE' ? 'IL' : 'US'}">{sectorName(c.profile.sector, tx)}</a>{/if}{#if c.profile.industry}{' · '}<a class="seclink" href="/sector?{c.profile.sector ? `sector=${c.profile.sector}&` : ''}industry={encodeURIComponent(c.profile.industry)}&country={c.security.exchange === 'TASE' ? 'IL' : 'US'}">{c.profile.industry}</a>{/if}{[c.profile.capUsd ? `${tx('капитализация', 'market cap')} ${capText(c.profile.capUsd)}` : '', c.profile.country ?? ''].filter(Boolean).map((x) => ` · ${x}`).join('')}
 		</p>
 	{/if}
+
+	<!-- what the company or the fund does (owner 26.11.2026) -->
+	<Fold key="sec-about" title={c.security.type === 'etf' ? tx('О фонде', 'About the fund') : tx('О компании', 'About the company')}>
+		{#snippet aside()}<HelpIcon topicKey="security.about" label={tx('о компании', 'about the company')} />{/snippet}
+		{#key page.params.id}<About securityId={Number(page.params.id)} />{/key}
+	</Fold>
 
 	<Fold key="sec-chart" title={tx('График', 'Chart')} summary={PERIODS.find((p) => p[0] === period)?.[1]}>
 	<div class="periods" role="radiogroup" aria-label={tx('Период', 'Period')}>

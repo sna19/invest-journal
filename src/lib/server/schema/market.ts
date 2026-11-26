@@ -428,3 +428,24 @@ export const securityStats = sqliteTable('ref_security_stats', {
 	data: text().notNull(),
 	fetchedAt: text().notNull()
 });
+
+/**
+ * «О компании» (owner 26.11.2026: «для каждой бумаги — что это за фирма и что она делает»): the business summary of a
+ * company or a fund from Yahoo's profile, its site, staff and seat; the Russian translation is kept with it.
+ */
+export const securityAbout = sqliteTable('ref_security_about', {
+	securityId: integer()
+		.primaryKey()
+		.references(() => securities.id),
+	/** the provider's text, English */
+	summary: text(),
+	/** its translation; null — not translated (yet) */
+	summaryRu: text(),
+	website: text(),
+	employees: integer(),
+	city: text(),
+	country: text(),
+	/** a fund's family: «iShares», «SPDR State Street» */
+	fundFamily: text(),
+	fetchedAt: text().notNull()
+});
