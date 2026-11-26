@@ -11,6 +11,8 @@ import { heldSecurities, loadQuotes, marketsOpen, readSchedule, type QuotesSumma
 import { asUser, currentUserId, forEachUser, listUsers } from './auth.js';
 import { sendSignals } from './push.js';
 import { syncDecisions } from './decisions.js';
+import { momentumIds, momentumSymbols, momentumView, recordMomentum } from './model/momentumService.js';
+import { monthAdd as monthAddJ } from './model/momentum.js';
 import { checkReminders } from './reminders.js';
 import { backupMedia } from './snapshots.js';
 import { backupDir, getApp, getMarket, rawDir } from './db.js';
@@ -370,7 +372,9 @@ export function runMonthlyJob(limit = 2500, sectorLimit = 1500): Promise<Monthly
 		const id = startRun('monthly', 'yahoo');
 		try {
 			const m = getMarket().sqlite;
-			const due = monthlyDue(m, new Date(), limit);
+			// T-017: the country funds, SPY and BIL of every user's momentum come with the monthly bars
+			const extra = momentumIds(m, [...new Set((await forEachUser(() => momentumSymbols([getApp().sqlite]))).flat())]).map((x) => x.id);
+			const due = monthlyDue(m, new Date(), limit, extra);
 			const s = await loadMonthly(m, due, makeFetcher({ retries: 1 }));
 			const check = s.loaded ? checkMonthlyAgainstDaily(m) : null;
 			// the model reads the new prices: the report line, and its next request gets them
@@ -485,6 +489,9 @@ export function logModel() {
 export function runModelJob(now = new Date()) {
 	return single('model', async () => {
 		const out = await forEachUser(() => VARIANTS.map((v) => recordQuarter(getApp().db, getApp().sqlite, getMarket().sqlite, v, now)));
+		// T-017: the country momentum records its month (A and B)
+		const mom = (await forEachUser(() => (['A', 'B'] as const).map((v) => recordMomentum(getApp().db, getApp().sqlite, getMarket().sqlite, v, now)))).flat().filter((r) => r.recorded);
+		if (mom.length) console.log(`momentum: ${mom.map((r) => `${r.variant} ${r.month} ${r.recorded}`).join(', ')}`);
 		const done = out.flat().filter((r) => r.recorded);
 		if (done.length) {
 			const id = startRun('model', 'model');
@@ -695,6 +702,41 @@ export function runPushJob() {
 	});
 }
 
+/** the momentum's numbers in the log (the owner cannot query the NAS): the table, two rebalances' choice with the closes they came from, SPY against its adjclose */
+function logMomentum() {
+	const app = getApp().sqlite;
+	const m = getMarket().sqlite;
+	const t0 = Date.now();
+	const v = momentumView(app, m);
+	if (!v.ready) return console.log(`momentum: no data yet — missing ${v.data.missing.join(', ') || '—'}${v.data.unknown.length ? `; not in the base ${v.data.unknown.join(', ')}` : ''}`);
+	const pct = (x: number | null) => (x === null ? '—' : `${x}%`);
+	console.log(`momentum: window ${v.window.from}…${v.window.to}, check from ${v.window.checkFrom}, ${Date.now() - t0} ms`);
+	for (const r of v.table) console.log(`momentum: ${r.name} 10y cagr ${pct(r.full.cagr)} dd ${pct(r.full.maxDrawdown)} vol ${pct(r.full.vol)} sharpe ${r.full.sharpe} | check cagr ${pct(r.check.cagr)} dd ${pct(r.check.maxDrawdown)} sharpe ${r.check.sharpe} | BIL ${pct(r.safeShare)} turnover ${pct(r.turnover)}`);
+	console.log(`momentum: walk ${v.walk.map((w) => `${w.variant} L${w.lookback} N${w.top} → ${pct(w.cagr)} sharpe ${w.sharpe}`).join(' ; ')} | placebo ${v.placebo.map((p) => `${p.variant} ${p.verdict} ${p.share}%`).join(' ; ')}`);
+	console.log(`momentum: now ${v.current.map((c) => `${c.variant} ${c.month}: ${c.hold.join(', ')} (+${c.in.join(',') || '—'} −${c.out.join(',') || '—'})`).join(' ; ')}`);
+	// the hand check: at two rebalances, the top picks with the two closes their signal is made of
+	const p = v.params;
+	const q = m.prepare(`select p.adj_close as a from market_prices_monthly p join ref_securities s on s.id = p.security_id where s.symbol = ? and s.exchange_code <> 'TASE' and p.month = ?`);
+	for (const month of [monthAddJ(v.lastMonth!, -11), monthAddJ(v.lastMonth!, -5)]) {
+		const end = monthAddJ(month, -1 - p.skip);
+		const start = monthAddJ(end, -p.lookback);
+		const top = p.universe
+			.map((s) => {
+				const a = (q.get(s, start) as { a: number } | undefined)?.a;
+				const b = (q.get(s, end) as { a: number } | undefined)?.a;
+				return a && b ? { s, a, b, r: b / a - 1 } : null;
+			})
+			.filter((x): x is { s: string; a: number; b: number; r: number } => !!x)
+			.sort((x, y) => y.r - x.r)
+			.slice(0, p.top + 1);
+		console.log(`momentum: hand check ${month}: ${start}→${end} ${top.map((x) => `${x.s} ${x.a.toFixed(4)}→${x.b.toFixed(4)} ${(x.r * 100).toFixed(2)}%`).join(' ; ')}`);
+	}
+	const spy = v.curves.SPY;
+	const a0 = (q.get('SPY', monthAddJ(v.window.from!, -1)) as { a: number } | undefined)?.a;
+	const a1 = (q.get('SPY', v.lastMonth) as { a: number } | undefined)?.a;
+	console.log(`momentum: SPY curve ${spy.at(-1)?.value}% vs adjclose ${a0 && a1 ? ((a1 / a0 - 1) * 100).toFixed(2) : '—'}%`);
+}
+
 let started = false;
 const tasks: { stop: () => unknown }[] = [];
 let pricesTask: { stop: () => unknown } | null = null;
@@ -716,6 +758,8 @@ export function stopScheduler() {
 export function startScheduler() {
 	if (started) return;
 	started = true;
+	// T-017: the momentum's report at start — the table and two rebalances' choice for a hand check
+	setTimeout(() => void forEachUser(() => logMomentum()).catch((e) => console.error(`momentum: ${e}`)), 20_000);
 	// T-032: the notes and theses written before the diary move into it once (and stay in step after)
 	void forEachUser(() => syncDecisions(getApp().sqlite, getMarket().sqlite))
 		.then((n) => n.some((x) => x) && console.log(`journal: ${n.reduce((a, b) => a + b, 0)} decisions from earlier purchases`))

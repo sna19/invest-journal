@@ -78,7 +78,7 @@ export interface MonthlySec {
  * The shares (not funds) of the base with a Yahoo symbol, and the benchmarks, that need a load: never loaded,
  * or a newer complete month exists and the last load is older than 20 days (or 7 after an error).
  */
-export function monthlyDue(market: Database.Database, now = new Date(), limit = 100_000): MonthlySec[] {
+export function monthlyDue(market: Database.Database, now = new Date(), limit = 100_000, extraIds: number[] = []): MonthlySec[] {
 	const want = lastCompleteMonth(now);
 	const rows = market
 		.prepare(
@@ -86,15 +86,18 @@ export function monthlyDue(market: Database.Database, now = new Date(), limit = 
 			   from ref_securities s
 			   join ref_provider_symbols p on p.security_id = s.id and p.provider_code = 'yahoo'
 			   left join ops_monthly_loads l on l.security_id = s.id
-			  where (s.type = 'stock' and s.active = 1 and s.manual = 0) or s.is_benchmark = 1
+			  where (s.type = 'stock' and s.active = 1 and s.manual = 0) or s.is_benchmark = 1${extraIds.length ? ` or s.id in (${extraIds.map(Number).join(',')})` : ''}
 			  order by l.fetched_at is not null, l.fetched_at, s.id`
 		)
 		.all() as (MonthlySec & { at: string | null; status: string | null; last: string | null })[];
 	const DAY = 86_400_000;
+	const extra = new Set(extraIds);
 	return rows
 		.filter((r) => {
 			if (!r.at) return true;
 			const age = now.getTime() - Date.parse(r.at);
+			// T-017: the momentum rebalances on the month's first days — its funds need the closed month at once
+			if (extra.has(r.id) && r.status !== 'none' && (r.last ?? '') < want) return age > DAY / 3;
 			if (r.status === 'error') return age > 7 * DAY;
 			if (r.status === 'none') return age > 30 * DAY;
 			return (r.last ?? '') < want && age > 20 * DAY;

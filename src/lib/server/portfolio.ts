@@ -29,6 +29,7 @@ import { fxOn } from './market/boi.js';
 import { readQuotes } from './market/quotes.js';
 import { checkPlan, checkReview, insertPlan, insertReview, planOf, signals, type PlanInput } from './discipline.js';
 import { buyForSale, positionDecisions } from './decisions.js';
+import { readMParams } from './model/momentumService.js';
 import { composition } from './portfolioRisk.js';
 
 /**
@@ -1117,6 +1118,11 @@ function autoRules(app: Database.Database, sourceId: number): AutoRules {
 	if (src?.kind !== 'model') return none;
 	const v = app.prepare('select variant from model_versions where source_id = ? order by id desc limit 1').get(sourceId) as { variant: string } | undefined;
 	if (!v) return none;
+	// T-017: the country momentum (MA, MB) has its own costs
+	if (v.variant.startsWith('M')) {
+		const m = readMParams(app);
+		return { model: true, modes: [1], commissionPct: m.commissionPct, commissionMinUsd: 0, taxPct: m.taxPct };
+	}
 	const p = readParams(app, v.variant as Variant);
 	return { model: true, modes: v.variant === 'C' ? [1, 0] : [1], commissionPct: p.commissionPct, commissionMinUsd: p.commissionMinUsd, taxPct: p.taxPct };
 }
