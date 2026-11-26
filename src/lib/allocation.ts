@@ -13,6 +13,9 @@ export interface AllocProfile {
 	capUsd: number | null;
 	fundCategory: string | null;
 	sectorWeights: Record<string, number> | null;
+	/** T-016: a fund's countries and industries looked through */
+	countryWeights?: Record<string, number> | null;
+	industryWeights?: Record<string, number> | null;
 }
 
 export interface AllocPosition {
@@ -73,7 +76,36 @@ const COUNTRIES: Record<string, string> = {
 	Luxembourg: 'Люксембург',
 	Denmark: 'Дания',
 	Sweden: 'Швеция',
-	Cyprus: 'Кипр'
+	Cyprus: 'Кипр',
+	Poland: 'Польша',
+	Spain: 'Испания',
+	'Hong Kong': 'Гонконг',
+	Peru: 'Перу',
+	Brazil: 'Бразилия',
+	Mexico: 'Мексика',
+	Australia: 'Австралия',
+	Italy: 'Италия',
+	Turkey: 'Турция',
+	'South Africa': 'ЮАР',
+	Chile: 'Чили',
+	Argentina: 'Аргентина',
+	Vietnam: 'Вьетнам',
+	Thailand: 'Таиланд',
+	Indonesia: 'Индонезия',
+	Singapore: 'Сингапур',
+	Malaysia: 'Малайзия',
+	'Saudi Arabia': 'Саудовская Аравия',
+	Greece: 'Греция',
+	Austria: 'Австрия',
+	Belgium: 'Бельгия',
+	Norway: 'Норвегия',
+	Finland: 'Финляндия',
+	'New Zealand': 'Новая Зеландия',
+	Philippines: 'Филиппины',
+	Qatar: 'Катар',
+	'United Arab Emirates': 'ОАЭ',
+	Kuwait: 'Кувейт',
+	Colombia: 'Колумбия'
 };
 
 export interface AllocRow {
@@ -103,6 +135,15 @@ export function allocate(metric: Metric, positions: AllocPosition[], cash: numbe
 	const FUNDS = ['funds', t('Фонды (ETF)', 'Funds (ETF)')] as const;
 	const isFund = (p: AllocPosition) => p.profile?.kind === 'etf' || (p.profile?.kind !== 'stock' && p.profile?.type === 'etf');
 	let unknown = 0;
+	/** a fund split by its weights; what they leave out — «прочее в фондах» */
+	const spread = (value: number, w: Record<string, number>, key: (k: string) => [string, string]) => {
+		let used = 0;
+		for (const [k, x] of Object.entries(w)) {
+			add(...key(k), value * x);
+			used += x;
+		}
+		if (used < 0.995) add('other', t('Прочее в фондах', 'Other in funds'), value * (1 - used), true);
+	};
 
 	for (const p of held) {
 		const pr = p.profile;
@@ -133,7 +174,8 @@ export function allocate(metric: Metric, positions: AllocPosition[], cash: numbe
 				break;
 			}
 			case 'industry':
-				if (isFund(p)) add(...FUNDS, p.valuePc, true);
+				if (isFund(p) && pr?.industryWeights) spread(p.valuePc, pr.industryWeights, (k) => [`i:${k}`, k]);
+				else if (isFund(p)) add(...FUNDS, p.valuePc, true);
 				else if (pr?.industry) add(`i:${pr.industry}`, pr.industry, p.valuePc);
 				else {
 					add(...NO, p.valuePc, true);
@@ -141,7 +183,8 @@ export function allocate(metric: Metric, positions: AllocPosition[], cash: numbe
 				}
 				break;
 			case 'country':
-				if (isFund(p)) add(...FUNDS, p.valuePc, true);
+				if (isFund(p) && pr?.countryWeights) spread(p.valuePc, pr.countryWeights, (k) => [`c:${k}`, t(COUNTRIES[k] ?? k, k)]);
+				else if (isFund(p)) add(...FUNDS, p.valuePc, true);
 				else if (pr?.country) add(`c:${pr.country}`, t(COUNTRIES[pr.country] ?? pr.country, pr.country), p.valuePc);
 				else {
 					add(...NO, p.valuePc, true);

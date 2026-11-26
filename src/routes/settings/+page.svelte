@@ -65,6 +65,14 @@
 	}
 
 	let data = $state<Data | null>(null);
+	// T-016: the risk limits
+	let limits = $state<{ industryPct: number; specPct: number; specLossPct: number; employer: string | null; industry: string | null } | null>(null);
+	async function saveLimits() {
+		if (!limits) return;
+		const r = await fetch('/api/limits', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ industryPct: limits.industryPct, specPct: limits.specPct, specLossPct: limits.specLossPct }) });
+		const j = await r.json().catch(() => ({}));
+		if (!r.ok) problem = tl(j.message) || tx('Не сохранилось', 'Not saved');
+	}
 	let problem = $state<string | undefined>();
 	let poll: ReturnType<typeof setInterval> | undefined;
 
@@ -90,6 +98,7 @@
 		poll = setInterval(load, 3000);
 	}
 	onMount(async () => {
+		void fetch('/api/limits').then((r) => r.json()).then((j) => (limits = j)).catch(() => {});
 		await load();
 		// a load still running (the monthly prices take an hour): follow it
 		if (data?.running.length) poll = setInterval(load, 3000);
@@ -161,6 +170,18 @@
 <Fold key="settings-push" title={tx('Уведомления', 'Notifications')} summary={tx('сигналы стопа, цели и пересмотра', 'stop, target and review signals')}>
 	{#snippet aside()}<HelpIcon topicKey="trade.notify" label={tx('уведомления', 'notifications')} />{/snippet}
 	<PushSettings />
+</Fold>
+
+<Fold key="settings-limits" title={tx('Лимиты риска', 'Risk limits')} summary={limits ? tx(`отрасль работы ${limits.industryPct}% · спекуляции ${limits.specPct}%`, `job industry ${limits.industryPct}% · speculation ${limits.specPct}%`) : undefined}>
+	{#snippet aside()}<HelpIcon topicKey="portfolio.work_risk" label={tx('лимиты', 'limits')} />{/snippet}
+	{#if limits}
+		<p class="muted small">{limits.employer ? tx(`Работодатель — ${limits.employer}, отрасль — ${limits.industry ?? 'неизвестна'} (задаётся на экране «Риск»).`, `Employer — ${limits.employer}, industry — ${limits.industry ?? 'unknown'} (set on «Risk»).`) : tx('Работодатель не задан — экран «Риск», поле «Работодатель».', 'No employer set — the «Risk» screen, «Employer».')}</p>
+		<div class="lims">
+			<label>{tx('Доля отрасли работы, % портфеля', 'The job\'s industry, % of the portfolio')}<input inputmode="decimal" bind:value={limits.industryPct} onchange={saveLimits} /></label>
+			<label>{tx('Бюджет спекуляций, % портфеля', 'Speculation budget, % of the portfolio')}<input inputmode="decimal" bind:value={limits.specPct} onchange={saveLimits} /></label>
+			<label>{tx('Допустимый убыток по спекуляциям, % портфеля', 'Allowed speculation loss, % of the portfolio')}<input inputmode="decimal" bind:value={limits.specLossPct} onchange={saveLimits} /><HelpIcon topicKey="portfolio.speculation" label={tx('спекуляции', 'speculation')} /></label>
+		</div>
+	{/if}
 </Fold>
 
 <Fold key="settings-bench" title={tx('Бенчмарки и пороги', 'Benchmarks and thresholds')} summary={tx('S&P 500 · ТА-125', 'S&P 500 · TA-125')}>
@@ -501,5 +522,27 @@
 		height: 160px;
 		border-radius: var(--r2);
 		background: var(--surface-2);
+	}
+	.lims {
+		display: flex;
+		flex-direction: column;
+		gap: var(--s2);
+	}
+	.lims label {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		justify-content: space-between;
+		font-size: var(--fs-s);
+	}
+	.lims input {
+		width: 72px;
+		min-height: 36px;
+		border: 1px solid var(--line);
+		border-radius: var(--r1);
+		background: var(--surface);
+		color: var(--text);
+		text-align: right;
+		font: inherit;
 	}
 </style>

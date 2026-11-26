@@ -1,0 +1,1 @@
+ALTER TABLE `ref_security_profiles` ADD `holdings` text;

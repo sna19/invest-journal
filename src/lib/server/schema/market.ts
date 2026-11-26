@@ -284,6 +284,8 @@ export const securityProfiles = sqliteTable('ref_security_profiles', {
 	sectorWeights: text(),
 	/** a fund's annual fee (expense ratio), a fraction: 0.0105 = 1.05% a year */
 	expenseRatio: real(),
+	/** T-016: a fund's top holdings, JSON [{ symbol, name, weight }] — the look-through to industries and countries */
+	holdings: text(),
 	fetchedAt: text().notNull()
 });
 

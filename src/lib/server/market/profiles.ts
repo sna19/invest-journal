@@ -26,6 +26,8 @@ export interface Profile {
 	sectorWeights: Record<string, number> | null;
 	/** a fund's annual fee, a fraction */
 	expenseRatio: number | null;
+	/** T-016: a fund's top holdings (Yahoo gives ten) */
+	holdings?: { symbol: string; name: string; weight: number }[] | null;
 }
 
 const num = (x: unknown) => (typeof x === 'object' && x && typeof (x as { raw?: unknown }).raw === 'number' ? (x as { raw: number }).raw : null);
@@ -46,7 +48,10 @@ export function parseProfile(body: string): Profile {
 		}
 		const fees = r.fundProfile?.feesExpensesInvestment ?? {};
 		const er = num(fees.annualReportExpenseRatio) ?? num(fees.netExpRatio) ?? num(r.summaryDetail?.expenseRatio);
-		return { ...none, kind: 'etf', fundCategory: r.fundProfile?.categoryName ?? null, sectorWeights: Object.keys(w).length ? w : null, expenseRatio: er !== null && er >= 0 && er < 0.2 ? er : null };
+		const holdings = ((r.topHoldings?.holdings ?? []) as { symbol?: string; holdingName?: string; holdingPercent?: unknown }[])
+			.map((h) => ({ symbol: String(h.symbol ?? ''), name: String(h.holdingName ?? ''), weight: num(h.holdingPercent) ?? 0 }))
+			.filter((h) => h.symbol && h.weight > 0);
+		return { ...none, kind: 'etf', fundCategory: r.fundProfile?.categoryName ?? null, sectorWeights: Object.keys(w).length ? w : null, expenseRatio: er !== null && er >= 0 && er < 0.2 ? er : null, holdings: holdings.length ? holdings : null };
 	}
 	if (!a.sector && !a.industry && !num(r.price?.marketCap)) return none;
 	return {
@@ -112,11 +117,11 @@ export async function loadProfiles(
 	if (!secs.length) return s;
 	const { cookie, crumb } = await session(get);
 	const put = market.prepare(
-		`insert into ref_security_profiles (security_id, kind, sector, industry, country, market_cap, cap_currency, fund_category, sector_weights, expense_ratio, fetched_at)
-		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`insert into ref_security_profiles (security_id, kind, sector, industry, country, market_cap, cap_currency, fund_category, sector_weights, expense_ratio, holdings, fetched_at)
+		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 on conflict (security_id) do update set kind = excluded.kind, sector = excluded.sector, industry = excluded.industry, country = excluded.country,
 		   market_cap = excluded.market_cap, cap_currency = excluded.cap_currency, fund_category = excluded.fund_category,
-		   sector_weights = excluded.sector_weights, expense_ratio = excluded.expense_ratio, fetched_at = excluded.fetched_at`
+		   sector_weights = excluded.sector_weights, expense_ratio = excluded.expense_ratio, holdings = excluded.holdings, fetched_at = excluded.fetched_at`
 	);
 	for (const sec of secs) {
 		try {
@@ -124,7 +129,7 @@ export async function loadProfiles(
 			const r = await get(url, cookie);
 			if (r.status !== 200 && r.status !== 404) throw new Error(`${r.status}`);
 			const p = r.status === 404 ? parseProfile('{}') : parseProfile(r.body);
-			put.run(sec.id, p.kind, p.sector, p.industry, p.country, p.marketCap, p.capCurrency, p.fundCategory, p.sectorWeights ? JSON.stringify(p.sectorWeights) : null, p.expenseRatio, now.toISOString());
+			put.run(sec.id, p.kind, p.sector, p.industry, p.country, p.marketCap, p.capCurrency, p.fundCategory, p.sectorWeights ? JSON.stringify(p.sectorWeights) : null, p.expenseRatio, p.holdings ? JSON.stringify(p.holdings) : null, now.toISOString());
 			// «О компании» comes in the same answer
 			if (r.status === 200) saveAbout(market, sec.id, parseAbout(r.body), now);
 			if (p.kind === 'none') s.none++;
@@ -149,6 +154,11 @@ export interface ProfileView {
 	capUsd: number | null;
 	fundCategory: string | null;
 	sectorWeights: Record<string, number> | null;
+	/** T-016: a fund's countries and industries, looked through (by hand, by rule, by its top holdings) */
+	countryWeights?: Record<string, number> | null;
+	industryWeights?: Record<string, number> | null;
+	/** where each comes from: manual | rule | yahoo | holdings */
+	compositionSource?: { sector: string | null; country: string | null; industry: string | null };
 }
 
 /** profiles of `ids` for the portfolio screen; `usdIls` brings a shekel market cap to dollars */

@@ -648,3 +648,36 @@ export const snapshots = sqliteTable(
 	},
 	(t) => [index('snapshots_entry').on(t.entryId)]
 );
+
+/** T-016: a fund's composition set by hand — over what the provider gives (MAGS holds its shares through swaps) */
+export const fundOverrides = sqliteTable(
+	'fund_overrides',
+	{
+		securityId: integer().notNull(),
+		/** sector | country | industry */
+		kind: text().notNull(),
+		/** JSON { key: weight }, weights as fractions */
+		weights: text().notNull(),
+		updatedAt: now()
+	},
+	(t) => [primaryKey({ columns: [t.securityId, t.kind] })]
+);
+
+/** T-016 «Разбор позиций»: three answers per open position, kept with their date — a history, not a field */
+export const positionReviews = sqliteTable(
+	'position_reviews',
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		positionId: integer()
+			.notNull()
+			.references(() => positions.id),
+		date: text().notNull(),
+		thesis: text(),
+		/** «купил бы сегодня по этой цене?» 1 — yes, 0 — no */
+		wouldBuy: integer().notNull(),
+		exitCondition: text(),
+		entryId: integer(),
+		createdAt: now()
+	},
+	(t) => [index('position_reviews_position').on(t.positionId)]
+);

@@ -29,6 +29,7 @@
 	import TradeSignals from '#lib/TradeSignals.svelte';
 	import Feed from '#lib/journal/Feed.svelte';
 	import ToJournal from '#lib/journal/ToJournal.svelte';
+	import RiskReview from '#lib/portfolio/RiskReview.svelte';
 	import { setScreenLinks } from '#lib/journal/screen.svelte.js';
 	import LineChart, { colorOf, type Line } from '#lib/charts/LineChart.svelte';
 
@@ -658,6 +659,7 @@
 	{/if}
 
 
+	{#if v.portfolio.kind === 'real' && !v.portfolio.auto_source_id}{#key v.portfolio.id}<RiskReview portfolioId={v.portfolio.id} currency={v.summary.currency} />{/key}{/if}
 	<div class="tojournal">
 		<ToJournal
 			links={[{ type: 'portfolio', id: String(v.portfolio.id), label: v.portfolio.name }]}

@@ -101,6 +101,7 @@
 		reviews: Record<string, { reason: string; followed: number }>;
 		signals: { kind: 'stop' | 'target' | 'review' | 'model_end'; price: number | null; priceDate: string | null }[];
 		decisions: { id: number; type: string; basis: string; noReason: number; outcome: string | null }[];
+		review: { date: string; wouldBuy: number; thesis: string | null; exitCondition: string | null } | null;
 		buyForSale: { id: number; type: string; basis: string; expectation: string | null; createdAt: string; html: string } | null;
 	}
 
@@ -219,7 +220,7 @@
 	{@const p = v.position}
 	{#if compact}
 		<h2 class="mytitle">{tx('Моя позиция', 'My position')} · {v.portfolio.name}<HelpIcon topicKey="security.position" label={tx('моя позиция', 'my position')} /></h2>
-		<p class="name"><b>{STAGE_LABEL[p.stage]}</b><HelpIcon topicKey="portfolio.stages" label={tx('этапы позиции', 'position stages')} /></p>
+		<p class="name">{#if v.review?.wouldBuy === 0 && p.qty > 0}<span class="nostop">{tx('держу без тезиса', 'held without a thesis')}</span>{/if}<b>{STAGE_LABEL[p.stage]}</b><HelpIcon topicKey="portfolio.stages" label={tx('этапы позиции', 'position stages')} /></p>
 	{:else}
 	<p class="name">{p.name} · {p.exchange.replace('_', ' ')} · <a href="/security/{p.securityId}">{tx('график', 'chart')}</a> <TvLink exchange={p.exchange} symbol={p.symbol} /> · <b>{STAGE_LABEL[p.stage]}</b><HelpIcon topicKey="portfolio.stages" label={tx('этапы позиции', 'position stages')} /></p>
 	{/if}

@@ -63,6 +63,7 @@
 	let price = $state('');
 	let fee = $state('');
 	let amount = $state('');
+	const amount_ = $derived(amount);
 	let note = $state('');
 	let quoteDate = $state<string | null>(null);
 	let fxUsd = $state<number | null>(null);
@@ -88,6 +89,21 @@
 		['changed_mind', 'Передумал', 'Changed my mind']
 	];
 	let rules = $state<{ id: number; text: string }[]>([]);
+	// T-016: a purchase that takes the job's industry over its limit or the speculation over its budget — warned, not refused
+	let limitWarns = $state<string[]>([]);
+	let checkTimer: ReturnType<typeof setTimeout> | undefined;
+	$effect(() => {
+		const amount = kind === 'buy' ? total : kind === 'plan_buy' ? (n(amount_) ?? (n(qty) && n(price) && sec ? n(qty)! * n(price)! * unitFactor(sec.priceUnit) : null)) : null;
+		const k = tplan.kind;
+		clearTimeout(checkTimer);
+		if (!withPlan || !sec || !amount) return void (limitWarns = []);
+		const toPc = sec.currency === portfolioCurrency ? 1 : fxUsd ? (sec.currency === 'USD' ? fxUsd : 1 / fxUsd) : 1;
+		const sid = sec.id;
+		checkTimer = setTimeout(async () => {
+			const r = await fetch(`/api/portfolios/${portfolioId}/check?security=${sid}&amount=${Math.round(amount * toPc)}&kind=${k}`).then((x) => x.json()).catch(() => null);
+			limitWarns = (r?.items ?? []).map((x: { text: string }) => x.text);
+		}, 400);
+	});
 	// T-032 11б: the decision of a purchase or a sale — its basis (by default from the trade's kind or the purchase), the
 	// sale's «Почему», «Сбылось?» and the conclusion
 	let basisPicked = $state('');
@@ -334,6 +350,7 @@
 			{#if kind === 'buy'}<BasisPicker bind:basis={() => basis, (v) => (basisPicked = v)} />{/if}
 		{/if}
 
+		{#each limitWarns as w (w)}<p class="warnbox" role="status">{w}</p>{/each}
 		{#if withReview}
 			<div class="review">
 				<span class="lbl">{tx('Почему продаю', 'Why I sell')} <HelpIcon topicKey="decision.basis" label={tx('решение', 'decision')} /></span>

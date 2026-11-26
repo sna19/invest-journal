@@ -29,6 +29,7 @@ import { fxOn } from './market/boi.js';
 import { readQuotes } from './market/quotes.js';
 import { checkPlan, checkReview, insertPlan, insertReview, planOf, signals, type PlanInput } from './discipline.js';
 import { buyForSale, positionDecisions } from './decisions.js';
+import { composition } from './portfolioRisk.js';
 
 /**
  * Spec section 18 — portfolios on the server: events in, positions and returns out. Plain SQL on both files:
@@ -504,7 +505,14 @@ export function portfolioView(app: Database.Database, market: Database.Database,
 	for (const x of positions) x.weight = value > EPS ? (x.valuePc / value) * 100 : 0;
 	// what each security is — sector, industry, country, size, a fund's sector weights (the allocation block)
 	const profiles = readProfiles(market, [...new Set(positions.map((x) => x.securityId))], m.usd(today));
-	for (const x of positions) x.profile = profiles.get(x.securityId) ?? null;
+	for (const x of positions) {
+		const pr = profiles.get(x.securityId) ?? null;
+		// T-016: a fund is looked through — its sectors (the hand-set ones first), countries and industries
+		if (pr && (pr.kind === 'etf' || (pr.kind !== 'stock' && pr.type === 'etf'))) {
+			const c = composition(app, market, x.securityId);
+			x.profile = { ...pr, sectorWeights: c.sectors, countryWeights: c.countries, industryWeights: c.industries, compositionSource: c.source };
+		} else x.profile = pr;
+	}
 
 	// the last buy or sell fee in this portfolio, per currency — the form starts from it
 	const lastFee: Record<string, number> = {};
@@ -620,6 +628,8 @@ export function positionView(app: Database.Database, market: Database.Database, 
 		reviews,
 		// T-032 11б: the position's decisions and the purchase a sale answers (Д-18)
 		decisions: positionDecisions(app, id).filter((d) => !d.cancelledAt),
+		// T-016: the latest «Разбор позиций» answer — «нет» marks «держу без тезиса»
+		review: (app.prepare('select date, would_buy as wouldBuy, thesis, exit_condition as exitCondition from position_reviews where position_id = ? order by id desc limit 1').get(id) as { date: string; wouldBuy: number; thesis: string | null; exitCondition: string | null } | undefined) ?? null,
 		buyForSale: buyForSale(app, id),
 		signals: signals(app, market, today).filter((s) => s.positionId === id),
 		portfolioValue: view.summary.value,

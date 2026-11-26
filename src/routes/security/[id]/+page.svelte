@@ -15,6 +15,7 @@
 	import Feed from '#lib/journal/Feed.svelte';
 	import History from '#lib/journal/History.svelte';
 	import About from '#lib/About.svelte';
+	import FundComposition from '#lib/FundComposition.svelte';
 	import ToJournal from '#lib/journal/ToJournal.svelte';
 	import DecisionForm from '#lib/journal/DecisionForm.svelte';
 	import TvLink from '#lib/TvLink.svelte';
@@ -515,6 +516,13 @@
 		{#key page.params.id}<About securityId={Number(page.params.id)} />{/key}
 	</Fold>
 
+	{#if c.security.type === 'etf'}
+		<!-- T-016: what the fund is made of — sectors, countries, industries, top holdings; editable -->
+		<Fold key="sec-fund" title={tx('Состав фонда', 'Fund composition')} open={false}>
+			{#snippet aside()}<HelpIcon topicKey="portfolio.exposure" label={tx('состав фонда', 'fund composition')} />{/snippet}
+			{#key page.params.id}<FundComposition securityId={Number(page.params.id)} />{/key}
+		</Fold>
+	{/if}
 	<Fold key="sec-chart" title={tx('График', 'Chart')} summary={PERIODS.find((p) => p[0] === period)?.[1]}>
 	<div class="periods" role="radiogroup" aria-label={tx('Период', 'Period')}>
 		{#each PERIODS as [k, ru, en] (k)}
