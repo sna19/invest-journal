@@ -852,7 +852,8 @@ export function startScheduler() {
 						if (!r) continue;
 						const v = securityPath(app, m, r.id)!;
 						const ours = new Map(monthlyReturns(v.months).map((x) => [x.m, x.r]));
-						const y = m.prepare('select month, adj_close as a from market_prices_monthly where security_id = ? order by month').all(r.id) as { month: string; a: number }[];
+						const y = m.prepare('select month, adj_close as a, close as c from market_prices_monthly where security_id = ? order by month').all(r.id) as { month: string; a: number; c: number }[];
+						const divQ = m.prepare(`select group_concat(ex_date || ' ' || amount, ', ') as d from market_corporate_actions where security_id = ? and kind = 'dividend' and substr(ex_date, 1, 7) = ?`);
 						const diffs: string[] = [];
 						let worst = 0;
 						for (let i = 1; i < y.length; i++) {
@@ -860,7 +861,8 @@ export function startScheduler() {
 							if (o === undefined || y[i].month < monthAddP(v.asOf.slice(0, 7), -12) || y[i].month >= v.asOf.slice(0, 7)) continue;
 							const yr = y[i].a / y[i - 1].a - 1;
 							worst = Math.max(worst, Math.abs(o - yr) * 100);
-							diffs.push(`${y[i].month} ${(o * 100).toFixed(2)}/${(yr * 100).toFixed(2)}`);
+							const dv = (divQ.get(r.id, y[i].month) as { d: string | null }).d;
+							diffs.push(`${y[i].month} ${(o * 100).toFixed(2)}/${(yr * 100).toFixed(2)}${dv ? ` (Yahoo close ${((y[i].c / y[i - 1].c - 1) * 100).toFixed(2)}, div ${dv} on close ${y[i - 1].c})` : ''}`);
 						}
 						console.log(`path: months of ${r.symbol} ours/Yahoo adjclose, %: ${diffs.join(' · ')} — the largest gap ${worst.toFixed(2)} pp`);
 					}
