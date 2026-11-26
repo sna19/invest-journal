@@ -89,7 +89,9 @@
 	let loadMs = $state<number | null>(null);
 	let allHyps = $state(false);
 	// T-020: opened from the quarterly model — its block on top, the trade linked to the model
-	const modelVariant = $derived(((['A', 'B', 'C', 'D', 'G'] as const).find((v) => v === page.url.searchParams.get('model')) ?? null) as 'A' | 'B' | 'C' | 'D' | 'G' | null);
+	// T-031: «cA», «cB» — the commodity funds' variants A and B
+	const modelKey = $derived((['A', 'B', 'C', 'D', 'G', 'cA', 'cB'] as const).find((v) => v === page.url.searchParams.get('model')) ?? null);
+	const modelVariant = $derived((modelKey ? modelKey.slice(-1) : null) as 'A' | 'B' | 'C' | 'D' | 'G' | null);
 	let model = $state<ModelBlock | null>(null);
 	let highlight = $state<number | null>(null);
 	async function loadModel() {
@@ -118,7 +120,7 @@
 	const capText = (x: number) => (x >= 1e12 ? `${(x / 1e12).toFixed(1)} ${tx('трлн $', 'T $')}` : x >= 1e9 ? `${Math.round(x / 1e9)} ${tx('млрд $', 'B $')}` : `${Math.round(x / 1e6)} ${tx('млн $', 'M $')}`);
 	const pctText = (x: number | null) => (x === null ? '—' : `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x).toFixed(1)}%`);
 	const maxAbs = $derived(model ? Math.max(5, ...model.price.map((x) => Math.abs(x ?? 0)), ...model.bench.map((x) => Math.abs(x ?? 0))) : 5);
-	const mq = $derived(modelVariant ? `&model=${modelVariant}` : '');
+	const mq = $derived(modelKey ? `&model=${modelKey}` : '');
 
 	// «С чем сравнить» (20.11.2026): the sector, industry and index ETFs, their returns, lines on the chart
 	interface CmpRef {

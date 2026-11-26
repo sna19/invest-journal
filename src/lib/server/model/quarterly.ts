@@ -168,10 +168,14 @@ export interface Series {
 	volume: Float64Array;
 	/** T-013: the months (month index) with an earnings report and with a dividend's ex-date; absent — not loaded */
 	events?: { earnings: Set<number>; dividends: Set<number> };
+	/** T-031: funds of the same thing (GLD and IAU — gold): only one of them is chosen */
+	twin?: string;
 }
 
 export interface Universe {
 	stocks: Series[];
+	/** T-031: the exchange funds with monthly prices (for the commodities' universe), by symbol */
+	funds: Map<string, Series>;
 	bench: { US: Series | null; IL: Series | null };
 	/** the last complete month in the data */
 	lastMonth: number;
@@ -305,6 +309,7 @@ export function loadUniverse(market: Database.Database): Universe {
 		if (e) (kind === 'earnings' ? e.earnings : e.dividends).add(monthIndex(date.slice(0, 7)));
 	}
 	const stocks: Series[] = [];
+	const funds = new Map<string, Series>();
 	let US: Series | null = null;
 	let IL: Series | null = null;
 	for (const m of meta) {
@@ -317,9 +322,9 @@ export function loadUniverse(market: Database.Database): Universe {
 			const e = ev.get(m.id);
 			if (e) s.events = e;
 			stocks.push(s);
-		}
+		} else if (s.market === 'US' && !funds.has(s.symbol)) funds.set(s.symbol, s);
 	}
-	return { stocks, bench: { US, IL }, lastMonth: last, usdIls, builtAt: new Date().toISOString() };
+	return { stocks, funds, bench: { US, IL }, lastMonth: last, usdIls, builtAt: new Date().toISOString() };
 }
 
 // ── the calculation ─────────────────────────────────────────────────────────────
@@ -608,16 +613,23 @@ function pick<T extends { s: Series; score: number }>(list: T[], p: Params): { c
 	const sectors = new Map<string, number>();
 	const markets = new Map<string, number>();
 	const chosen: T[] = [];
+	const twins = new Set<string>();
 	let capped = 0;
 	for (const x of sorted) {
 		if (chosen.length >= p.count) break;
 		const sec = x.s.sector ?? '—';
+		// T-031: one fund of the same thing (GLD or IAU)
+		if (x.s.twin && twins.has(x.s.twin)) {
+			capped++;
+			continue;
+		}
 		if ((sectors.get(sec) ?? 0) >= p.perSector || (markets.get(x.s.market) ?? 0) >= p.perMarket) {
 			capped++;
 			continue;
 		}
 		sectors.set(sec, (sectors.get(sec) ?? 0) + 1);
 		markets.set(x.s.market, (markets.get(x.s.market) ?? 0) + 1);
+		if (x.s.twin) twins.add(x.s.twin);
 		chosen.push(x);
 	}
 	return { chosen, capped };

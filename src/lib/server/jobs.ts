@@ -2,8 +2,8 @@ import cron from 'node-cron';
 import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { israelDate } from '../hypothesis.js';
-import { costRun, laggards, quarterReturn, reasonLabels, seasonalSectors, monthIndex, ownQuarter, monthReturns, smaMonths, trendTable, windowYears, type TrendStats, type Universe, DEFAULTS, dropUniverse, nextQuarter, runModel, universe, universeIds } from './model/quarterly.js';
-import { recordQuarter, VARIANTS } from './model/service.js';
+import { costRun, laggards, quarterReturn, reasonLabels, seasonalSectors, monthIndex, ownQuarter, monthReturns, smaMonths, trendTable, windowYears, type TrendStats, type Universe, DEFAULTS, dropUniverse, nextQuarter, runModel, securityResult, universe, universeIds } from './model/quarterly.js';
+import { POOL_VARIANTS, poolUniverse, readParams, recordQuarter, VARIANTS } from './model/service.js';
 import { checkMonthlyAgainstDaily, loadMonthly, monthlyDue, type MonthlySummary } from './market/monthly.js';
 import { loadProfiles, staleProfiles, type ProfilesSummary } from './market/profiles.js';
 import { eventsDue, loadEvents, type EventsSummary } from './market/events.js';
@@ -15,6 +15,7 @@ import { momentumIds, momentumSymbols, momentumView, recordMomentum } from './mo
 import { monthAdd as monthAddJ } from './model/momentum.js';
 import { checkReminders, signalsBlock } from './reminders.js';
 import { backupMedia } from './snapshots.js';
+import { commoditySymbols, ensureFunds, fundIds } from './model/commodities.js';
 import { flagEntry, flagsFor, portfolioPath, securityPath, updateFlagStates } from './path.js';
 import { monthAdd as monthAddP, monthlyReturns } from '../path.js';
 import { atrOf, barsOf, portfolioProtection, protectionOf, readPParams, recordProtectionDay } from './protection.js';
@@ -378,6 +379,8 @@ export function runMonthlyJob(limit = 2500, sectorLimit = 1500): Promise<Monthly
 			const m = getMarket().sqlite;
 			// T-017: the country funds, SPY and BIL of every user's momentum come with the monthly bars
 			const extra = momentumIds(m, [...new Set((await forEachUser(() => momentumSymbols([getApp().sqlite]))).flat())]).map((x) => x.id);
+			// T-031: and the commodity funds of every user's list
+			extra.push(...fundIds(m, [...new Set((await forEachUser(() => commoditySymbols(getApp().sqlite))).flat())]).map((x) => x.id));
 			const due = monthlyDue(m, new Date(), limit, extra);
 			const s = await loadMonthly(m, due, makeFetcher({ retries: 1 }));
 			const check = s.loaded ? checkMonthlyAgainstDaily(m) : null;
@@ -492,7 +495,11 @@ export function logModel() {
 /** on the first weekday of a quarter each variant of every user records its candidates (model/service.ts) */
 export function runModelJob(now = new Date()) {
 	return single('model', async () => {
-		const out = await forEachUser(() => VARIANTS.map((v) => recordQuarter(getApp().db, getApp().sqlite, getMarket().sqlite, v, now)));
+		const out = await forEachUser(() => [
+			...VARIANTS.map((v) => recordQuarter(getApp().db, getApp().sqlite, getMarket().sqlite, v, now)),
+			// T-031: the commodity funds' variants A and B
+			...POOL_VARIANTS.commodities.map((v) => ({ ...recordQuarter(getApp().db, getApp().sqlite, getMarket().sqlite, v, now, false, 'commodities'), variant: `сырьё ${v}` as never }))
+		]);
 		// T-017: the country momentum records its month (A and B)
 		const mom = (await forEachUser(() => (['A', 'B'] as const).map((v) => recordMomentum(getApp().db, getApp().sqlite, getMarket().sqlite, v, now)))).flat().filter((r) => r.recorded);
 		if (mom.length) console.log(`momentum: ${mom.map((r) => `${r.variant} ${r.month} ${r.recorded}`).join(', ')}`);
@@ -766,6 +773,40 @@ function logProtection() {
 	}
 }
 
+function logCommodities() {
+	const app = getApp().sqlite;
+	const m = getMarket().sqlite;
+	const t0 = Date.now();
+	const pA = readParams(app, 'A', 'commodities');
+	const { u, funds } = poolUniverse(app, m, 'commodities', pA.years);
+	console.log(`commodities: ${u.stocks.length} funds in the universe, market ${u.bench.US?.symbol ?? '—'} · ${(funds ?? []).map((f) => `${f.symbol} ${f.group} ${f.years ?? '—'}y${f.excluded ? ` OUT ${f.excluded}` : ''}`).join(' · ')}`);
+	if (!u.stocks.length) return;
+	for (const v of ['A', 'B'] as const) {
+		const p = readParams(app, v, 'commodities');
+		const rows: string[] = [];
+		for (const q of [1, 2, 3, 4]) {
+			const r = runModel(u, v, q, p);
+			const walk = r.walk.filter((w) => w.pickedMean !== null && w.allMean !== null);
+			rows.push(`Q${q}: passed ${r.passed}, placebo ${r.placebo.mean} (${r.placebo.verdict} ${Math.round(r.placebo.share * 100)}%), walk ${walk.map((w) => `${w.year} ${w.picked} picked ${w.pickedMean}% vs all ${w.allMean}%`).join(', ') || '—'}, candidates ${r.candidates.map((c) => `${c.symbol} ${c.up}/${r.years.length} mean ${c.mean}%`).join(', ') || '—'}`);
+		}
+		console.log(`commodities ${v} (years ${p.years}, K ${p.k}, count ${p.count}): ${rows.join(' | ')}`);
+	}
+	// by hand: Q1 of GLD and UNG each year — the March adjusted close over the December one, straight from the table
+	const q = m.prepare(`select p.adj_close as a from market_prices_monthly p join ref_securities s on s.id = p.security_id where s.symbol = ? and s.exchange_code <> 'TASE' and p.month = ?`);
+	for (const sym of ['GLD', 'UNG']) {
+		const s = u.stocks.find((x) => x.symbol === sym);
+		if (!s) continue;
+		const sr = securityResult(u, s.id, 'A', 1, pA);
+		const hand = (sr?.years ?? []).map((y) => {
+			const a = (q.get(sym, `${y - 1}-12`) as { a: number } | undefined)?.a;
+			const b = (q.get(sym, `${y}-03`) as { a: number } | undefined)?.a;
+			return a && b ? Math.round((b / a - 1) * 10000) / 100 : null;
+		});
+		console.log(`commodities: hand check ${sym} Q1 ${sr?.years.join(',')}: model ${sr?.price.join(' / ')} · hand ${hand.join(' / ')}`);
+	}
+	console.log(`commodities: report in ${Date.now() - t0} ms`);
+}
+
 /** the momentum's numbers in the log (the owner cannot query the NAS): the table, two rebalances' choice with the closes they came from, SPY against its adjclose */
 function logMomentum() {
 	const app = getApp().sqlite;
@@ -870,6 +911,19 @@ export function startScheduler() {
 			)
 			.catch((e) => console.error(`path: ${e}`));
 	}, 60_000);
+	// T-031: the commodities' report — the list with its history, the four quarters of A and B, the candidates, GLD and UNG by hand
+	setTimeout(() => {
+		try {
+			asUser(listUsers()[0]?.id ?? 1, () => {
+				const e = ensureFunds(getMarket().sqlite, commoditySymbols(getApp().sqlite));
+				if (e.missing.length) console.log(`commodities: loading the monthly prices of ${e.missing.join(', ')}`);
+				if (e.promise) void e.promise.then(() => asUser(listUsers()[0]?.id ?? 1, () => logCommodities()));
+				else logCommodities();
+			});
+		} catch (e) {
+			console.error(`commodities: ${e}`);
+		}
+	}, 90_000);
 	// a self-check of the portfolio screen's requests on the real data (the owner saw a 500, 26.11.2026): each one's time or its error
 	setTimeout(() => {
 		void forEachUser(() => {

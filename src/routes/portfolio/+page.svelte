@@ -153,7 +153,7 @@
 		}
 	}
 	let createError = $state<string | null>(null);
-	let adding = $state<{ kind: string; securityId: number | null; hypothesisId: number | null; model?: 'A' | 'B' | 'C' | 'D' | 'G' | null; note?: string | null } | null>(null);
+	let adding = $state<{ kind: string; securityId: number | null; hypothesisId: number | null; model?: 'A' | 'B' | 'C' | 'D' | 'G' | 'cA' | 'cB' | null; note?: string | null } | null>(null);
 	let cashing = $state(false);
 	// deleting a portfolio whole (owner's request): the name is typed back, the app copies the journal first
 	let deleting = $state(false);
@@ -327,7 +327,7 @@
 			const kind = k === 'buy' || k === 'watch' ? k : 'plan_buy';
 			// T-020: from a model's candidate card — the trade is linked to the model and its version
 			const mv = page.url.searchParams.get('model');
-			adding = { kind, securityId: add, hypothesisId: Number(page.url.searchParams.get('hyp')) || null, model: mv === 'A' || mv === 'B' || mv === 'C' || mv === 'D' || mv === 'G' ? mv : null, note: page.url.searchParams.get('note') };
+			adding = { kind, securityId: add, hypothesisId: Number(page.url.searchParams.get('hyp')) || null, model: mv === 'A' || mv === 'B' || mv === 'C' || mv === 'D' || mv === 'G' || mv === 'cA' || mv === 'cB' ? mv : null, note: page.url.searchParams.get('note') };
 			replaceState('/portfolio', {});
 			if (!real) creating = true;
 		}
@@ -775,7 +775,7 @@
 			oncancel={() => (adding = null)}
 		/>
 		{#if adding.hypothesisId}<p class="muted small">{tx('Позиция будет связана с гипотезой', 'The position will be linked to hypothesis')} №{adding.hypothesisId}.</p>{/if}
-		{#if adding.model}<p class="muted small">{tx(`Сделка будет связана с квартальной моделью, вариант ${adding.model === 'A' ? 'А' : 'Б'}, и версией её параметров.`, `The trade will be linked to the quarterly model, variant ${adding.model}, and the version of its parameters.`)}</p>{/if}
+		{#if adding.model}<p class="muted small">{tx(`Сделка будет связана с квартальной моделью, ${adding.model.startsWith('c') ? '(сырьё) ' : ''}вариант ${adding.model.endsWith('A') ? 'А' : 'Б'}, и версией её параметров.`, `The trade will be linked to the quarterly model, variant ${adding.model}, and the version of its parameters.`)}</p>{/if}
 	</Sheet>
 {/if}
 

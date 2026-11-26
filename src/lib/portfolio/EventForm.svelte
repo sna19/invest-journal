@@ -35,7 +35,8 @@
 		securityId?: number | null;
 		hypothesisId?: number | null;
 		/** T-020: a trade from a quarterly model's candidate card */
-		modelVariant?: 'A' | 'B' | 'C' | 'D' | 'G' | null;
+		/** T-031: cA, cB — the commodity funds' variants */
+		modelVariant?: 'A' | 'B' | 'C' | 'D' | 'G' | 'cA' | 'cB' | null;
 		lastFee?: Record<string, number>;
 		/** the portfolio's currency: the whole purchase cost of a transferred position is in it */
 		portfolioCurrency?: string;
@@ -176,7 +177,7 @@
 					if (h.horizonDate) tplan.reviewDate = h.horizonDate;
 				}
 			} else if (modelVariant && !tplan.thesis) {
-				tplan.thesis = tx(`Квартальная модель, вариант ${modelVariant}: сезонно сильный квартал — держу до конца квартала`, `Quarterly model, variant ${modelVariant}: a seasonally strong quarter — held to the quarter's end`);
+				tplan.thesis = tx(`Квартальная модель${modelVariant.startsWith('c') ? ' (сырьё)' : ''}, вариант ${modelVariant.slice(-1)}: сезонно сильный квартал — держу до конца квартала`, `Quarterly model${modelVariant.startsWith('c') ? ' (commodities)' : ''}, variant ${modelVariant.slice(-1)}: a seasonally strong quarter — held to the quarter's end`);
 			}
 		}
 		if (edit) {

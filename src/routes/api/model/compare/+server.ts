@@ -1,7 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import { getApp, getMarket } from '#lib/server/db.js';
-import { costRun, nextQuarter, runModel, universe } from '#lib/server/model/quarterly.js';
-import { readParams, VARIANTS } from '#lib/server/model/service.js';
+import { costRun, nextQuarter, runModel } from '#lib/server/model/quarterly.js';
+import { POOL_VARIANTS, poolUniverse, readParams, type Pool } from '#lib/server/model/service.js';
 
 const cache = new Map<string, unknown>();
 
@@ -12,12 +12,13 @@ const cache = new Map<string, unknown>();
 export function GET({ url }) {
 	const q = Number(url.searchParams.get('quarter') ?? nextQuarter().quarter);
 	if (![1, 2, 3, 4].includes(q)) error(400, 'quarter 1–4');
-	const u = universe(getMarket().sqlite);
-	if (!u.stocks.length) return json({ items: [] });
+	const pool: Pool = url.searchParams.get('pool') === 'commodities' ? 'commodities' : 'stocks';
 	const app = getApp().sqlite;
-	const items = VARIANTS.map((v) => {
-		const p = readParams(app, v);
-		const key = `${u.builtAt}|${v}|${q}|${JSON.stringify(p)}`;
+	const u = poolUniverse(app, getMarket().sqlite, pool).u;
+	if (!u.stocks.length) return json({ items: [] });
+	const items = POOL_VARIANTS[pool].map((v) => {
+		const p = readParams(app, v, pool);
+		const key = `${u.builtAt}|${pool}|${u.stocks.length}|${v}|${q}|${JSON.stringify(p)}`;
 		let row = cache.get(key);
 		if (!row) {
 			const r = runModel(u, v, q, p);

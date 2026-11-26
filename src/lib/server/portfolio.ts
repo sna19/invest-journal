@@ -1,4 +1,4 @@
-import { modelVersionNow, readParams } from './model/service.js';
+import { modelVersionNow, poolOfKey, POOL_VARIANTS, readParams } from './model/service.js';
 import type { Variant } from './model/quarterly.js';
 import { readProfiles, type ProfileView } from './market/profiles.js';
 import type Database from 'better-sqlite3';
@@ -782,7 +782,8 @@ export function addEvent(app: Database.Database, market: Database.Database, inpu
 	const plan = (kind === 'buy' || kind === 'plan_buy') && !auto && (input.plan || strict) ? checkPlan(input.plan ?? {}, { entry: price, date, strict, fallbackKind }) : null;
 	const review = kind === 'sell' && !auto ? checkReview(input.review, strict) : null;
 
-	const modelVersionId = (input.modelVariant === 'A' || input.modelVariant === 'B' || input.modelVariant === 'C' || input.modelVariant === 'D' || input.modelVariant === 'G') ? modelVersionNow(app, input.modelVariant) : null;
+	const mk = typeof input.modelVariant === 'string' ? poolOfKey(input.modelVariant) : null;
+	const modelVersionId = mk && POOL_VARIANTS[mk.pool].includes(mk.variant) ? modelVersionNow(app, mk.variant, mk.pool) : null;
 	const insert = app.prepare(
 		`insert into position_events (position_id, kind, date, qty, price, currency, fee, fx_rate, amount, cost_total, note, hypothesis_id, auto, model_version_id)
 		 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id`
@@ -1125,8 +1126,10 @@ function autoRules(app: Database.Database, sourceId: number): AutoRules {
 		const m = readMParams(app);
 		return { model: true, modes: [1], commissionPct: m.commissionPct, commissionMinUsd: 0, taxPct: m.taxPct };
 	}
-	const p = readParams(app, v.variant as Variant);
-	return { model: true, modes: v.variant === 'C' ? [1, 0] : [1], commissionPct: p.commissionPct, commissionMinUsd: p.commissionMinUsd, taxPct: p.taxPct };
+	// T-031: the commodities' variants (cA, cB) have parameters of their own
+	const k = poolOfKey(v.variant);
+	const p = readParams(app, k.variant, k.pool);
+	return { model: true, modes: k.variant === 'C' && k.pool === 'stocks' ? [1, 0] : [1], commissionPct: p.commissionPct, commissionMinUsd: p.commissionMinUsd, taxPct: p.taxPct };
 }
 
 /**

@@ -12,6 +12,7 @@
 	import RiskLabel from '#lib/RiskLabel.svelte';
 	import RecentCards from '#lib/RecentCards.svelte';
 	import ScreenSwitch from '#lib/ScreenSwitch.svelte';
+	import CommodityFunds from '#lib/CommodityFunds.svelte';
 	import { keepScroll } from '#lib/scroll.js';
 	import { showToast } from '#lib/toast.svelte.js';
 	import { loc, tx } from '#lib/i18n.js';
@@ -62,6 +63,9 @@
 	}
 	interface Data {
 		variant: Variant;
+		pool?: 'stocks' | 'commodities';
+		funds?: { symbol: string; name: string | null; group: 'precious' | 'energy' | 'industrial' | 'agriculture' | 'broad'; twin: string | null; years: number | null; firstMonth: string | null; excluded: 'levered' | 'unknown' | 'no_prices' | 'short' | null }[] | null;
+		loading?: { missing: string[]; loading: boolean } | null;
 		saved: Params;
 		result: null | {
 			quarter: number;
@@ -109,6 +113,7 @@
 
 	async function load(withParams: boolean) {
 		const q = new URLSearchParams({ variant });
+		if (pool === 'commodities') q.set('pool', pool);
 		if (quarter) q.set('quarter', String(quarter));
 		if (withParams && params) for (const [k, v] of Object.entries(params)) q.set(k, String(v));
 		const my = ++seq;
@@ -237,7 +242,7 @@
 	async function loadCompare() {
 		const q = quarter || data?.result?.quarter;
 		if (!q) return;
-		const r = await fetch(`/api/model/compare?quarter=${q}`).catch(() => null);
+		const r = await fetch(`/api/model/compare?quarter=${q}${pool === 'commodities' ? '&pool=commodities' : ''}`).catch(() => null);
 		if (r?.ok) compareV = (await r.json()).items;
 	}
 	const VNAME: Record<Variant, [string, string]> = { A: ['А. Рост', 'A. Rise'], B: ['Б. Рынок', 'B. Market'], C: ['В. Оценка', 'C. Score'], D: ['Д. Тренд', 'D. Trend'], G: ['Г. Причина', 'G. Reason'] };
@@ -249,7 +254,11 @@
 
 	// the screen is remembered on this device (owner's request 20.11.2026): the variant, the quarter and the
 	// parameters tried but not saved — coming back from a card or another tab, nothing is set again
-	type Kept = { variant?: Variant; quarter?: number; preview?: Partial<Record<Variant, Params>> };
+	type Kept = { variant?: Variant; quarter?: number; pool?: Pool; preview?: Partial<Record<string, Params>> };
+	// T-031: the shares or the commodity funds — the commodities have the variants A and B, kept apart (cA, cB)
+	type Pool = 'stocks' | 'commodities';
+	let pool = $state<Pool>('stocks');
+	const vkey = (v: Variant = variant) => (pool === 'commodities' ? `c${v}` : v);
 	let kept: Kept = {};
 	const keep = () => {
 		try {
@@ -259,7 +268,7 @@
 		}
 	};
 	function open(v: Variant) {
-		const pv = kept.preview?.[v];
+		const pv = kept.preview?.[vkey(v)];
 		if (pv) {
 			params = { ...pv };
 			void load(true);
@@ -272,6 +281,8 @@
 			kept = {};
 		}
 		variant = kept.variant ?? ((['A', 'B', 'C', 'D', 'G'] as const).find((v) => v === read('model-variant', 'A')) ?? 'A');
+		pool = kept.pool === 'commodities' ? 'commodities' : 'stocks';
+		if (pool === 'commodities' && variant !== 'A' && variant !== 'B') variant = 'A';
 		if (kept.quarter && [1, 2, 3, 4].includes(kept.quarter)) quarter = kept.quarter;
 		open(variant);
 	});
@@ -282,10 +293,19 @@
 		if (!params) return;
 		params = { ...params, [k]: v };
 		if (k === 'years' && params.k > params.years) params.k = params.years;
-		kept.preview = { ...kept.preview, [variant]: params };
+		kept.preview = { ...kept.preview, [vkey()]: params };
 		keep();
 		clearTimeout(timer);
 		timer = setTimeout(() => void load(true), 200);
+	}
+	function setPool(p: Pool) {
+		pool = p;
+		kept.pool = p;
+		if (p === 'commodities' && variant !== 'A' && variant !== 'B') variant = 'A';
+		kept.variant = variant;
+		keep();
+		compareV = null;
+		open(variant);
 	}
 	function setVariant(v: Variant) {
 		variant = v;
@@ -300,14 +320,14 @@
 		void load(true);
 	}
 	function forget() {
-		if (kept.preview) delete kept.preview[variant];
+		if (kept.preview) delete kept.preview[vkey()];
 		keep();
 	}
 	/** the parameters on screen, for the card: it shows the candidate as the preview found it */
 	const previewQuery = () => new URLSearchParams(Object.entries(params ?? {}).map(([k, v]) => [k, String(v)])).toString();
 	const changed = $derived(!!params && !!data && JSON.stringify(params) !== JSON.stringify(data.saved));
 	async function save() {
-		const r = await fetch('/api/model', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ variant, ...params }) }).catch(() => null);
+		const r = await fetch('/api/model', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ variant, pool, ...params }) }).catch(() => null);
 		if (!r?.ok) return showToast(tx('Не сохранилось', 'Not saved'));
 		data = { ...data!, saved: (await r.json()).saved };
 		forget();
@@ -392,7 +412,11 @@
 
 {#if problem}<p class="err">{problem}</p>{/if}
 
-{#if data && data.data.stocks < 500}
+{#if pool === 'commodities' && data?.loading?.missing.length}
+	<p class="banner" role="status">{tx(`Месячные цены фондов загружаются: ${data.loading.missing.join(', ')}. Обновите экран через минуту.`, `Monthly prices of the funds are loading: ${data.loading.missing.join(', ')}. Refresh in a minute.`)}</p>
+{/if}
+
+{#if pool === 'stocks' && data && data.data.stocks < 500}
 	<section class="card">
 		<h2>{tx('Данные загружаются', 'Data are loading')}</h2>
 		<p class="muted">
@@ -404,12 +428,20 @@
 <ScreenSwitch />
 <RecentCards />
 
+<div class="seg" role="radiogroup" aria-label={tx('Выборка', 'Universe')}>
+	<button role="radio" aria-checked={pool === 'stocks'} class:on={pool === 'stocks'} onclick={() => setPool('stocks')}>{tx('Акции', 'Shares')}</button>
+	<button role="radio" aria-checked={pool === 'commodities'} class:on={pool === 'commodities'} onclick={() => setPool('commodities')}>{tx('Сырьё', 'Commodities')}</button>
+	<HelpIcon topicKey="model.commodities" label={tx('сырьё', 'commodities')} />
+</div>
+
 <div class="seg" role="radiogroup" aria-label={tx('Вариант', 'Variant')}>
 	<button role="radio" aria-checked={variant === 'A'} class:on={variant === 'A'} onclick={() => setVariant('A')}>{tx('А. Рост цены', 'A. Price rise')}</button>
-	<button role="radio" aria-checked={variant === 'B'} class:on={variant === 'B'} onclick={() => setVariant('B')}>{tx('Б. Против рынка', 'B. Against the market')}</button>
+	<button role="radio" aria-checked={variant === 'B'} class:on={variant === 'B'} onclick={() => setVariant('B')}>{pool === 'commodities' ? tx('Б. Против DBC', 'B. Against DBC') : tx('Б. Против рынка', 'B. Against the market')}</button>
+	{#if pool === 'stocks'}
 	<button role="radio" aria-checked={variant === 'C'} class:on={variant === 'C'} onclick={() => setVariant('C')}>{tx('В. Оценка', 'C. Score')}</button>
 	<button role="radio" aria-checked={variant === 'G'} class:on={variant === 'G'} onclick={() => setVariant('G')}>{tx('Г. С причиной', 'G. With a reason')}</button>
 	<button role="radio" aria-checked={variant === 'D'} class:on={variant === 'D'} onclick={() => setVariant('D')}>{tx('Д. Против тренда', 'D. Against its trend')}</button>
+	{/if}
 	<HelpIcon topicKey="model.variants" label={tx('варианты', 'variants')} />
 </div>
 
@@ -422,9 +454,9 @@
 {#if params}
 	<Fold key="model-params" title={tx('Параметры', 'Parameters')} summary={`${isScored(variant) ? '' : `K ${params.k} · `}${tx(`${params.years} лет`, `${params.years} years`)} · ${tx(`${params.count} кандидатов`, `${params.count} candidates`)}${changed ? tx(' · не сохранены', ' · not saved') : ''}`}>
 		{#snippet aside()}{#if busy}<span class="muted small">{tx('считаю…', 'computing…')}</span>{/if}{/snippet}
-		{#each PARAMS.filter((f) => !isScored(variant) || f.key !== 'k') as f (f.key)}
+		{#each PARAMS.filter((f) => (!isScored(variant) || f.key !== 'k') && (pool === 'stocks' || f.key !== 'perMarket')) as f (f.key)}
 			<div class="prow">
-				<span class="pl">{tx(f.ru, f.en)} <HelpIcon topicKey={f.help} label={tx(f.ru, f.en)} /></span>
+				<span class="pl">{pool === 'commodities' && f.key === 'perSector' ? tx('Не больше из группы', 'At most per group') : tx(f.ru, f.en)} <HelpIcon topicKey={f.help} label={tx(f.ru, f.en)} /></span>
 				<span class="stepper">
 					<button aria-label="−" disabled={Number(params[f.key]) <= f.min} onclick={() => set(f.key, Math.max(f.min, Number(params![f.key]) - f.step) as never)}>−</button>
 					<b>{params[f.key]}</b>
@@ -446,6 +478,7 @@
 				<option value="worst">{tx('по худшему году', 'worst year')}</option>
 			</select>
 		</div>{/if}
+		{#if pool === 'stocks'}
 		<div class="prow caprow">
 			<span class="pl">{tx('Капитализация', 'Market cap')} <HelpIcon topicKey="model.param.market_cap" label={tx('капитализация', 'market cap')} /></span>
 			<div class="seg2" role="radiogroup" aria-label={tx('Как делить', 'How to split')}>
@@ -469,6 +502,7 @@
 				{/each}
 			</div>
 		{/if}
+		{/if}
 		<div class="prow">
 			<span class="pl">{tx('Фильтр тренда', 'Trend filter')} <HelpIcon topicKey="model.trend_filter" label={tx('фильтр тренда', 'trend filter')} /></span>
 			<select value={params.trendFilter} onchange={(e) => set('trendFilter', e.currentTarget.value as Params['trendFilter'])}>
@@ -484,7 +518,7 @@
 				<option value="sma3">{tx('продать, если закрытие месяца ниже SMA 3 мес.', 'sell if a month closes below SMA 3 mo')}</option>
 			</select>
 		</div>
-		{#if variant === 'B' || isScored(variant)}
+		{#if pool === 'stocks' && (variant === 'B' || isScored(variant))}
 			<div class="prow">
 				<span class="pl">{tx('Сравнивать', 'Compare with')} <HelpIcon topicKey="model.param.compare_with" label={tx('сравнение', 'comparison')} /></span>
 				<select value={params.compareWith} onchange={(e) => set('compareWith', e.currentTarget.value as Params['compareWith'])}>
@@ -512,6 +546,10 @@
 			<p class="muted small">{tx('Меняйте параметры не чаще раза в квартал и до его начала: новая версия параметров — новая строка в статистике.', 'Change the parameters at most once a quarter and before it starts: a new version is a new row in the stats.')}</p>
 		{/if}
 	</Fold>
+{/if}
+
+{#if pool === 'commodities' && data?.funds}
+	<CommodityFunds rows={data.funds} minYears={params?.years ?? 10} onchange={() => load(true)} />
 {/if}
 
 {#if res}
@@ -548,7 +586,7 @@
 		<ul class="cands">
 			{#each candsSorted as { c, i } (c.id)}
 				<li>
-					<button class="crow" onclick={() => goto(`/security/${c.id}?model=${variant}&q=${res.quarter}&${previewQuery()}`)}>
+					<button class="crow" onclick={() => goto(`/security/${c.id}?model=${vkey()}&q=${res.quarter}&${previewQuery()}`)}>
 						<span class="n">{i + 1}</span>
 						<span class="who"><b>{c.symbol}</b>{#if pathFlags[c.id]} <FlagChips flags={pathFlags[c.id]} />{/if}<span class="muted small block name">{c.name}</span><span class="muted small block">{c.market === 'US' ? tx('США', 'US') : tx('Израиль', 'Israel')} {' · '}{c.sector ? sectorName(c.sector, tx) : tx('сектор неизвестен', 'sector unknown')}{#if c.capUsd}{' · '}{capText(c.capUsd)}, {capName(c.capGroup)}{/if}{' · '}{c.up}/{res.years.length}</span><span class="muted small block">{tx('по месяцам', 'by month')} {c.months.map((m) => pct(m)).join(' · ')}{#if c.sma10 !== null}{' · '}{c.sma10 >= 0 ? tx('над', 'above') : tx('под', 'below')} SMA10 {pct(c.sma10)}{/if}</span>{#if c.reasons.earnings || c.reasons.dividend || c.reasons.sector}<span class="reasons">{#if c.reasons.earnings}<i>{tx('отчёт', 'report')}</i>{/if}{#if c.reasons.dividend}<i>{tx('дивиденд', 'dividend')}</i>{/if}{#if c.reasons.sector}<i>{tx('сектор сезонен', 'sector seasonal')}</i>{/if}</span>{/if}{#if c.own.mean !== null && variant !== 'D'}<span class="muted small block" class:warnline={Math.abs(c.own.mean) < 1 || c.own.up < 6}>{tx('к обычному кварталу', 'vs usual quarter')} {pct(c.own.mean)} · {tx('выше в', 'above in')} {c.own.up}/{c.own.years}</span>{/if}</span>
 						<span class="nums">{#if c.score !== null}<span class="score">{tx('балл', 'score')} {c.score.toFixed(1)}</span>{/if}<b class:up={c.mean > 0}>{pct(c.mean)}</b><span class="muted small block">{tx('мед.', 'med.')} {pct(c.median)}</span><span class="muted small block">{tx('худш.', 'worst')} {pct(c.worst)}</span></span>

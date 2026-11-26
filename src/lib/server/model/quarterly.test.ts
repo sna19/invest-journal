@@ -18,7 +18,7 @@ function series(id: number, f: (y: number, m: number) => number, o: Partial<Seri
 }
 
 const flat = series(100, () => 0);
-const u = (stocks: Series[]): Universe => ({ stocks, bench: { US: flat, IL: flat }, lastMonth: LAST, usdIls: 3.7, builtAt: '' });
+const u = (stocks: Series[]): Universe => ({ stocks, funds: new Map(), bench: { US: flat, IL: flat }, lastMonth: LAST, usdIls: 3.7, builtAt: '' });
 
 describe('quarterly model 10a', () => {
 	it('the window: the last 10 complete first quarters, for the next year', () => {
