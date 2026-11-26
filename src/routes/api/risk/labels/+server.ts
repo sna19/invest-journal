@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { getApp, getMarket } from '#lib/server/db.js';
 import { queueSecurity } from '#lib/server/jobs.js';
-import { riskView } from '#lib/server/risk.js';
+import { realPortfolios, riskView } from '#lib/server/risk.js';
 import { whatIf } from '#lib/risk.js';
 
 /**
@@ -12,6 +12,23 @@ import { whatIf } from '#lib/risk.js';
 export function GET({ url }) {
 	const app = getApp().sqlite;
 	const market = getMarket().sqlite;
+	// ?each=1&ids=<one>: the label against every real portfolio and all of them together (the security card)
+	if (url.searchParams.get('each') === '1') {
+		const id = Number(url.searchParams.get('ids'));
+		const out: { id: number | 'all'; name: string; currency: string; label: string; twin: string | null }[] = [];
+		const ports: { id: number | 'all'; name: string; currency: string }[] = realPortfolios(app);
+		if (ports.length > 1) ports.push({ id: 'all', name: 'Все вместе', currency: 'ILS' });
+		for (const p of ports) {
+			const r = riskView(app, market, p.id, { years: 2, add: [id] });
+			if (!r || r.now.held === 0) continue;
+			for (const x of r.loading) queueSecurity(x);
+			const s = r.securities.find((x) => x.id === id);
+			const label = s?.role === 'held' ? 'held' : r.loading.includes(id) ? 'loading' : whatIf(r, [id], 0.05).label;
+			const twin = label === 'held' || label === 'loading' ? null : (whatIf(r, [id], 0.05).twin?.symbol ?? null);
+			out.push({ ...p, label, twin });
+		}
+		return json({ items: out });
+	}
 	const ids = (url.searchParams.get('ids') ?? '')
 		.split(',')
 		.map(Number)

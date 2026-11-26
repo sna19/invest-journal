@@ -107,22 +107,51 @@ export interface RiskView {
 	loading: number[];
 }
 
-export function riskView(app: Database.Database, market: Database.Database, portfolioId: number, opts: { years?: number; add?: number[]; today?: string } = {}): RiskView | null {
+/** the real portfolios that are on (not archived, not automatic) */
+export function realPortfolios(app: Database.Database) {
+	return app.prepare(`select id, name, currency from portfolios where kind = 'real' and archived_at is null and auto_source_id is null order by sort_order, id`).all() as { id: number; name: string; currency: string }[];
+}
+
+/**
+ * The holdings of a portfolio — or of all real ones together («all», owner's request 26.11.2026), in shekels at
+ * today's rate: positions held by security, the value with the cash.
+ */
+function holdings(app: Database.Database, market: Database.Database, portfolioId: number | 'all', today: string) {
+	const ids = portfolioId === 'all' ? realPortfolios(app).map((p) => p.id) : [portfolioId];
+	const m = marketView(market);
+	const pc = portfolioId === 'all' ? 'ILS' : null;
+	const held = new Map<number, { symbol: string; name: string; exchange: string; sector: string | null; value: number }>();
+	let currency = pc ?? 'ILS';
+	let total = 0;
+	let cash = 0;
+	let found = false;
+	for (const id of ids) {
+		const v = portfolioView(app, market, id, today);
+		if (!v) continue;
+		found = true;
+		const k = pc ? (v.summary.currency === pc ? 1 : m.conv(v.summary.currency, pc, today)) : 1;
+		if (!pc) currency = v.summary.currency;
+		total += (v.summary.held + Math.max(0, v.summary.cash)) * k;
+		cash += Math.max(0, v.summary.cash) * k;
+		for (const p of v.positions) {
+			if (p.stage !== 'holding' || !(p.valuePc > 0)) continue;
+			const e = held.get(p.securityId);
+			if (e) e.value += p.valuePc * k;
+			else held.set(p.securityId, { symbol: p.symbol, name: p.name, exchange: p.exchange, sector: p.profile?.sector ?? null, value: p.valuePc * k });
+		}
+	}
+	return found ? { currency, total, cash, held } : null;
+}
+
+export function riskView(app: Database.Database, market: Database.Database, portfolioId: number | 'all', opts: { years?: number; add?: number[]; today?: string } = {}): RiskView | null {
 	const today = opts.today ?? israelDate();
-	const v = portfolioView(app, market, portfolioId, today);
-	if (!v) return null;
+	const h = holdings(app, market, portfolioId, today);
+	if (!h) return null;
 	const years = Math.min(3, Math.max(1, opts.years ?? 2));
 	const weeks = years * 52;
-	const pc = v.summary.currency;
-	const total = v.summary.held + Math.max(0, v.summary.cash);
-	// held positions by security (a security in two positions counts once)
-	const held = new Map<number, { symbol: string; name: string; exchange: string; sector: string | null; value: number }>();
-	for (const p of v.positions) {
-		if (p.stage !== 'holding' || !(p.valuePc > 0)) continue;
-		const e = held.get(p.securityId);
-		if (e) e.value += p.valuePc;
-		else held.set(p.securityId, { symbol: p.symbol, name: p.name, exchange: p.exchange, sector: p.profile?.sector ?? null, value: p.valuePc });
-	}
+	const pc = h.currency;
+	const total = h.total;
+	const held = h.held;
 	const employer = employerOf(app, market);
 	const meta = market.prepare(
 		`select s.id, s.symbol, s.name_en as name, s.exchange_code as exchange, p.sector from ref_securities s left join ref_security_profiles p on p.security_id = s.id where s.id = ?`
@@ -198,7 +227,7 @@ export function riskView(app: Database.Database, market: Database.Database, port
 	return {
 		currency: pc,
 		value: total,
-		cash: Math.max(0, v.summary.cash),
+		cash: h.cash,
 		years,
 		weeks,
 		delta: r3(delta),

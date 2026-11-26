@@ -58,7 +58,10 @@
 		data: { adds: Pick[]; amountPct: number; source: number | 'cash' };
 	}
 
-	const pid = $derived(Number(page.url.searchParams.get('p')));
+	// a portfolio, or «all» — all real portfolios together, in shekels (owner 26.11.2026)
+	const pid = $derived(page.url.searchParams.get('p') === 'all' ? 'all' : Number(page.url.searchParams.get('p')));
+	const isAll = $derived(pid === 'all');
+	let ports = $state<{ id: number; name: string; kind: string; auto_source_id: number | null }[]>([]);
 	let v = $state<View | null>(null);
 	let problem = $state<string | null>(null);
 	let years = $state(2);
@@ -85,7 +88,7 @@
 	}
 	async function loadQuick() {
 		const groups: { group: string; items: Pick[] }[] = [];
-		const p = await fetch(`/api/portfolios/${pid}`).then((r) => r.json()).catch(() => null);
+		const p = isAll ? null : await fetch(`/api/portfolios/${pid}`).then((r) => r.json()).catch(() => null);
 		if (p?.positions) {
 			const planned = (p.positions as { securityId: number; symbol: string; stage: string }[]).filter((x) => x.stage === 'watch' || x.stage === 'plan_buy');
 			if (planned.length) groups.push({ group: tx('Наблюдаю и хочу купить', 'Watching and want to buy'), items: planned.map((x) => ({ id: x.securityId, symbol: x.symbol })) });
@@ -106,7 +109,14 @@
 		const r = await fetch(`/api/portfolios/${pid}/risk/scenarios`).then((r) => r.json()).catch(() => null);
 		scenarios = r?.items ?? [];
 	}
-	onMount(() => {
+	onMount(async () => {
+		void fetch('/api/portfolios').then((r) => r.json()).then((r) => (ports = (r.items ?? r ?? []).filter((x: { kind: string; auto_source_id: number | null }) => x.kind === 'real' && !x.auto_source_id))).catch(() => {});
+		// from a security's card: that security is tried at once
+		const pre = Number(page.url.searchParams.get('add'));
+		if (pre) {
+			const h = await fetch(`/api/securities?id=${pre}`).then((r) => r.json()).catch(() => null);
+			if (h?.items?.[0]) adds = [{ id: pre, symbol: h.items[0].symbol }];
+		}
 		try {
 			const y = Number(localStorage.getItem('risk-years'));
 			if (y >= 1 && y <= 3) years = y;
@@ -115,7 +125,7 @@
 		}
 		void load();
 		void loadQuick();
-		void loadScenarios();
+		if (!isAll) void loadScenarios();
 	});
 	function setYears(y: number) {
 		years = y;
@@ -214,7 +224,16 @@
 
 <svelte:head><title>{tx('Риск', 'Risk')} · {tx('Журнал гипотез', 'Hypothesis journal')}</title></svelte:head>
 
-<TopBar title={tx('Риск портфеля', 'Portfolio risk')} help="portfolio.risk_map" back={{ href: `/portfolio?p=${pid}`, label: tx('Портфель', 'Portfolio') }} />
+<TopBar title={tx('Риск портфеля', 'Portfolio risk')} help="portfolio.risk_map" back={{ href: isAll ? '/portfolio' : `/portfolio?p=${pid}`, label: tx('Портфель', 'Portfolio') }} />
+
+{#if ports.length > 1}
+	<div class="pchips" role="radiogroup" aria-label={tx('Портфель', 'Portfolio')}>
+		{#each ports as p (p.id)}
+			<a role="radio" aria-checked={pid === p.id} class:on={pid === p.id} href="/portfolio/risk?p={p.id}{adds.length ? `&add=${adds[0].id}` : ''}" data-sveltekit-reload>{p.name}</a>
+		{/each}
+		<a role="radio" aria-checked={isAll} class:on={isAll} href="/portfolio/risk?p=all{adds.length ? `&add=${adds[0].id}` : ''}" data-sveltekit-reload>{tx('Все вместе', 'All together')}</a>
+	</div>
+{/if}
 
 {#if problem}<p class="warn" role="alert">{problem}</p>{/if}
 
@@ -336,14 +355,14 @@
 							{#if adds.length > 1}<span class="bar2" style:width="{Math.max(3, ((x.w.after.bets - x.w.before.bets - gainMin) / Math.max(1e-6, gainMax - gainMin)) * 100)}%"></span>{/if}
 							<span class="muted small">{tx('ставок', 'bets')} {num(x.w.after.bets)} · ±{pctText(x.w.after.vol)} · {tx('связь с портфелем', 'tie to the portfolio')} {num(x.w.portfolioCorr, 2)}{#if x.w.twin}{' · '}{tx('ближе всех', 'closest')} {x.w.twin.symbol} {num(x.w.twin.corr, 2)}{/if}</span>
 							<span class="acts">
-								<a href="/portfolio?p={pid}&add={x.id}&kind=plan_buy&note={encodeURIComponent(tx('сценарий «Что если?»: ', 'scenario «What if?»: ') + adds.map((a) => a.symbol).join(' + ') + `, ${amountPct}%`)}">{tx('Хочу купить', 'Want to buy')}</a>
-								<a href="/portfolio?p={pid}&add={x.id}&kind=buy&note={encodeURIComponent(tx('сценарий «Что если?»: ', 'scenario «What if?»: ') + adds.map((a) => a.symbol).join(' + ') + `, ${amountPct}%`)}">{tx('Купил', 'Bought')}</a>
+								<a href="/portfolio?{isAll ? '' : `p=${pid}&`}add={x.id}&kind=plan_buy&note={encodeURIComponent(tx('сценарий «Что если?»: ', 'scenario «What if?»: ') + adds.map((a) => a.symbol).join(' + ') + `, ${amountPct}%`)}">{tx('Хочу купить', 'Want to buy')}</a>
+								<a href="/portfolio?{isAll ? '' : `p=${pid}&`}add={x.id}&kind=buy&note={encodeURIComponent(tx('сценарий «Что если?»: ', 'scenario «What if?»: ') + adds.map((a) => a.symbol).join(' + ') + `, ${amountPct}%`)}">{tx('Купил', 'Bought')}</a>
 							</span>
 						</li>
 					{/each}
 				</ul>
 				{#if adds.length > 1}<p class="muted small">{tx('Порядок — по вкладу в независимые ставки: сверху та, что диверсифицирует больше.', 'Order — by the gain in independent bets: on top the one that diversifies more.')}</p>{/if}
-				<button class="textbtn" onclick={saveScenario}>{tx('Сохранить сценарий', 'Save the scenario')}</button>
+				{#if !isAll}<button class="textbtn" onclick={saveScenario}>{tx('Сохранить сценарий', 'Save the scenario')}</button>{/if}
 			{/if}
 		{/if}
 		{#if scenarios.length}
@@ -397,6 +416,26 @@
 {/if}
 
 <style>
+	.pchips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		margin: 0 0 var(--s3);
+	}
+	.pchips a {
+		padding: 4px 12px;
+		border: 1px solid var(--line);
+		border-radius: var(--r-pill);
+		background: var(--surface);
+		color: var(--text);
+		text-decoration: none;
+		font-size: var(--fs-xs);
+	}
+	.pchips a.on {
+		background: var(--text);
+		color: var(--bg);
+		border-color: var(--text);
+	}
 	.nums {
 		display: grid;
 		grid-template-columns: repeat(3, 1fr);

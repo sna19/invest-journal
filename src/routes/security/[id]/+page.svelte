@@ -245,7 +245,8 @@
 	}
 
 	let levRetried = false;
-	let riskLabel = $state<{ label: string; twin: string | null; portfolio: string; portfolioId: number } | null>(null);
+	// T-023: what this security does to each real portfolio's risk, and to all of them together (owner 26.11.2026)
+	let riskLabels = $state<{ id: number | 'all'; name: string; currency: string; label: string; twin: string | null }[]>([]);
 	const LEVELS: Lev['level'][] = ['stock', 'industry', 'sector', 'index'];
 	const feeText = (x: number | null) => (x === null ? '—' : `${(x * 100).toFixed(2).replace('.', tx(',', '.'))}%`);
 	const byFee = (a: Lev, b: Lev) => (a.expenseRatio ?? 9) - (b.expenseRatio ?? 9) || b.x - a.x;
@@ -301,12 +302,9 @@
 		loadCompare();
 		loadLev();
 		loadNews();
-		void fetch(`/api/risk/labels?ids=${page.params.id}`)
+		void fetch(`/api/risk/labels?each=1&ids=${page.params.id}`)
 			.then((r) => r.json())
-			.then((r) => {
-				const x = r?.items?.[Number(page.params.id)];
-				if (x) riskLabel = { ...x, portfolio: r.portfolio?.name ?? '', portfolioId: r.portfolio?.id };
-			})
+			.then((r) => (riskLabels = r?.items ?? []))
 			.catch(() => {});
 		try {
 			const v = JSON.parse(localStorage.getItem('chart-sma') ?? '[]');
@@ -446,7 +444,8 @@
 	{/if}
 
 	<div class="head">
-		<b class="price">{priceText(c.today?.price ?? c.last?.close, c.security.priceUnit)}</b>
+		<b class="price">{#if c.security.priceUnit === 'ILA'}{priceText((c.today?.price ?? c.last?.close ?? 0) / 100, 'ILS')}{:else}{priceText(c.today?.price ?? c.last?.close, c.security.priceUnit)}{/if}</b>
+		{#if c.security.priceUnit === 'ILA'}<span class="muted small">{priceText(c.today?.price ?? c.last?.close, 'ILA')}</span>{/if}
 		<TvLink exchange={c.security.exchange} symbol={c.security.symbol} />
 		{#if c.today}<span class="day"><Pct value={c.today.dayPct} /> <span class="muted small">{c.today.date >= new Date().toISOString().slice(0, 10) ? tx('за день', 'today') : `${tx('за', 'on')} ${short(c.today.date, true)}`}</span></span>
 		{:else if c.last}<span class="muted small">{tx('закрытие', 'close')} {short(c.last.date, true)}</span>{/if}
@@ -454,8 +453,14 @@
 		<span class="chg">{PERIODS.find((p) => p[0] === period)?.[1]}: <Pct value={c.change} />{#if c.benchmark && c.benchChange !== null} <span class="muted small">{c.benchmark.label} <Pct value={c.benchChange} plain /></span>{/if}</span>
 	</div>
 
-	{#if riskLabel && riskLabel.label !== 'held'}
-		<p class="muted small facts">{tx(`Для риска «${riskLabel.portfolio}»`, `For «${riskLabel.portfolio}» risk`)}: <RiskLabel label={riskLabel.label} twin={riskLabel.twin} /> <a href="/portfolio/risk?p={riskLabel.portfolioId}">{tx('что если?', 'what if?')}</a></p>
+	{#if riskLabels.length}
+		{@const cur = c.security.priceUnit === 'ILA' || c.security.currency === 'ILS' ? 'ILS' : 'USD'}
+		<div class="risks small">
+			<span class="muted">{tx('Для риска', 'For the risk of')}:</span>
+			{#each [...riskLabels].sort((a, b) => (a.id === 'all' ? 1 : b.id === 'all' ? -1 : (b.currency === cur ? 1 : 0) - (a.currency === cur ? 1 : 0))) as r (r.id)}
+				<a class="rk" href="/portfolio/risk?p={r.id}&add={c.security.id}">{r.id === 'all' ? tx('все вместе', 'all together') : r.name} <RiskLabel small label={r.label} twin={r.twin} /></a>
+			{/each}
+		</div>
 	{/if}
 	{#if c.profile && (c.profile.sector || c.profile.capUsd)}
 		<p class="muted small facts">
@@ -853,6 +858,23 @@
 	}
 	.trendwarn {
 		color: var(--down);
+	}
+	.risks {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
+		margin: 0 0 var(--s2);
+	}
+	.risks .rk {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		color: var(--text);
+		text-decoration: none;
+		padding: 2px 6px;
+		border: 1px solid var(--line);
+		border-radius: var(--r-pill);
 	}
 	.newsdot {
 		color: var(--muted);
