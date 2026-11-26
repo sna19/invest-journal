@@ -17,7 +17,7 @@ import type { Errors } from '../hypothesis.js';
 const SUBJECT = process.env.PUSH_SUBJECT ?? 'https://github.com/sna19/invest-journal';
 export type PushKind = SignalKind | 'reminder';
 /** «reminder» — the diary's reminders (T-032 Д-32: off by default) */
-export const PUSH_KINDS: PushKind[] = ['stop', 'no_stop', 'target', 'review', 'model_end', 'reminder'];
+export const PUSH_KINDS: PushKind[] = ['stop', 'no_stop', 'target', 'review', 'model_end', 'path', 'reminder'];
 /** owner 26.11.2026: only «стоп пробит» is on until the others are turned on in the settings */
 export const PUSH_DEFAULT: PushKind[] = ['stop', 'no_stop'];
 
@@ -80,12 +80,15 @@ function markCurrent(app: Database.Database, market: Database.Database) {
 	for (const s of signals(app, market)) put.run(keyOf(s));
 }
 
+const FLAG_RU: Record<string, string> = { fading: 'выдыхается', stuck: 'застряла', spike: 'всплеск', bounce: 'отскок' };
 const fmt = (x: number | null) => (x === null ? '—' : x.toLocaleString('ru-RU', { maximumFractionDigits: 2 }));
 
 /** the notification of a signal: short, the symbol first; a tap opens the position */
 export function messageOf(s: Signal) {
 	const title =
-		s.kind === 'no_stop'
+		s.kind === 'path'
+			? `${s.symbol}: ${FLAG_RU[s.flag ?? ''] ?? 'метка пути'}`
+			: s.kind === 'no_stop'
 			? `${s.symbol}: позиция без защиты`
 			: s.kind === 'stop'
 			? `${s.symbol}: стоп пробит`
@@ -95,7 +98,9 @@ export function messageOf(s: Signal) {
 					? `${s.symbol}: период модели закончился`
 					: `${s.symbol}: пора пересмотреть`;
 	const body =
-		s.kind === 'no_stop'
+		s.kind === 'path'
+			? `Характер движения изменился. Открой «Как набиралась прибыль» и проверь тезис.`
+			: s.kind === 'no_stop'
 			? `Куплено без подтверждённого стопа. Открой «Защиту»: шпаргалка для брокера и «Я выставил».`
 			: s.kind === 'stop'
 			? s.order

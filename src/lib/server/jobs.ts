@@ -15,6 +15,8 @@ import { momentumIds, momentumSymbols, momentumView, recordMomentum } from './mo
 import { monthAdd as monthAddJ } from './model/momentum.js';
 import { checkReminders } from './reminders.js';
 import { backupMedia } from './snapshots.js';
+import { flagEntry, flagsFor, securityPath, updateFlagStates } from './path.js';
+import { monthAdd as monthAddP, monthlyReturns } from '../path.js';
 import { atrOf, barsOf, portfolioProtection, protectionOf, readPParams, recordProtectionDay } from './protection.js';
 import { realPortfolios } from './risk.js';
 import { backupDir, getApp, getMarket, rawDir } from './db.js';
@@ -704,6 +706,21 @@ export function runPushJob() {
 	});
 }
 
+/** T-033: the marks of every user's held securities — a new one opens a signal and a diary entry */
+export function runPathJob() {
+	return single('path', async () => {
+		const r = await forEachUser(() => {
+			const app = getApp().sqlite;
+			const m = getMarket().sqlite;
+			return updateFlagStates(app, m, israelDate(), (s) => void flagEntry(app, m, s));
+		});
+		const added = r.reduce((n, x) => n + x.added, 0);
+		const cleared = r.reduce((n, x) => n + x.cleared, 0);
+		console.log(`path: ${added} marks appeared, ${cleared} went away`);
+		return { added, cleared };
+	});
+}
+
 /** T-021: the day's protected share of every user's real portfolios */
 export function runProtectionJob() {
 	return single('protection', async () => {
@@ -817,6 +834,40 @@ export function startScheduler() {
 			}
 		}, 20_000 + (3 - left) * 100_000);
 	report(3);
+	// T-033: the marks of the held securities at start (the report names them), then each morning
+	setTimeout(() => {
+		void runPathJob()
+			.then(() =>
+				asUser(listUsers()[0]?.id ?? 1, () => {
+					const app = getApp().sqlite;
+					const m = getMarket().sqlite;
+					for (const port of realPortfolios(app)) {
+						const ids = (app.prepare(`select security_id as id, symbol from positions where portfolio_id = ? and stage in ('holding', 'plan_sell')`).all(port.id) as { id: number; symbol: string }[]);
+						const fl = flagsFor(app, m, ids.map((x) => x.id));
+						console.log(`path: portfolio ${port.id} — ${ids.map((x) => `${x.symbol}${fl[x.id] ? ` [${fl[x.id].join(', ')}]` : ''}`).join(' · ')}`);
+					}
+					// the acceptance: our month returns (daily closes with dividends) against Yahoo's monthly adjclose — one US, one TASE
+					for (const tase of [false, true]) {
+						const r = m.prepare(`select s.id, s.symbol from ref_securities s where s.exchange_code ${tase ? "= 'TASE'" : "<> 'TASE'"} and s.type = 'stock' and exists (select 1 from market_prices_monthly x where x.security_id = s.id and x.month >= '2025-01') and (select count(*) from market_prices_daily d where d.security_id = s.id and d.date >= '2025-01-01') > 200 order by s.id limit 1`).get() as { id: number; symbol: string } | undefined;
+						if (!r) continue;
+						const v = securityPath(app, m, r.id)!;
+						const ours = new Map(monthlyReturns(v.months).map((x) => [x.m, x.r]));
+						const y = m.prepare('select month, adj_close as a from market_prices_monthly where security_id = ? order by month').all(r.id) as { month: string; a: number }[];
+						const diffs: string[] = [];
+						let worst = 0;
+						for (let i = 1; i < y.length; i++) {
+							const o = ours.get(y[i].month);
+							if (o === undefined || y[i].month < monthAddP(v.asOf.slice(0, 7), -12) || y[i].month >= v.asOf.slice(0, 7)) continue;
+							const yr = y[i].a / y[i - 1].a - 1;
+							worst = Math.max(worst, Math.abs(o - yr) * 100);
+							diffs.push(`${y[i].month} ${(o * 100).toFixed(2)}/${(yr * 100).toFixed(2)}`);
+						}
+						console.log(`path: months of ${r.symbol} ours/Yahoo adjclose, %: ${diffs.join(' · ')} — the largest gap ${worst.toFixed(2)} pp`);
+					}
+				})
+			)
+			.catch((e) => console.error(`path: ${e}`));
+	}, 60_000);
 	// T-021: the protective plan of every real position, with what it is computed from (the log stays on the NAS)
 	setTimeout(() => {
 		try {
@@ -849,6 +900,8 @@ export function startScheduler() {
 	at('55 9 * * 1-5', 'model', () => runModelJob());
 	// T-021: the protected share of each real portfolio, once a day after the morning closes
 	at('50 9 * * *', 'protection', () => runProtectionJob());
+	// T-033: the marks of the return's path of the held securities
+	at('52 9 * * *', 'path', () => runPathJob());
 	at('0 9 * * 6', 'gaps', runGapsJob);
 	at('40 3 * * *', 'backup-app', () => runBackupJob('app'));
 	at('10 4 * * 0', 'backup-market', () => runBackupJob('market'));

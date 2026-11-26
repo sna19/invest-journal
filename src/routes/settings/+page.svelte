@@ -2,6 +2,7 @@
 	import Fold from '#lib/Fold.svelte';
 	import PushSettings from '#lib/PushSettings.svelte';
 	import ProtectionSettings from '#lib/portfolio/ProtectionSettings.svelte';
+	import PathSettings from '#lib/path/PathSettings.svelte';
 	import HelpIcon from '#lib/HelpIcon.svelte';
 	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onDestroy, onMount } from 'svelte';
@@ -186,6 +187,7 @@
 </Fold>
 
 <ProtectionSettings />
+<PathSettings />
 
 <Fold key="settings-bench" title={tx('Бенчмарки и пороги', 'Benchmarks and thresholds')} summary={tx('S&P 500 · ТА-125', 'S&P 500 · TA-125')}>
 	<dl>

@@ -722,3 +722,21 @@ export const protectionDays = sqliteTable(
 	},
 	(t) => [primaryKey({ columns: [t.date, t.portfolioId] })]
 );
+
+/**
+ * T-033: a mark of the return's path on a held security («выдыхается», «застряла», «всплеск», «отскок») from the day
+ * it appeared to the day it went away; «Пересмотрел» quiets it for 90 days.
+ */
+export const pathFlags = sqliteTable(
+	'path_flags',
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		securityId: integer().notNull(),
+		flag: text().notNull(),
+		since: text().notNull(),
+		clearedAt: text(),
+		reviewedAt: text(),
+		createdAt: now()
+	},
+	(t) => [index('path_flags_security').on(t.securityId, t.flag)]
+);

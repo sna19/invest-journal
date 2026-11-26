@@ -207,7 +207,7 @@ export function decideHold(app: Database.Database, market: Database.Database, po
 }
 
 /** whether a position stands under a signal now — then «Пересмотрел» is a «держать» */
-export const underSignal = (app: Database.Database, market: Database.Database, positionId: number) => signals(app, market).some((s) => s.positionId === positionId && s.kind !== 'no_stop');
+export const underSignal = (app: Database.Database, market: Database.Database, positionId: number) => signals(app, market).some((s) => s.positionId === positionId && s.kind !== 'no_stop' && s.kind !== 'path');
 
 /**
  * «Не покупаю» and «Отложить» from a security's card (Д-15): the reason is required, the basis too; «отложить» has the

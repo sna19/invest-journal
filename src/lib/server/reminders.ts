@@ -229,7 +229,7 @@ const signalKey = (s: Signal) => `${s.kind}|${s.positionId}|${s.planId}`;
 
 export function snoozeSignal(app: Database.Database, key: unknown, how: unknown, today = israelDate()) {
 	const k = String(key ?? '');
-	if (!/^(stop|target|review|model_end)\|\d+\|\d+$/.test(k)) throw new InputError({ key: 'Нет такого сигнала' } as Errors);
+	if (!/^(stop|target|review|model_end|no_stop|path)\|\d+\|-?\d+$/.test(k)) throw new InputError({ key: 'Нет такого сигнала' } as Errors);
 	const until = how === 'day' ? addDays(today, 1) : how === 'week' ? addDays(today, 7) : how === 'month' ? addMonths(today, 1) : isDate(how) && how > today ? how : null;
 	if (!until) throw new InputError({ until: 'На день, неделю, месяц или дату позже сегодняшней' } as Errors);
 	app.prepare(`insert into signal_snoozes (key, until, count) values (?, ?, 1) on conflict(key) do update set until = excluded.until, count = count + 1`).run(k, until);

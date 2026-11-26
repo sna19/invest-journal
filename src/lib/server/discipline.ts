@@ -4,6 +4,7 @@ import { InputError } from './journal.js';
 import { listPortfolios, marketView } from './portfolio.js';
 import { portfolioReport } from './report.js';
 import { activeOrder, orderLevel } from './protection.js';
+import { flagSignals } from './path.js';
 
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
 
@@ -180,7 +181,7 @@ export function insertReview(app: Database.Database, eventId: number, r: { reaso
 
 // ── signals ──────────────────────────────────────────────────────────────────────────────────────────────
 
-export type SignalKind = 'stop' | 'target' | 'review' | 'model_end' | 'no_stop';
+export type SignalKind = 'stop' | 'target' | 'review' | 'model_end' | 'no_stop' | 'path';
 export interface Signal {
 	kind: SignalKind;
 	positionId: number;
@@ -198,6 +199,9 @@ export interface Signal {
 	reviewDate: string | null;
 	/** T-021: the stop is an order placed at the broker («Я выставил») — it should have been filled */
 	order?: boolean;
+	/** T-033: the mark of the return's path («выдыхается», …) and its state (for «Пересмотрел») */
+	flag?: string;
+	stateId?: number;
 }
 
 /**
@@ -243,6 +247,13 @@ export function signals(app: Database.Database, market: Database.Database, today
 			if (d && d < today && daysBetween(d, today) <= 14) out.push({ kind: 'no_stop', ...base });
 		}
 	}
+	// T-033: a new mark of the return's path on a held security — until «Пересмотрел»
+	const marks = flagSignals(app, today);
+	if (marks.length)
+		for (const r of rows) {
+			for (const f of marks.filter((x) => x.securityId === r.securityId))
+				out.push({ kind: 'path', positionId: r.id, planId: f.id, portfolioId: r.portfolioId, portfolio: r.portfolio, securityId: r.securityId, symbol: r.symbol, priceUnit: r.priceUnit, price: null, priceDate: null, stop: null, target: null, reviewDate: null, flag: f.flag, stateId: f.id });
+		}
 	return out;
 }
 

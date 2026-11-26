@@ -28,6 +28,9 @@
 	import { showToast } from '#lib/toast.svelte.js';
 	import TradeSignals from '#lib/TradeSignals.svelte';
 	import PortfolioProtection from '#lib/portfolio/PortfolioProtection.svelte';
+	import FlagChips from '#lib/path/FlagChips.svelte';
+	import PortfolioPath from '#lib/path/PortfolioPath.svelte';
+	import type { Flag } from '#lib/path.js';
 	import { protectFocus } from '#lib/portfolio/protect.svelte.js';
 	import Feed from '#lib/journal/Feed.svelte';
 	import ToJournal from '#lib/journal/ToJournal.svelte';
@@ -183,12 +186,21 @@
 		if (!list!.some((p) => p.id === current)) current = list![0]?.id ?? null;
 	}
 	let loads = $state(0);
+	// T-033: the marks of the return's path in the lists (positions, «Наблюдаю», «Хочу купить»)
+	let pathFlags = $state<Record<number, Flag[]>>({});
+	async function loadFlags() {
+		const ids = [...new Set((v?.positions ?? []).filter((p: { stage: string }) => p.stage !== 'closed').map((p: { securityId: number }) => p.securityId))];
+		if (!ids.length) return (pathFlags = {});
+		const j = await fetch(`/api/path?flags=${ids.join(',')}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+		pathFlags = j?.items ?? {};
+	}
 	async function load() {
 		if (current === null) return (v = null);
 		const r = await fetch(`/api/portfolios/${current}`).catch(() => null);
 		if (!r?.ok) return (problem = tx('Нет связи с сервером.', 'No connection to the server.'));
 		v = await r.json();
 		loads++;
+		void loadFlags();
 		problem = null;
 		loadChart();
 		void scroll.restore();
@@ -615,6 +627,7 @@
 							<button onclick={() => goto(`/security/${p.securityId}?position=${p.id}`)}>
 								<span class="top">
 									<b>{p.symbol}</b>
+									{#if st !== 'closed' && pathFlags[p.securityId]}<FlagChips flags={pathFlags[p.securityId]} />{/if}
 									<span class="grow"></span>
 									{#if st === 'holding' || st === 'plan_sell'}
 										<span class="val">{money(p.valuePc, v.summary.currency)}</span>
@@ -676,6 +689,7 @@
 		/>
 	</div>
 	<!-- T-032 Д-08: the portfolio's diary, with its securities' entries («через AAPL») -->
+	{#if v && !v.portfolio.auto_source_id}<PortfolioPath portfolioId={v.portfolio.id} version={loads} />{/if}
 	<Fold key="portfolio-journal" title={tx('Дневник', 'Diary')} open={false}>
 		{#snippet aside()}<HelpIcon topicKey="journal.inherit" label={tx('дневник портфеля', 'the portfolio\'s diary')} />{/snippet}
 		{#key v.portfolio.id}<Feed scope={`portfolio:${v.portfolio.id}`} links={[{ type: 'portfolio', id: String(v.portfolio.id), label: v.portfolio.name }]} />{/key}

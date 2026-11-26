@@ -17,6 +17,7 @@
 	import About from '#lib/About.svelte';
 	import FundComposition from '#lib/FundComposition.svelte';
 	import Protection from '#lib/portfolio/Protection.svelte';
+	import PathBlock from '#lib/path/PathBlock.svelte';
 	import ToJournal from '#lib/journal/ToJournal.svelte';
 	import DecisionForm from '#lib/journal/DecisionForm.svelte';
 	import TvLink from '#lib/TvLink.svelte';
@@ -352,6 +353,13 @@
 			/* ignore */
 		}
 	});
+	/** T-033: a month tapped in the mosaic — the chart over a period that holds it */
+	function showMonth(m: string) {
+		const now = new Date();
+		const back = (now.getFullYear() - Number(m.slice(0, 4))) * 12 + now.getMonth() + 1 - Number(m.slice(5, 7));
+		setPeriod(back < 1 ? '1M' : back < 3 ? '3M' : back < 6 ? '6M' : back < 12 ? '1Y' : back < 60 ? '5Y' : '10Y');
+		document.getElementById('sec-chart-anchor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	}
 	function setPeriod(p: string) {
 		period = p;
 		refLines = {};
@@ -527,6 +535,8 @@
 			{#key page.params.id}<FundComposition securityId={Number(page.params.id)} />{/key}
 		</Fold>
 	{/if}
+	<PathBlock securityId={Number(page.params.id)} positionId={myIds[0] ?? null} onmonth={showMonth} />
+	<div id="sec-chart-anchor"></div>
 	<Fold key="sec-chart" title={tx('График', 'Chart')} summary={PERIODS.find((p) => p[0] === period)?.[1]}>
 	<div class="periods" role="radiogroup" aria-label={tx('Период', 'Period')}>
 		{#each PERIODS as [k, ru, en] (k)}
@@ -925,6 +935,8 @@
 		display: flex;
 		flex-direction: column;
 		gap: 2px;
+		min-width: 0;
+		overflow-wrap: anywhere;
 		padding: var(--s2) 0;
 		border-bottom: 1px solid var(--line);
 	}

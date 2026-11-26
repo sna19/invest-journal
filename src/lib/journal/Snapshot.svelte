@@ -4,6 +4,8 @@
 	import { loc, tx } from '../i18n.js';
 	import { money } from '../portfolio.js';
 	import StatsGrid from '../StatsGrid.svelte';
+	import Mosaic from '../path/Mosaic.svelte';
+	import PeriodsRow from '../path/PeriodsRow.svelte';
 	import { onMount } from 'svelte';
 	import type { SnapshotDraft } from './screen.svelte.js';
 
@@ -51,6 +53,9 @@
 				{/each}
 			</tbody>
 		</table>
+	{:else if s.type === 'path'}
+		<PeriodsRow periods={(D.periods ?? []) as never} market={String(P.market ?? '')} />
+		<Mosaic months={(D.months ?? []) as never} held={(D.held ?? []) as never} market={String(P.market ?? '')} />
 	{:else if s.type === 'stats'}
 		<StatsGrid s={(D.stats ?? {}) as Record<string, number | string | boolean | null>} now={nowStats} />
 		{#if nowStats}<p class="muted small">{tx('Слева — на день снимка, справа — сейчас.', 'Left — on the snapshot\'s day, right — now.')}</p>{/if}
@@ -78,7 +83,7 @@
 		</table>
 	{/if}
 	<figcaption class="muted small">
-		{s.type === 'photo' ? tx('Фото', 'Photo') : s.type === 'chart' ? `${tx('График', 'Chart')} ${P.symbol ?? ''} ${P.period ?? ''}` : s.type === 'compare' ? `${tx('Сравнение', 'Comparison')} ${P.symbol ?? ''}` : s.type === 'candidates' ? `${tx('Кандидаты модели', 'Model candidates')} ${P.variant ?? ''} ${String(P.quarter ?? '').replace('-', ' ')}${P.versionId ? ` · ${tx('версия параметров', 'parameters version')} ${P.versionId}` : ''}` : s.type === 'portfolio' ? `${tx('Портфель', 'Portfolio')} ${P.name ?? ''}` : s.type === 'scenario' ? tx('«Что если?»', '«What if?»') : s.type === 'stats' ? `${tx('Показатели', 'Ratios')} ${P.symbol ?? ''}` : tx('Снимок', 'Snapshot')}
+		{s.type === 'photo' ? tx('Фото', 'Photo') : s.type === 'chart' ? `${tx('График', 'Chart')} ${P.symbol ?? ''} ${P.period ?? ''}` : s.type === 'compare' ? `${tx('Сравнение', 'Comparison')} ${P.symbol ?? ''}` : s.type === 'candidates' ? `${tx('Кандидаты модели', 'Model candidates')} ${P.variant ?? ''} ${String(P.quarter ?? '').replace('-', ' ')}${P.versionId ? ` · ${tx('версия параметров', 'parameters version')} ${P.versionId}` : ''}` : s.type === 'portfolio' ? `${tx('Портфель', 'Portfolio')} ${P.name ?? ''}` : s.type === 'scenario' ? tx('«Что если?»', '«What if?»') : s.type === 'stats' ? `${tx('Показатели', 'Ratios')} ${P.symbol ?? ''}` : s.type === 'path' ? `${tx('Путь доходности', 'Return path')} ${P.symbol ?? ''} · ${P.asOf ?? ''}` : tx('Снимок', 'Snapshot')}
 		· {tx('снимок от', 'snapshot of')} {d(at ?? new Date().toISOString())}
 		<HelpIcon topicKey="snapshot.screen" label={tx('снимки', 'snapshots')} />
 	</figcaption>

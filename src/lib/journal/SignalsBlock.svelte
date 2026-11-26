@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { FLAG_NAME, type Flag } from '#lib/path.js';
 	import { onMount } from 'svelte';
 	import HelpIcon from '../HelpIcon.svelte';
 	import { loc, tl, tx } from '../i18n.js';
@@ -24,8 +25,11 @@
 	}
 	interface Trade {
 		key: string;
-		kind: 'stop' | 'target' | 'review' | 'model_end' | 'no_stop';
+		kind: 'stop' | 'target' | 'review' | 'model_end' | 'no_stop' | 'path';
 		order?: boolean;
+		flag?: Flag;
+		stateId?: number;
+		securityId: number;
 		positionId: number;
 		portfolio: string;
 		symbol: string;
@@ -62,6 +66,10 @@
 		const j = await post(`/api/reminders/${id}`, { action: 'snooze', how });
 		if (j) (showToast(`${tx('Отложено до', 'Snoozed until')} ${until(j.until)}`), load());
 	}
+	/** T-033: the thesis is intact — the mark stays quiet for 90 days (or until it goes and comes back) */
+	async function reviewed(id: number) {
+		if (await post('/api/path', { review: id })) (showToast(tx('Пересмотрено: метка не будет напоминать 90 дней', 'Reviewed: the mark stays quiet for 90 days')), load());
+	}
 	async function snoozeTrade(key: string, how: string) {
 		const j = await post('/api/signals/snooze', { key, how });
 		if (j) (showToast(`${tx('Отложено до', 'Snoozed until')} ${until(j.until)}`), load());
@@ -71,6 +79,7 @@
 		if (j) ((closing = null), (conclusion = ''), journalVersion.n++, showToast(tx('Закрыто', 'Closed')));
 	}
 	function tradeText(s: Trade) {
+		if (s.kind === 'path') return tx(`метка «${FLAG_NAME[s.flag!][0]}» — характер движения изменился`, `the mark «${FLAG_NAME[s.flag!][1]}» — the movement changed`);
 		if (s.kind === 'no_stop') return tx('куплено без стопа — выставь стоп у брокера', 'bought without a stop — place one at the broker');
 		if (s.kind === 'stop') return `${s.order ? tx('стоп у брокера должен был сработать', 'the stop at the broker should have worked') : tx('стоп пробит', 'stop broken')}: ${priceText(s.price, s.priceUnit)} ≤ ${priceText(s.stop, s.priceUnit)}`;
 		if (s.kind === 'target') return `${tx('цель достигнута', 'target reached')}: ${priceText(s.price, s.priceUnit)} ≥ ${priceText(s.target, s.priceUnit)}`;
@@ -84,8 +93,16 @@
 		<h2>{tx('Сигналы', 'Signals')} <span class="n">{rems.length + trade.length}</span><HelpIcon topicKey="reminder.signals" label={tx('сигналы', 'signals')} /></h2>
 		{#each trade as s (s.key)}
 			<div class="sig" class:hot={s.kind === 'stop' || s.kind === 'model_end' || s.kind === 'no_stop'}>
-				<a href="/position/{s.positionId}"><b>{s.symbol}</b> {tradeText(s)} <span class="muted">· {s.portfolio} · {tx('Продал или пересмотрел?', 'Sold or reviewed?')} →</span></a>
-				<Snooze snoozes={s.snoozes} onpick={(h) => snoozeTrade(s.key, h)} />
+				{#if s.kind === 'path'}
+					<a href="/security/{s.securityId}?position={s.positionId}"><b>{s.symbol}</b> {tradeText(s)} <span class="muted">· {tx('открой мозаику и лесенку, запиши вывод', 'open the mosaic and the ladder, write down the conclusion')} →</span></a>
+					<div class="row">
+						<Snooze snoozes={s.snoozes} onpick={(h) => snoozeTrade(s.key, h)} />
+						<button class="ghost" onclick={() => reviewed(s.stateId!)}>{tx('Пересмотрел', 'Reviewed')}</button>
+					</div>
+				{:else}
+					<a href="/position/{s.positionId}"><b>{s.symbol}</b> {tradeText(s)} <span class="muted">· {s.portfolio} · {tx('Продал или пересмотрел?', 'Sold or reviewed?')} →</span></a>
+					<Snooze snoozes={s.snoozes} onpick={(h) => snoozeTrade(s.key, h)} />
+				{/if}
 			</div>
 		{/each}
 		{#each rems as r (r.id)}

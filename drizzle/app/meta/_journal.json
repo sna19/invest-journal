@@ -169,6 +169,13 @@
       "when": 1795712538581,
       "tag": "0023_protection",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1795714792008,
+      "tag": "0024_path_flags",
+      "breakpoints": true
     }
   ]
 }

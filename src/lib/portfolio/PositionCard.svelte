@@ -100,7 +100,7 @@
 		portfolioValue: number;
 		plan: { id: number; kind: PlanKind; thesis: string | null; wrongIf: string | null; stop: number | null; target: number | null; reviewDate: string | null; noStopReason: string | null; reason: string | null; createdAt: string } | null;
 		reviews: Record<string, { reason: string; followed: number }>;
-		signals: { kind: 'stop' | 'target' | 'review' | 'model_end' | 'no_stop'; order?: boolean; price: number | null; priceDate: string | null }[];
+		signals: { kind: 'stop' | 'target' | 'review' | 'model_end' | 'no_stop' | 'path'; order?: boolean; price: number | null; priceDate: string | null }[];
 		decisions: { id: number; type: string; basis: string; noReason: number; outcome: string | null }[];
 		review: { date: string; wouldBuy: number; thesis: string | null; exitCondition: string | null } | null;
 		buyForSale: { id: number; type: string; basis: string; expectation: string | null; createdAt: string; html: string } | null;
@@ -143,6 +143,7 @@
 	}
 	const SIGNAL_TEXT: Record<string, [string, string]> = {
 		stop: ['Стоп пробит', 'Stop broken'],
+		path: ['Метка пути доходности — пересмотри тезис (блок «Как набиралась прибыль»)', 'A mark of the return\'s path — review the thesis (block «How the profit was made»)'],
 		no_stop: ['Куплено без стопа — выставь стоп у брокера (блок «Защита»)', 'Bought without a stop — place one at the broker (block «Protection»)'],
 		target: ['Цель достигнута', 'Target reached'],
 		review: ['Пора пересмотреть', 'Time to review'],
