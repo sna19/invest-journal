@@ -27,6 +27,7 @@
 		tags: { id: number; name: string; color: string; system: number }[];
 		context: { type: string; id: string; restored: boolean; then: Moment; now: Moment | null }[];
 		revisions: number;
+		assessment?: string | null;
 		snapshots: (SnapshotDraft & { id: number; photo: string | null; createdAt: string })[];
 		reminders: { id: number; title: string; what: string; state: string; nextDue: string | null; snoozes: number }[];
 		decision: { id: number; type: string; basis: string; expectation: string | null; reviewDate: string | null; outcome: string | null; noReason: number; cancelledAt: string | null; canCancel: boolean } | null;
@@ -111,6 +112,7 @@
 	<header>
 		<span class="kind k-{e.kind}">{kindText(e.kind)}</span>
 		<span class="muted small">{time(e.createdAt)}</span>
+		{#if e.assessment}<span class="assess a-{e.assessment}">{e.assessment === 'strengthening' ? tx('тезис усиливается', 'thesis strengthening') : e.assessment === 'weakening' ? tx('тезис ослабевает', 'thesis weakening') : tx('без изменений', 'unchanged')}</span>{/if}
 		{#if e.via}<span class="via">{tx('через', 'via')} {e.via}</span>{/if}
 		{#if e.revisions > 1}<button class="lnk small" onclick={loadRevs}>{tx('правок', 'edits')}: {e.revisions - 1}</button>{/if}
 	</header>
@@ -203,6 +205,7 @@
 			<button class="lnk small" onclick={() => openComposer({ parentId: e.id, links: e.links.filter((l) => l.type !== 'event'), kind: 'observation' })}>{tx('Ответить', 'Reply')}</button>
 			<button class="lnk small" onclick={() => ((text = e.html), (editing = true))}>{tx('Править', 'Edit')}</button>
 			<button class="lnk small" onclick={() => (reminding = true)}>{tx('Напомнить', 'Remind')}</button>
+			{#if !e.links.some((l) => l.type === 'hypothesis')}<a class="lnk small" href="/new?entry={e.id}">→ {tx('Гипотеза', 'Hypothesis')}</a>{/if}
 			<button class="lnk small" onclick={() => archive(true)}>{tx('В архив', 'Archive')}</button>
 		{/if}
 		{#if e.answers.length}<button class="lnk small" onclick={() => (showAnswers = !showAnswers)}>{showAnswers ? '▾' : '▸'} {tx('ответов', 'replies')}: {e.answers.length}</button>{/if}
@@ -303,6 +306,18 @@
 		font-size: var(--fs-xs);
 		color: var(--muted);
 	}
+	.assess {
+		font-size: var(--fs-xs);
+		padding: 0 var(--s2);
+		border-radius: var(--r-pill);
+		background: var(--surface-2);
+	}
+	.a-strengthening {
+		color: var(--up);
+	}
+	.a-weakening {
+		color: var(--down);
+	}
 	.via {
 		font-size: var(--fs-xs);
 		color: var(--muted);
@@ -346,6 +361,7 @@
 		color: var(--link);
 		cursor: pointer;
 		min-height: 28px;
+		text-decoration: none;
 	}
 	.lnk.danger {
 		color: var(--down);

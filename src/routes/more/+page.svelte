@@ -2,6 +2,7 @@
 	import Star from '@lucide/svelte/icons/star';
 	import ListChecks from '@lucide/svelte/icons/list-checks';
 	import BookOpen from '@lucide/svelte/icons/book-open';
+	import Scale from '@lucide/svelte/icons/scale';
 	import TopBar from '#lib/TopBar.svelte';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Database from '@lucide/svelte/icons/database';
@@ -16,6 +17,7 @@
 <TopBar title={t('tab.more')} />
 <ul class="menu">
 	<li><a href="/journal"><BookOpen size={20} /><span>{tx('Дневник', 'Diary')}</span><ChevronRight size={18} /></a></li>
+	<li><a href="/review"><Scale size={20} /><span>{tx('Честный разбор', 'Honest review')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/model"><CalendarRange size={20} /><span>{tx('Квартальная модель', 'Quarterly model')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/rules"><ListChecks size={20} /><span>{tx('Мои правила', 'My rules')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/shortlist"><Star size={20} /><span>{tx('Отмеченные', 'Picked')}</span><ChevronRight size={18} /></a></li>

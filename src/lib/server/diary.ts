@@ -161,6 +161,8 @@ export interface EntryInput {
 	body?: unknown;
 	/** md (default: old notes, tests) | html (the rich editor) */
 	format?: unknown;
+	/** Д-37: an observation on a hypothesis — strengthening | weakening | unchanged */
+	assessment?: unknown;
 	links?: unknown;
 	tags?: unknown;
 	parentId?: unknown;
@@ -223,8 +225,8 @@ export function addEntry(app: Database.Database, market: Database.Database, inpu
 		if (opts.origin && app.prepare('select 1 from journal_entries where origin = ?').get(opts.origin)) return null;
 		const at = opts.at ?? new Date().toISOString();
 		const e = app
-			.prepare(`insert into journal_entries (created_at, kind, body, format, body_text, parent_entry_id, origin, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?) returning id`)
-			.get(at, kind, body, format, text, parentId, opts.origin ?? null, at) as { id: number };
+			.prepare(`insert into journal_entries (created_at, kind, body, format, body_text, assessment, parent_entry_id, origin, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?) returning id`)
+			.get(at, kind, body, format, text, ASSESS.includes(String(input.assessment)) ? input.assessment : null, parentId, opts.origin ?? null, at) as { id: number };
 		app.prepare('insert into entry_revisions (entry_id, body, format, created_at) values (?, ?, ?, ?)').run(e.id, body, format, at);
 		const link = app.prepare('insert or ignore into entry_links (entry_id, object_type, object_id, is_primary) values (?, ?, ?, ?)');
 		for (const l of links) link.run(e.id, l.type, l.id, l.primary ? 1 : 0);
@@ -236,6 +238,28 @@ export function addEntry(app: Database.Database, market: Database.Database, inpu
 		for (const t of personalTags(input.tags)) tag.run(e.id, tagId(app, t, 'personal', false));
 		return e.id;
 	})();
+}
+
+export const ASSESS = ['strengthening', 'weakening', 'unchanged'];
+
+/** Д-39: what a hypothesis made from an entry starts with — its words and its security */
+export function entryForHypothesis(app: Database.Database, id: number) {
+	const e = app.prepare('select id, body_text as text from journal_entries where id = ?').get(id) as { id: number; text: string } | undefined;
+	if (!e) return null;
+	const sec = app.prepare(`select object_id as id from entry_links where entry_id = ? and object_type = 'security' order by is_primary desc limit 1`).get(id) as { id: string } | undefined;
+	return { id: e.id, text: e.text, securityId: sec ? Number(sec.id) : null };
+}
+
+/** a link added later — the hypothesis made from the entry (Д-39: seen both ways) */
+export function linkEntry(app: Database.Database, id: number, type: unknown, objectId: unknown) {
+	if (!(LINK_TYPES as readonly string[]).includes(String(type)) || objectId === undefined || objectId === null) throw new InputError({ link: 'Связь' } as Errors);
+	if (!app.prepare('select 1 from journal_entries where id = ?').get(id)) throw new InputError({ id: 'Нет такой записи' } as Errors);
+	app.prepare('insert or ignore into entry_links (entry_id, object_type, object_id, is_primary) values (?, ?, ?, 0)').run(id, String(type), String(objectId));
+	if (type === 'hypothesis') {
+		let t = app.prepare(`select id from tags where name = 'гипотезы' and grp = 'hypotheses'`).get() as { id: number } | undefined;
+		t ??= app.prepare(`insert into tags (name, grp, system, color) values ('гипотезы', 'hypotheses', 1, '#be185d') returning id`).get() as { id: number };
+		app.prepare('insert or ignore into entry_tags (entry_id, tag_id) values (?, ?)').run(id, t.id);
+	}
 }
 
 /** Д-33: an edit is a new revision; the links, the tags and the moment stay */
@@ -415,7 +439,7 @@ export function listEntries(app: Database.Database, market: Database.Database, f
 	const limit = Math.min(Math.max(f.limit ?? 30, 1), 100);
 	const rows = app
 		.prepare(
-			`select e.id, e.created_at as createdAt, e.updated_at as updatedAt, e.kind, e.body, e.format, e.parent_entry_id as parentId, e.status, e.origin
+			`select e.id, e.created_at as createdAt, e.updated_at as updatedAt, e.kind, e.body, e.format, e.assessment, e.parent_entry_id as parentId, e.status, e.origin
 			   from journal_entries e where ${where.join(' and ')} order by e.created_at desc, e.id desc limit ?`
 		)
 		.all(...args, limit + 1) as Row[];
@@ -431,6 +455,7 @@ interface Row {
 	kind: Kind;
 	body: string;
 	format: string;
+	assessment?: string | null;
 	parentId: number | null;
 	status: string;
 	origin: string | null;
@@ -466,7 +491,7 @@ function describe(app: Database.Database, market: Database.Database, rows: Row[]
 	const linksQ = app.prepare('select object_type as type, object_id as id, is_primary as isPrimary from entry_links where entry_id = ?');
 	const tagsQ = app.prepare('select t.id, t.name, t.grp, t.system, t.color from entry_tags x join tags t on t.id = x.tag_id where x.entry_id = ? order by t.system desc, t.name');
 	const ctxQ = app.prepare('select object_type as type, object_id as id, data, restored from entry_context where entry_id = ?');
-	const kidsQ = app.prepare(`select id, created_at as createdAt, kind, body, format from journal_entries where parent_entry_id = ? and status = 'active' order by created_at, id`);
+	const kidsQ = app.prepare(`select id, created_at as createdAt, kind, body, format, assessment from journal_entries where parent_entry_id = ? and status = 'active' order by created_at, id`);
 	const revQ = app.prepare('select count(*) as n from entry_revisions where entry_id = ?');
 	// 11б: the decision whose thesis the entry is
 	const decQ = app.prepare(

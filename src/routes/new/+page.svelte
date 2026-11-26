@@ -40,6 +40,8 @@
 	let horizon = $state<string>('none');
 	let horizonDate = $state('');
 	let thesis = $state('');
+	/** T-032 Д-39: the diary entry this hypothesis is made from — linked both ways once saved */
+	let entryId = $state<number | null>(null);
 	let invalidation = $state('');
 	let confidencePct = $state('');
 	let mode = $state<'sim' | 'real'>('sim');
@@ -101,6 +103,21 @@
 			if (hit?.items?.[0]) void choose(hit.items[0]);
 		}
 		if (page.url.searchParams.get('signal') === 'news') setSignal('news');
+		// T-032 Д-39: a hypothesis from a diary entry — the source «Собственная идея» (the source «Я»), its words, its security
+		const fromEntry = Number(page.url.searchParams.get('entry'));
+		if (fromEntry) {
+			const e = await fetch(`/api/journal/${fromEntry}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+			if (e) {
+				entryId = e.id;
+				const own = sources.find((x) => x.kind === 'own');
+				if (own) pickSource(own.id);
+				thesis = e.text.slice(0, 1000);
+				if (e.securityId) {
+					const hit = await fetch(`/api/securities?id=${e.securityId}`).then((r) => r.json()).catch(() => null);
+					if (hit?.items?.[0]) void choose(hit.items[0]);
+				}
+			}
+		}
 		const fromShare = page.url.searchParams.get('url') ?? page.url.searchParams.get('text');
 		if (fromShare) {
 			url = extractUrl(fromShare) ?? fromShare;
@@ -197,6 +214,7 @@
 				formError = tl(j.message) || tx('Не сохранилось', 'Not saved');
 				return;
 			}
+			if (entryId) await fetch(`/api/journal/${entryId}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'link', type: 'hypothesis', id: j.id }) }).catch(() => null);
 			showToast(`${tx('Записано', 'Recorded')}: ${j.symbol} ${j.direction === 'long' ? '▲' : '▼'} ${tx('до', 'until')} ${new Date(j.horizonDate).toLocaleDateString(loc())}`);
 			if (again) {
 				// same article: keep the link, source, author and title; the next ticker

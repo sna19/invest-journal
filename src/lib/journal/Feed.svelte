@@ -148,7 +148,7 @@
 <div class="feed">
 	<div class="bar">
 		<input type="search" bind:value={q} oninput={onSearch} placeholder={tx('Поиск по дневнику', 'Search the diary')} aria-label={tx('Поиск по дневнику', 'Search the diary')} />
-		<button class="write" onclick={() => openComposer({ links })}>+ {tx('Записать', 'Write')}</button>
+		<button class="write" onclick={() => openComposer({ links, kind: scope?.startsWith('hypothesis:') ? 'observation' : null })}>+ {tx('Записать', 'Write')}</button>
 	</div>
 	<div class="kinds" role="radiogroup" aria-label={tx('Тип записи', 'Kind of entry')}>
 		<button role="radio" aria-checked={!kind && !only} class:on={!kind && !only} onclick={() => ((kind = ''), (only = ''), changed())}>{tx('Все', 'All')}</button>

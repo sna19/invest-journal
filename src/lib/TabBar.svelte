@@ -45,7 +45,7 @@
 
 	// «Ещё» returns to the screen last open inside it (owner's request 20.11.2026): a tap from another tab goes
 	// back to the model, settings, … where he was; a tap while inside opens the «Ещё» menu itself
-	const MORE = ['/more', '/tickers', '/settings', '/account', '/model', '/journal', '/rules', '/shortlist'];
+	const MORE = ['/more', '/tickers', '/settings', '/account', '/model', '/journal', '/rules', '/shortlist', '/review'];
 	const inMore = (p: string) => MORE.some((x) => p === x || p.startsWith(x + '/'));
 	let moreLast = $state('/more');
 	$effect(() => {

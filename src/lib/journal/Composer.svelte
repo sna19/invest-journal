@@ -27,6 +27,9 @@
 	let saving = $state(false);
 	let error = $state<string | null>(null);
 	let snaps = $state<SnapshotDraft[]>([]);
+	// Д-37: an observation on a hypothesis says which way the thesis goes
+	let assessment = $state<string | null>(null);
+	const onHypothesis = $derived(kind === 'observation' && links.some((l) => l.type === 'hypothesis'));
 	let uploading = $state(false);
 	/** Д-24: a photo made smaller here (to about 1 600 px, JPEG) and sent to the server before the entry */
 	async function addPhoto(file: File) {
@@ -97,7 +100,7 @@
 		const r = await fetch('/api/journal', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ kind, body, format: 'html', tags, snapshots: snaps, parentId: composer.parentId, links: links.map((l, i) => ({ type: l.type, id: l.id, primary: i === 0 })) })
+			body: JSON.stringify({ kind, body, format: 'html', tags, snapshots: snaps, assessment: onHypothesis ? assessment : null, parentId: composer.parentId, links: links.map((l, i) => ({ type: l.type, id: l.id, primary: i === 0 })) })
 		}).catch(() => null);
 		saving = false;
 		const j = await r?.json().catch(() => ({}));
@@ -121,6 +124,14 @@
 			{/each}
 			<HelpIcon topicKey="journal.entry" label={tx('запись', 'entry')} />
 		</div>
+		{#if onHypothesis}
+			<div class="seg" role="radiogroup" aria-label={tx('Тезис гипотезы', 'The hypothesis\'s thesis')}>
+				{#each [['strengthening', 'Усиливается', 'Strengthening'], ['weakening', 'Ослабевает', 'Weakening'], ['unchanged', 'Без изменений', 'Unchanged']] as [k, ru, en] (k)}
+					<button type="button" role="radio" aria-checked={assessment === k} class:on={assessment === k} onclick={() => (assessment = k)}>{tx(ru, en)}</button>
+				{/each}
+				<HelpIcon topicKey="journal.assessment" label={tx('оценка наблюдения', 'the observation\'s assessment')} />
+			</div>
+		{/if}
 		<RichEditor bind:value={body} autofocus placeholder={tx('Что думаю — в момент, а не задним числом. Выдели слова — и сделай жирными, покрась или подсвети', 'What I think — now, not in hindsight. Select words to make them bold, paint or highlight them')} />
 
 		{#each snaps as s, i (i)}

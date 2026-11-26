@@ -93,6 +93,7 @@
 					</tbody>
 				</table>
 			{/if}
+			<a class="review" href="/review">{tx('Честный разбор решений →', 'Honest review of the decisions →')}</a>
 			{#if d.exits.reviewed < 10}<p class="sub">{tx('Меньше 10 разобранных продаж — выводы делать рано.', 'Fewer than 10 reviewed sales — too early for conclusions.')}</p>{/if}
 		</Fold>
 	</section>
@@ -104,6 +105,12 @@
 		padding: var(--s3) var(--s4);
 		border-radius: var(--r3);
 		background: var(--surface);
+	}
+	.review {
+		display: inline-block;
+		margin: var(--s2) 0;
+		color: var(--link);
+		font-size: var(--fs-s);
 	}
 	.nums {
 		display: grid;

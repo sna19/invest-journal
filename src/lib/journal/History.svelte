@@ -23,6 +23,7 @@
 		outcome: string | null;
 		basis?: string | null;
 		entryKind?: string | null;
+		assessment?: string | null;
 	}
 	const TYPE: Record<string, [string, string]> = { buy: ['купить', 'buy'], add: ['докупить', 'add'], sell: ['продать', 'sell'], trim: ['сократить', 'trim'], hold: ['держать', 'hold'], skip: ['не покупать', 'not buying'], defer: ['отложить', 'defer'] };
 	const BASIS: Record<string, [string, string]> = { intuition: ['интуиция', 'intuition'], hypothesis: ['гипотеза', 'hypothesis'], model: ['модель', 'model'], consensus: ['консенсус', 'consensus'], mixed: ['смешанное', 'mixed'] };
@@ -34,7 +35,8 @@
 			return `${tx('Решение', 'Decision')}: ${tx(...TYPE[x.decisionType])}${x.basis ? ` · ${tx(...BASIS[x.basis])}` : ''}${x.outcome ? ` · ${tx('сбылось', 'came true')}: ${tx(...OUT[x.outcome])}` : ''}`;
 		if (x.kind === 'hypothesis') return `${tx('Гипотеза', 'Hypothesis')} №${x.hypothesisId}`;
 		if (x.kind === 'hypothesis_closed') return `${tx('Гипотеза', 'Hypothesis')} №${x.hypothesisId} ${tx('закрыта', 'closed')}${x.outcome ? ` — ${x.outcome === 'hit' ? tx('сбылась', 'came true') : tx('не сбылась', 'did not')}` : ''}`;
-		return tx(...(KIND[x.entryKind ?? ''] ?? [x.label, x.label]));
+		const a = x.assessment === 'strengthening' ? tx(' · тезис усиливается', ' · thesis strengthening') : x.assessment === 'weakening' ? tx(' · тезис ослабевает', ' · thesis weakening') : x.assessment === 'unchanged' ? tx(' · без изменений', ' · unchanged') : '';
+		return tx(...(KIND[x.entryKind ?? ''] ?? [x.label, x.label])) + a;
 	}
 	let items = $state<Item[]>([]);
 	let points = $state<{ date: string; value: number }[]>([]);

@@ -321,6 +321,7 @@ export interface HistoryItem {
 	outcome: string | null;
 	basis?: Basis | null;
 	entryKind?: string | null;
+	assessment?: string | null;
 }
 
 /**
@@ -348,14 +349,14 @@ export function historyOf(app: Database.Database, q: { securityId?: number; hypo
 	const entries = (
 		q.hypothesisId
 			? app.prepare(
-					`select distinct e.id, e.created_at as at, e.kind, e.body_text as t from journal_entries e join entry_links l on l.entry_id = e.id
+					`select distinct e.id, e.created_at as at, e.kind, e.assessment as a, e.body_text as t from journal_entries e join entry_links l on l.entry_id = e.id
 					  where e.status = 'active' and ((l.object_type = 'hypothesis' and l.object_id = ?) or (l.object_type = 'security' and l.object_id = ? and e.created_at >= ?))`
 				).all(String(q.hypothesisId), String(securityId), from)
 			: app.prepare(
-					`select distinct e.id, e.created_at as at, e.kind, e.body_text as t from journal_entries e join entry_links l on l.entry_id = e.id
+					`select distinct e.id, e.created_at as at, e.kind, e.assessment as a, e.body_text as t from journal_entries e join entry_links l on l.entry_id = e.id
 					  where e.status = 'active' and l.object_type = 'security' and l.object_id = ?`
 				).all(String(securityId))
-	) as { id: number; at: string; kind: string; t: string }[];
+	) as { id: number; at: string; kind: string; a: string | null; t: string }[];
 	const decs = decisionsByEntry(app, entries.map((e) => e.id));
 	const KIND_RU: Record<string, string> = { note: 'Заметка', observation: 'Наблюдение', decision: 'Решение', conclusion: 'Вывод' };
 	for (const e of entries) {
@@ -372,7 +373,8 @@ export function historyOf(app: Database.Database, q: { securityId?: number; hypo
 			decisionType: d?.type ?? null,
 			outcome: d?.outcome ?? null,
 			basis: d?.basis ?? null,
-			entryKind: e.kind
+			entryKind: e.kind,
+			assessment: e.a
 		});
 	}
 	items.sort((a, b) => a.at.localeCompare(b.at));

@@ -441,6 +441,8 @@ export const journalEntries = sqliteTable(
 		body: text().notNull(),
 		/** md | html */
 		format: text().notNull().default('md'),
+		/** Д-37: an observation on a hypothesis — strengthening | weakening | unchanged */
+		assessment: text(),
 		/** the text without marks — what the search reads */
 		bodyText: text().notNull().default(''),
 		/** Д-06: a continuation of or an answer to another entry */
