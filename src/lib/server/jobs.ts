@@ -708,7 +708,7 @@ function logMomentum() {
 	const m = getMarket().sqlite;
 	const t0 = Date.now();
 	const v = momentumView(app, m);
-	if (!v.ready) return console.log(`momentum: no data yet — missing ${v.data.missing.join(', ') || '—'}${v.data.unknown.length ? `; not in the base ${v.data.unknown.join(', ')}` : ''}`);
+	if (!v.ready || v.data.missing.length) return void console.log(`momentum: no data yet — missing ${v.data.missing.join(', ') || '—'}${v.data.unknown.length ? `; not in the base ${v.data.unknown.join(', ')}` : ''}`);
 	const pct = (x: number | null) => (x === null ? '—' : `${x}%`);
 	console.log(`momentum: window ${v.window.from}…${v.window.to}, check from ${v.window.checkFrom}, ${Date.now() - t0} ms`);
 	for (const r of v.table) console.log(`momentum: ${r.name} 10y cagr ${pct(r.full.cagr)} dd ${pct(r.full.maxDrawdown)} vol ${pct(r.full.vol)} sharpe ${r.full.sharpe} | check cagr ${pct(r.check.cagr)} dd ${pct(r.check.maxDrawdown)} sharpe ${r.check.sharpe} | BIL ${pct(r.safeShare)} turnover ${pct(r.turnover)}`);
@@ -735,6 +735,7 @@ function logMomentum() {
 	const a0 = (q.get('SPY', monthAddJ(v.window.from!, -1)) as { a: number } | undefined)?.a;
 	const a1 = (q.get('SPY', v.lastMonth) as { a: number } | undefined)?.a;
 	console.log(`momentum: SPY curve ${spy.at(-1)?.value}% vs adjclose ${a0 && a1 ? ((a1 / a0 - 1) * 100).toFixed(2) : '—'}%`);
+	return true;
 }
 
 let started = false;
@@ -759,7 +760,16 @@ export function startScheduler() {
 	if (started) return;
 	started = true;
 	// T-017: the momentum's report at start — the table and two rebalances' choice for a hand check
-	setTimeout(() => void forEachUser(() => logMomentum()).catch((e) => console.error(`momentum: ${e}`)), 20_000);
+	// the first user's parameters (the owner's); with no data yet the screen's load runs — the report comes again after it
+	const report = (left: number) =>
+		setTimeout(() => {
+			try {
+				if (!asUser(listUsers()[0]?.id ?? 1, () => logMomentum()) && left > 0) report(left - 1);
+			} catch (e) {
+				console.error(`momentum: ${e}`);
+			}
+		}, 20_000 + (3 - left) * 100_000);
+	report(3);
 	// T-032: the notes and theses written before the diary move into it once (and stay in step after)
 	void forEachUser(() => syncDecisions(getApp().sqlite, getMarket().sqlite))
 		.then((n) => n.some((x) => x) && console.log(`journal: ${n.reduce((a, b) => a + b, 0)} decisions from earlier purchases`))

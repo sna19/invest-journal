@@ -55,7 +55,7 @@ export function seriesOf(market: Database.Database, symbols: string[]): { series
 let loading: Promise<unknown> | null = null;
 /** the funds without monthly prices are loaded now (in the background) — the screen says so meanwhile */
 export function ensureData(market: Database.Database, p: MParams) {
-	const all = [...p.universe, p.safe, 'SPY'];
+	const all = [...new Set([...p.universe, p.safe, 'SPY'])];
 	const have = new Set(market.prepare(`select distinct security_id as id from market_prices_monthly`).all().map((r) => (r as { id: number }).id));
 	const missing = idsOf(market, all).filter((s) => !have.has(s.id));
 	if (missing.length && !loading) loading = loadMonthly(market, missing, makeFetcher({ retries: 1 }), { pause: 300 }).catch((e) => console.error(`momentum: ${e}`)).finally(() => (loading = null));
