@@ -12,6 +12,7 @@
 	import RiskLabel from '#lib/RiskLabel.svelte';
 	import Pct from '#lib/Pct.svelte';
 	import PositionCard from '#lib/portfolio/PositionCard.svelte';
+	import Feed from '#lib/journal/Feed.svelte';
 	import TvLink from '#lib/TvLink.svelte';
 	import LineChart, { colorOf, type Line, type Mark } from '#lib/charts/LineChart.svelte';
 	import { SIGNAL, short } from '#lib/HypothesisCard.svelte';
@@ -53,7 +54,7 @@
 		monthly: boolean;
 		today: { price: number; dayPct: number; date: string; live: boolean } | null;
 		profile: { sector: string | null; industry: string | null; country: string | null; capUsd: number | null; kind: string | null } | null;
-		security: { id: number; symbol: string; name: string; exchange: string; currency: string; priceUnit: string };
+		security: { id: number; symbol: string; name: string; exchange: string; currency: string; priceUnit: string; type?: string };
 		benchmark: { id: number; label: string } | null;
 		points: { date: string; value: number }[];
 		sma: Record<"20" | "50" | "200", { date: string; value: number }[]> | null;
@@ -527,6 +528,18 @@
 			● {tx('вход гипотезы', 'hypothesis entry')} · ■ {tx('выход', 'exit')} · <span class="up">▲</span> {tx('купил', 'bought')} · <span class="down">▼</span> {tx('продал', 'sold')}{#if newsMarks.length} · <span class="newsdot">●</span> {tx('новости (тап — новости дня)', 'news (tap — the day\'s news)')}{/if}{#if sources.length} · {#each sources as [id, name] (id)}<span class="src"><i style:background={colorOf(id)}></i>{tl(name)}</span>{/each}{/if}
 		</p>
 	{/if}
+	</Fold>
+
+	<!-- T-032 Д-08: the diary of the security; an ETF or an index sees its shares' entries too -->
+	<Fold key="sec-journal" title={tx('Дневник', 'Diary')}>
+		{#snippet aside()}<HelpIcon topicKey="journal.inherit" label={tx('дневник бумаги', 'the security\'s diary')} />{/snippet}
+		{#key page.params.id}
+			<Feed
+				scope={`security:${page.params.id}`}
+				links={[{ type: 'security', id: String(page.params.id), label: c.security.symbol }, ...(wanted ? [{ type: 'position', id: String(wanted), label: tx('позиция', 'position') }] : [])]}
+				inheritToggle={c.security.type !== undefined && c.security.type !== 'stock'}
+			/>
+		{/key}
 	</Fold>
 
 	{#if statsLoaded}

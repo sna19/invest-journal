@@ -425,3 +425,102 @@ export const pushSent = sqliteTable('push_sent', {
 	key: text().primaryKey(),
 	sentAt: now()
 });
+
+// ── T-032 «Дневник и решения» (spec section 23), 11а: the core ──────────────────────────────────────────────────
+
+/** Д-01: everything the owner writes is one entry — a note to a trade, an observation, a thought, a day's record */
+export const journalEntries = sqliteTable(
+	'journal_entries',
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		/** when it was written — for a moved-in old note, its own date */
+		createdAt: now(),
+		/** note | observation | decision | conclusion */
+		kind: text().notNull().default('note'),
+		/** markdown, the latest revision */
+		body: text().notNull(),
+		/** Д-06: a continuation of or an answer to another entry */
+		parentEntryId: integer(),
+		/** active | archived */
+		status: text().notNull().default('active'),
+		/** moved in from elsewhere: «event:12», «plan:3», «hyp-note:7» — the move runs once per origin */
+		origin: text().unique(),
+		updatedAt: now()
+	},
+	(t) => [index('journal_entries_created').on(t.createdAt), index('journal_entries_parent').on(t.parentEntryId)]
+);
+
+/** Д-33: every text of an entry, the first one included — an edit never loses the earlier text */
+export const entryRevisions = sqliteTable(
+	'entry_revisions',
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		entryId: integer()
+			.notNull()
+			.references(() => journalEntries.id),
+		body: text().notNull(),
+		createdAt: now()
+	},
+	(t) => [index('entry_revisions_entry').on(t.entryId)]
+);
+
+/**
+ * Д-03: what an entry is about. object_type: security (a share, an ETF, an index), sector, industry, portfolio,
+ * position, event (a trade), hypothesis, source, model_run («A|2027-Q1»); the id is kept as text.
+ */
+export const entryLinks = sqliteTable(
+	'entry_links',
+	{
+		entryId: integer()
+			.notNull()
+			.references(() => journalEntries.id),
+		objectType: text().notNull(),
+		objectId: text().notNull(),
+		isPrimary: integer().notNull().default(0)
+	},
+	(t) => [primaryKey({ columns: [t.entryId, t.objectType, t.objectId] }), index('entry_links_object').on(t.objectType, t.objectId)]
+);
+
+/** Д-05, Д-34: the moment frozen at saving, per linked security and portfolio — never changed */
+export const entryContext = sqliteTable(
+	'entry_context',
+	{
+		entryId: integer()
+			.notNull()
+			.references(() => journalEntries.id),
+		objectType: text().notNull(),
+		objectId: text().notNull(),
+		/** JSON */
+		data: text().notNull(),
+		/** 1 — rebuilt later from the prices of that date (a moved-in old note) */
+		restored: integer().notNull().default(0)
+	},
+	(t) => [primaryKey({ columns: [t.entryId, t.objectType, t.objectId] })]
+);
+
+/** Д-12: system tags (set by the links) and personal ones */
+export const tags = sqliteTable(
+	'tags',
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		name: text().notNull(),
+		/** stocks | etf | indices | sectors | portfolios | candidates | strategies | hypotheses | decisions | risks | comparisons | personal */
+		grp: text().notNull(),
+		system: integer().notNull().default(0),
+		color: text()
+	},
+	(t) => [uniqueIndex('tags_name_group').on(t.name, t.grp)]
+);
+
+export const entryTags = sqliteTable(
+	'entry_tags',
+	{
+		entryId: integer()
+			.notNull()
+			.references(() => journalEntries.id),
+		tagId: integer()
+			.notNull()
+			.references(() => tags.id)
+	},
+	(t) => [primaryKey({ columns: [t.entryId, t.tagId] }), index('entry_tags_tag').on(t.tagId)]
+);

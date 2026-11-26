@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Fold from '#lib/Fold.svelte';
+	import Feed from '#lib/journal/Feed.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import TopBar from '#lib/TopBar.svelte';
@@ -557,6 +558,14 @@
 				<a class="all" href="/shortlist">{tx('все отмеченные →', 'all picked →')}</a>
 			</div>
 		{/if}
+	</Fold>
+
+	<!-- T-032 Д-08: the diary of this run (variant and quarter) — with the entries of its candidates -->
+	<Fold key="model-journal" title={tx('Дневник прогона', 'Diary of the run')} open={false}>
+		{#snippet aside()}<HelpIcon topicKey="journal.inherit" label={tx('дневник прогона', 'the run\'s diary')} />{/snippet}
+		{#key `${variant}|${res.forYear}-Q${res.quarter}`}
+			<Feed scope={`model_run:${variant}|${res.forYear}-Q${res.quarter}`} links={[{ type: 'model_run', id: `${variant}|${res.forYear}-Q${res.quarter}`, label: `${tx('Модель', 'Model')} ${variant} Q${res.quarter} ${res.forYear}` }]} />
+		{/key}
 	</Fold>
 
 	{#if res.walk.length}

@@ -27,6 +27,8 @@
 	import { CASH_LABEL, money, priceText, qtyText, STAGE_LABEL, STAGES, type Stage } from '#lib/portfolio.js';
 	import { showToast } from '#lib/toast.svelte.js';
 	import TradeSignals from '#lib/TradeSignals.svelte';
+	import Feed from '#lib/journal/Feed.svelte';
+	import { setScreenLinks } from '#lib/journal/screen.svelte.js';
 	import LineChart, { colorOf, type Line } from '#lib/charts/LineChart.svelte';
 
 	/**
@@ -103,6 +105,8 @@
 	const KEY = 'portfolio-current';
 	let list = $state<P[] | null>(null);
 	let current = $state<number | null>(null);
+	// T-032 Д-11: «+» on this screen writes about the open portfolio
+	$effect(() => (v ? setScreenLinks([{ type: 'portfolio', id: String(v.portfolio.id), label: v.portfolio.name }]) : undefined));
 	let v = $state<View | null>(null);
 	let problem = $state<string | null>(null);
 	let creating = $state(false);
@@ -652,6 +656,12 @@
 		<Allocation positions={v.positions} cash={v.summary.cash} currency={v.summary.currency} />
 	{/if}
 
+
+	<!-- T-032 Д-08: the portfolio's diary, with its securities' entries («через AAPL») -->
+	<Fold key="portfolio-journal" title={tx('Дневник', 'Diary')} open={false}>
+		{#snippet aside()}<HelpIcon topicKey="journal.inherit" label={tx('дневник портфеля', 'the portfolio\'s diary')} />{/snippet}
+		{#key v.portfolio.id}<Feed scope={`portfolio:${v.portfolio.id}`} links={[{ type: 'portfolio', id: String(v.portfolio.id), label: v.portfolio.name }]} />{/key}
+	</Fold>
 
 	{#if v.cash.length}
 		<Fold key="portfolio-cash" title={`${tx('Деньги', 'Cash')} · ${v.cash.filter((c) => !c.cancelledAt && c.kind !== 'reverse').length}`} open={false}>

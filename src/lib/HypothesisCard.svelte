@@ -76,6 +76,8 @@
 	import Lock from '@lucide/svelte/icons/lock';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import HelpIcon from './HelpIcon.svelte';
+	import Feed from './journal/Feed.svelte';
+	import { setScreenLinks } from './journal/screen.svelte.js';
 	import Pct from './Pct.svelte';
 	import { showToast } from './toast.svelte.js';
 	import { nextPricesRun, noResultYet } from './hypothesis.js';
@@ -87,6 +89,8 @@
 		onclose: () => void;
 	}
 	let { row, onchange, onclose }: Props = $props();
+	// T-032 Д-11: while the card is open, «+» writes about this hypothesis and its security
+	$effect(() => setScreenLinks([{ type: 'hypothesis', id: String(row.h.id), label: `№${row.h.id}` }, { type: 'security', id: String(row.h.securityId), label: row.h.symbol }]));
 	const h = $derived(row.h);
 
 	// the fields start from the saved values; the card is opened anew for another hypothesis
@@ -236,6 +240,12 @@
 		</div>
 	{/if}
 
+	<!-- T-032 Д-08: the hypothesis's diary -->
+	<details class="journal">
+		<summary>{tx('Дневник гипотезы', 'The hypothesis\'s diary')}<HelpIcon topicKey="journal.screen" label={tx('дневник', 'diary')} /></summary>
+		<Feed scope={`hypothesis:${h.id}`} links={[{ type: 'hypothesis', id: String(h.id), label: `№${h.id}` }, { type: 'security', id: String(h.securityId), label: h.symbol }]} />
+	</details>
+
 	<label class="lbl" for="note-{h.id}">{tx('Заметка', 'Note')}</label>
 	<textarea id="note-{h.id}" rows="3" placeholder={tx('Что заметили по ходу', 'What you noticed along the way')} bind:value={note} onblur={() => note !== (h.note ?? '') && patch({ note })}></textarea>
 	<label class="lbl" for="tags-{h.id}">{tx('Теги', 'Tags')}</label>
@@ -262,6 +272,20 @@
 </div>
 
 <style>
+	.journal {
+		margin: var(--s3) 0;
+		padding: var(--s2) var(--s3);
+		border-radius: var(--r2);
+		background: var(--surface-2);
+	}
+	.journal summary {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		font-weight: 600;
+		cursor: pointer;
+		min-height: 36px;
+	}
 	.to-portfolio {
 		display: flex;
 		gap: var(--s2);

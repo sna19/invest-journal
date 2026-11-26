@@ -6,9 +6,14 @@
 	import ChartColumn from '@lucide/svelte/icons/chart-column';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import Plus from '@lucide/svelte/icons/plus';
-	import { t } from './i18n.js';
+	import { t, tx } from './i18n.js';
+	import { openComposer, screen, type ScreenLink } from './journal/screen.svelte.js';
+	import { SECTORS } from './allocation.js';
 
-	/** Spec sections 13 and 18 — five tabs at the bottom («Портфель» first) and «+» (new hypothesis) above them. */
+	/**
+	 * Spec sections 13 and 18 — five tabs at the bottom («Портфель» first) and «+» above them. T-032 Д-11: «+» writes a
+	 * diary entry linked to the open screen (a new hypothesis is one tap further, in the same sheet).
+	 */
 	const tabs = [
 		{ href: '/portfolio', label: 'tab.portfolio' as const, icon: Briefcase, match: (p: string) => p.startsWith('/portfolio') },
 		{ href: '/', label: 'tab.hypotheses' as const, icon: NotebookPen, match: (p: string) => p === '/' || p.startsWith('/hypotheses') },
@@ -18,9 +23,29 @@
 	];
 	const path = $derived(page.url.pathname);
 
+	/** what the open screen is about: set by the screen, or read from its address */
+	function screenLinks(): ScreenLink[] {
+		if (screen.links.length) return screen.links;
+		const sec = path.match(/^\/security\/(\d+)/);
+		if (sec) {
+			const pos = page.url.searchParams.get('position');
+			const sym = document.querySelector('header h1')?.textContent?.trim() ?? '';
+			return [{ type: 'security', id: sec[1], label: sym || `#${sec[1]}` }, ...(pos ? [{ type: 'position', id: pos, label: tx('позиция', 'position') }] : [])];
+		}
+		if (path === '/sector') {
+			const s = page.url.searchParams.get('sector');
+			const i = page.url.searchParams.get('industry');
+			if (i) return [{ type: 'industry', id: i, label: i }];
+			if (s) return [{ type: 'sector', id: s, label: SECTORS[s]?.[0] ?? s }];
+		}
+		const src = path.match(/^\/sources\/(\d+)/);
+		if (src) return [{ type: 'source', id: src[1], label: document.querySelector('header h1')?.textContent?.trim() ?? tx('источник', 'source') }];
+		return [];
+	}
+
 	// «Ещё» returns to the screen last open inside it (owner's request 20.11.2026): a tap from another tab goes
 	// back to the model, settings, … where he was; a tap while inside opens the «Ещё» menu itself
-	const MORE = ['/more', '/tickers', '/settings', '/account', '/model'];
+	const MORE = ['/more', '/tickers', '/settings', '/account', '/model', '/journal', '/rules', '/shortlist'];
 	const inMore = (p: string) => MORE.some((x) => p === x || p.startsWith(x + '/'));
 	let moreLast = $state('/more');
 	$effect(() => {
@@ -46,7 +71,7 @@
 <svelte:window onscroll={onScroll} />
 
 {#if !path.startsWith('/new')}
-	<a class="plus" class:hidden href="/new" aria-label={t('tab.new')} title={t('tab.new')}><Plus size={26} strokeWidth={2.4} /></a>
+	<button class="plus" class:hidden onclick={() => openComposer({ links: screenLinks() })} aria-label={tx('Запись в дневник', 'Diary entry')} title={tx('Запись в дневник', 'Diary entry')}><Plus size={26} strokeWidth={2.4} /></button>
 {/if}
 <nav class="tabbar" aria-label={t('tab.sections')}>
 	{#each tabs as tab (tab.href)}
@@ -100,6 +125,11 @@
 		color: var(--accent-text);
 		box-shadow: var(--shadow);
 		flex-direction: row;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border: none;
+		cursor: pointer;
 		transition: transform 0.2s, opacity 0.2s;
 	}
 	.plus.hidden {

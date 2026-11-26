@@ -4,6 +4,7 @@
 	import { goto } from '$app/navigation';
 	import TopBar from '#lib/TopBar.svelte';
 	import Fold from '#lib/Fold.svelte';
+	import Feed from '#lib/journal/Feed.svelte';
 	import HelpIcon from '#lib/HelpIcon.svelte';
 	import RecentCards from '#lib/RecentCards.svelte';
 	import LineChart, { type Line } from '#lib/charts/LineChart.svelte';
@@ -164,6 +165,14 @@
 			<p class="muted small">{tx('Капитализация вместе и медиана компаний за год.', 'The market cap together and the companies\' median over a year.')}</p>
 		</Fold>
 	{/if}
+
+	<!-- T-032 Д-08: the sector's (or industry's) diary — its companies' entries come up unless switched off -->
+	<Fold key="sector-journal" title={tx('Дневник', 'Diary')} open={false}>
+		{#snippet aside()}<HelpIcon topicKey="journal.inherit" label={tx('дневник сектора', 'the sector\'s diary')} />{/snippet}
+		{#key `${sector}|${industry}`}
+			<Feed scope={industry ? `industry:${industry}` : `sector:${sector}`} links={[industry ? { type: 'industry', id: industry, label: industry } : { type: 'sector', id: sector ?? '', label: sector ?? '' }]} inheritToggle />
+		{/key}
+	</Fold>
 
 	<Fold key="sector-members" title={tx('Компании', 'Companies')} summary={v.members.slice(0, 5).map((m) => m.symbol).join(' · ')}>
 		<div class="sorts">

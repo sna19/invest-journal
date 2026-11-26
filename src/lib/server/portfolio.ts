@@ -66,12 +66,14 @@ interface SecRow {
 	active: number;
 	country: string;
 	manual: number;
+	/** stock | etf | index */
+	type: string;
 }
 
 export function security(market: Database.Database, id: number) {
 	return market
 		.prepare(
-			`select s.id, s.symbol, s.name_en, s.exchange_code, s.currency, s.price_unit, s.active, s.manual, e.country
+			`select s.id, s.symbol, s.name_en, s.exchange_code, s.currency, s.price_unit, s.active, s.manual, s.type, e.country
 			   from ref_securities s join ref_exchanges e on e.code = s.exchange_code where s.id = ?`
 		)
 		.get(id) as SecRow | undefined;

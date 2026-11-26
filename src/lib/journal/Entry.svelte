@@ -1,0 +1,337 @@
+<script lang="ts" module>
+	export interface Moment {
+		symbol?: string;
+		name?: string;
+		unit?: string;
+		price?: number | null;
+		priceDate?: string | null;
+		dayPct?: number | null;
+		monthPct?: number | null;
+		vsBenchMonth?: number | null;
+		benchPrice?: number | null;
+		weights?: { portfolio: string; pct: number | null }[] | null;
+		currency?: string;
+		value?: number | null;
+		twrPct?: number | null;
+	}
+	export interface EntryData {
+		id: number;
+		createdAt: string;
+		updatedAt: string;
+		kind: string;
+		body: string;
+		html: string;
+		status: string;
+		via: string | null;
+		links: { type: string; id: string; label: string }[];
+		tags: { id: number; name: string; color: string; system: number }[];
+		context: { type: string; id: string; restored: boolean; then: Moment; now: Moment | null }[];
+		revisions: number;
+		answers: EntryData[];
+	}
+</script>
+
+<script lang="ts">
+	import Self from './Entry.svelte';
+	import HelpIcon from '../HelpIcon.svelte';
+	import { loc, tl, tx } from '../i18n.js';
+	import { priceText, money } from '../portfolio.js';
+	import { showToast } from '../toast.svelte.js';
+	import { hrefOf, journalVersion, kindText, openComposer } from './screen.svelte.js';
+
+	/**
+	 * One entry of a feed: its kind, time, links and tags, the text, «тогда → сейчас» for each linked security and
+	 * portfolio (Д-05), its answers folded (Д-06), an edit as a new revision with the history (Д-33), the archive (Д-35).
+	 */
+	let { e, onchange }: { e: EntryData; onchange: () => void } = $props();
+	let editing = $state(false);
+	let text = $state('');
+	let showRevs = $state(false);
+	let revs = $state<{ id: number; html: string; createdAt: string }[]>([]);
+	let showAnswers = $state(false);
+	let showCtx = $state(false);
+	let deleting = $state(false);
+	let word = $state('');
+
+	const time = (s: string) => new Date(s).toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' });
+	const day = (s: string) => new Date(s.length > 10 ? s : s + 'T12:00:00').toLocaleDateString(loc(), { day: 'numeric', month: 'short', year: 'numeric' });
+	const pct = (x: number | null | undefined) => (x === null || x === undefined ? '—' : `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x).toLocaleString(loc(), { maximumFractionDigits: 1 })}%`);
+	const since = (a: number | null | undefined, b: number | null | undefined) => (a && b ? ((b / a - 1) * 100) : null);
+
+	async function call(method: string, url: string, b: object) {
+		const r = await fetch(url, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }).catch(() => null);
+		const j = await r?.json().catch(() => ({}));
+		if (!r?.ok) {
+			showToast(tl(j?.message) || tx('Не получилось', 'It did not work'));
+			return false;
+		}
+		return true;
+	}
+	async function saveEdit() {
+		if (await call('PATCH', `/api/journal/${e.id}`, { body: text })) {
+			editing = false;
+			onchange();
+		}
+	}
+	async function loadRevs() {
+		showRevs = !showRevs;
+		if (showRevs) revs = (await fetch(`/api/journal/${e.id}/revisions`).then((r) => r.json())).items;
+	}
+	async function archive(on: boolean) {
+		if (await call('POST', `/api/journal/${e.id}`, { action: on ? 'archive' : 'restore' })) (showToast(on ? tx('В архиве', 'Archived') : tx('Возвращено', 'Restored')), onchange());
+	}
+	async function remove() {
+		if (await call('DELETE', `/api/journal/${e.id}`, { word })) (showToast(tx('Удалено навсегда', 'Deleted for good')), journalVersion.n++, onchange());
+	}
+</script>
+
+<article class="entry" class:archived={e.status === 'archived'}>
+	<header>
+		<span class="kind k-{e.kind}">{kindText(e.kind)}</span>
+		<span class="muted small">{time(e.createdAt)}</span>
+		{#if e.via}<span class="via">{tx('через', 'via')} {e.via}</span>{/if}
+		{#if e.revisions > 1}<button class="lnk small" onclick={loadRevs}>{tx('правок', 'edits')}: {e.revisions - 1}</button>{/if}
+	</header>
+	{#if editing}
+		<textarea rows="5" bind:value={text}></textarea>
+		<div class="row">
+			<button class="main" onclick={saveEdit}>{tx('Сохранить правку', 'Save the edit')}</button>
+			<button class="ghost" onclick={() => (editing = false)}>{tx('Отмена', 'Cancel')}</button>
+		</div>
+	{:else}
+		<div class="body">{@html e.html}</div>
+	{/if}
+	{#if showRevs}
+		<ol class="revs">
+			{#each revs as r, i (r.id)}<li><span class="muted small">{i === 0 ? tx('исходный', 'original') : `${tx('правка', 'edit')} ${i}`} · {day(r.createdAt)} {time(r.createdAt)}</span><div class="body">{@html r.html}</div></li>{/each}
+		</ol>
+	{/if}
+
+	{#if e.links.length || e.tags.length}
+		<div class="chips">
+			{#each e.links.filter((l) => l.type !== 'event') as l (l.type + l.id)}
+				{@const h = hrefOf(l.type, l.id)}
+				{#if h}<a class="link" href={h}>{l.label}</a>{:else}<span class="link">{l.label}</span>{/if}
+			{/each}
+			{#each e.tags.filter((t) => !t.system) as t (t.id)}<span class="tag" style="--c: {t.color}">#{t.name}</span>{/each}
+		</div>
+	{/if}
+
+	{#if e.context.length}
+		<button class="lnk small ctxbtn" onclick={() => (showCtx = !showCtx)}>{showCtx ? '▾' : '▸'} {tx('тогда → сейчас', 'then → now')}</button>
+		{#if showCtx}
+			<div class="ctx">
+				{#each e.context as c (c.type + c.id)}
+					{#if c.type === 'security'}
+						{@const ch = since(c.then.price, c.now?.price)}
+						<div class="crow">
+							<b>{c.then.symbol}</b>
+							<span>{priceText(c.then.price ?? null, c.then.unit ?? 'USD')} <span class="muted small">{c.then.priceDate ? day(c.then.priceDate) : ''}</span> → {priceText(c.now?.price ?? null, c.then.unit ?? 'USD')}</span>
+							<b class:up={(ch ?? 0) > 0} class:down={(ch ?? 0) < 0}>{pct(ch)}</b>
+							<span class="muted small">
+								{tx('тогда', 'then')}: {tx('день', 'day')} {pct(c.then.dayPct)} · {tx('месяц', 'month')} {pct(c.then.monthPct)} · {tx('к рынку за месяц', 'vs market, month')} {pct(c.then.vsBenchMonth)}{#if c.then.weights?.length} · {c.then.weights.map((w) => `${w.portfolio} ${w.pct ?? '—'}%`).join(', ')}{/if}{#if c.restored} · {tx('восстановлено по ценам той даты', 'restored from the prices of that date')}{/if}
+							</span>
+						</div>
+					{:else if c.type === 'portfolio'}
+						<div class="crow">
+							<b>{c.then.name}</b>
+							{#if c.then.value !== undefined}
+								<span>{money(c.then.value ?? 0, c.then.currency ?? 'USD')} → {money(c.now?.value ?? 0, c.then.currency ?? 'USD')}</span>
+								<b>{pct(since(c.then.value, c.now?.value))}</b>
+								<span class="muted small">{tx('тогда с начала', 'then since start')} {pct(c.then.twrPct)} · {tx('сейчас', 'now')} {pct(c.now?.twrPct)}{tx(' (с учётом взносов — смотри доходность)', ' (deposits move the value — see the return)')}</span>
+							{:else}
+								<span class="muted small">{tx('восстановлено: цифры портфеля на ту дату не сохранились', 'restored: the portfolio\'s numbers of that date were not kept')}</span>
+							{/if}
+						</div>
+					{/if}
+				{/each}
+				<HelpIcon topicKey="journal.context" label={tx('тогда → сейчас', 'then → now')} />
+			</div>
+		{/if}
+	{/if}
+
+	<footer>
+		{#if e.status === 'archived'}
+			<button class="lnk small" onclick={() => archive(false)}>{tx('Вернуть из архива', 'Restore')}</button>
+			<button class="lnk small danger" onclick={() => (deleting = !deleting)}>{tx('Удалить навсегда', 'Delete for good')}</button>
+		{:else}
+			<button class="lnk small" onclick={() => openComposer({ parentId: e.id, links: e.links.filter((l) => l.type !== 'event'), kind: 'observation' })}>{tx('Ответить', 'Reply')}</button>
+			<button class="lnk small" onclick={() => ((text = e.body), (editing = true))}>{tx('Править', 'Edit')}</button>
+			<button class="lnk small" onclick={() => archive(true)}>{tx('В архив', 'Archive')}</button>
+		{/if}
+		{#if e.answers.length}<button class="lnk small" onclick={() => (showAnswers = !showAnswers)}>{showAnswers ? '▾' : '▸'} {tx('ответов', 'replies')}: {e.answers.length}</button>{/if}
+	</footer>
+	{#if deleting}
+		<div class="del">
+			<p class="small">{tx('Запись, её ревизии, связи и контекст исчезнут. Перед удалением приложение сохранит копию журнала. Наберите УДАЛИТЬ:', 'The entry, its revisions, links and moment will be gone. A copy of the journal is saved first. Type УДАЛИТЬ:')}</p>
+			<input bind:value={word} />
+			<button class="danger-btn" disabled={word.trim().toUpperCase() !== 'УДАЛИТЬ'} onclick={remove}>{tx('Удалить', 'Delete')}</button>
+		</div>
+	{/if}
+	{#if showAnswers}
+		<div class="answers">
+			{#each e.answers as a (a.id)}<Self e={a} {onchange} />{/each}
+		</div>
+	{/if}
+</article>
+
+<style>
+	.entry {
+		padding: var(--s3);
+		border-radius: var(--r2);
+		background: var(--surface);
+		display: flex;
+		flex-direction: column;
+		gap: var(--s2);
+	}
+	.entry.archived {
+		opacity: 0.7;
+	}
+	header,
+	footer,
+	.chips,
+	.row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--s2);
+	}
+	.kind {
+		font-size: var(--fs-xs);
+		font-weight: 600;
+		padding: 1px var(--s2);
+		border-radius: var(--r-pill);
+		background: var(--surface-2);
+	}
+	.k-observation {
+		background: color-mix(in srgb, #0e9488 15%, var(--surface));
+	}
+	.k-decision {
+		background: color-mix(in srgb, #1d4ed8 15%, var(--surface));
+	}
+	.k-conclusion {
+		background: color-mix(in srgb, #b45309 18%, var(--surface));
+	}
+	.via {
+		font-size: var(--fs-xs);
+		color: var(--muted);
+		font-style: italic;
+	}
+	.body :global(p) {
+		margin: 0 0 var(--s1);
+	}
+	.body :global(ul),
+	.body :global(ol) {
+		margin: 0 0 var(--s1);
+		padding-left: 1.2em;
+	}
+	.link {
+		font-size: var(--fs-s);
+		padding: 0 var(--s2);
+		border-radius: var(--r-pill);
+		background: var(--surface-2);
+		color: var(--text);
+		text-decoration: none;
+	}
+	.tag {
+		font-size: var(--fs-s);
+		color: var(--c);
+	}
+	.lnk {
+		border: none;
+		background: none;
+		padding: 0;
+		color: var(--link);
+		cursor: pointer;
+		min-height: 28px;
+	}
+	.lnk.danger {
+		color: var(--down);
+	}
+	.ctxbtn {
+		align-self: flex-start;
+	}
+	.ctx {
+		display: flex;
+		flex-direction: column;
+		gap: var(--s2);
+		padding: var(--s2);
+		border-radius: var(--r1);
+		background: var(--surface-2);
+	}
+	.crow {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px var(--s2);
+		align-items: baseline;
+	}
+	.up {
+		color: var(--up);
+	}
+	.down {
+		color: var(--down);
+	}
+	textarea,
+	.del input {
+		box-sizing: border-box;
+		width: 100%;
+		padding: var(--s2);
+		border: 1px solid var(--line);
+		border-radius: var(--r1);
+		background: var(--surface);
+		color: var(--text);
+		font: inherit;
+	}
+	.main,
+	.ghost,
+	.danger-btn {
+		min-height: 36px;
+		padding: 0 var(--s3);
+		border-radius: var(--r2);
+		cursor: pointer;
+	}
+	.main {
+		border: none;
+		background: var(--accent);
+		color: var(--accent-text);
+	}
+	.ghost {
+		border: 1px solid var(--line);
+		background: var(--surface);
+		color: var(--text);
+	}
+	.danger-btn {
+		border: none;
+		background: var(--down);
+		color: #fff;
+	}
+	.danger-btn:disabled {
+		opacity: 0.4;
+	}
+	.del {
+		display: flex;
+		flex-direction: column;
+		gap: var(--s2);
+	}
+	.revs {
+		margin: 0;
+		padding-left: 1.2em;
+		display: flex;
+		flex-direction: column;
+		gap: var(--s2);
+	}
+	.answers {
+		padding-left: var(--s3);
+		border-left: 2px solid var(--line);
+		display: flex;
+		flex-direction: column;
+		gap: var(--s2);
+	}
+	.muted {
+		color: var(--muted);
+	}
+	.small {
+		font-size: var(--fs-s);
+		margin: 0;
+	}
+</style>

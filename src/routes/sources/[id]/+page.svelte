@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Fold from '#lib/Fold.svelte';
+	import Feed from '#lib/journal/Feed.svelte';
 	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
@@ -136,6 +137,12 @@
 	{@render table(tx('По автору', 'By author'), card.byAuthor)}
 	{@render table(tx('По сроку', 'By term'), card.byHorizon)}
 	{@render table(tx('По режиму', 'By mode'), card.byMode)}
+
+	<!-- T-032 Д-08: the source's diary — with the entries about its hypotheses («через №12») -->
+	<Fold key="source-journal" title={tx('Дневник', 'Diary')} open={false}>
+		{#snippet aside()}<HelpIcon topicKey="journal.inherit" label={tx('дневник источника', 'the source\'s diary')} />{/snippet}
+		<Feed scope={`source:${page.params.id}`} links={[{ type: 'source', id: String(page.params.id), label: '' }]} />
+	</Fold>
 
 	<Fold key="source-articles" title={tx('Статьи и гипотезы', 'Articles and hypotheses')} summary={tx(`статей: ${card.articles.length}`, `articles: ${card.articles.length}`)}>
 		{#if !card.articles.length}
