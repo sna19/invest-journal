@@ -1,5 +1,7 @@
 <script lang="ts">
 	import Fold from '#lib/Fold.svelte';
+	import PushSettings from '#lib/PushSettings.svelte';
+	import HelpIcon from '#lib/HelpIcon.svelte';
 	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onDestroy, onMount } from 'svelte';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
@@ -155,6 +157,11 @@
 <svelte:head><title>{tx('Настройки', 'Settings')} · {tx('Журнал гипотез', 'Hypothesis journal')}</title></svelte:head>
 
 <TopBar title={tx('Настройки', 'Settings')} back={{ href: '/more', label: tx('Ещё', 'More') }} />
+
+<Fold key="settings-push" title={tx('Уведомления', 'Notifications')} summary={tx('сигналы стопа, цели и пересмотра', 'stop, target and review signals')}>
+	{#snippet aside()}<HelpIcon topicKey="trade.notify" label={tx('уведомления', 'notifications')} />{/snippet}
+	<PushSettings />
+</Fold>
 
 <Fold key="settings-bench" title={tx('Бенчмарки и пороги', 'Benchmarks and thresholds')} summary={tx('S&P 500 · ТА-125', 'S&P 500 · TA-125')}>
 	<dl>

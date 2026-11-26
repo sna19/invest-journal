@@ -1,0 +1,143 @@
+import type Database from 'better-sqlite3';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import webpush from 'web-push';
+import { dataDir } from './db.js';
+import { signals, type Signal, type SignalKind } from './discipline.js';
+import { InputError } from './journal.js';
+import type { Errors } from '../hypothesis.js';
+
+/**
+ * T-015, Web Push (owner 26.11.2026: «Да. Делать»): the signals of the trade discipline reach the phone. The home-screen
+ * app on an iPhone (iOS 16.4+) and browsers allow it once; the server sends through the device's push service (an
+ * outgoing https call — no port is opened). The VAPID key pair is made on first use and kept in the data folder, never
+ * in the repository. Each signal goes once per version of the position's conditions.
+ */
+
+const SUBJECT = process.env.PUSH_SUBJECT ?? 'https://github.com/sna19/invest-journal';
+export const PUSH_KINDS: SignalKind[] = ['stop', 'target', 'review', 'model_end'];
+
+let keys: { publicKey: string; privateKey: string } | null = null;
+export function vapid(dir = dataDir) {
+	if (keys) return keys;
+	const file = join(dir, 'vapid.json');
+	if (existsSync(file)) keys = JSON.parse(readFileSync(file, 'utf8'));
+	else {
+		keys = webpush.generateVAPIDKeys();
+		writeFileSync(file, JSON.stringify(keys), { mode: 0o600 });
+	}
+	webpush.setVapidDetails(SUBJECT, keys!.publicKey, keys!.privateKey);
+	return keys!;
+}
+
+export function pushKinds(app: Database.Database): SignalKind[] {
+	const r = app.prepare(`select value from user_settings where key = 'push_kinds'`).get() as { value: string } | undefined;
+	if (!r) return PUSH_KINDS;
+	try {
+		return (JSON.parse(r.value) as string[]).filter((k): k is SignalKind => (PUSH_KINDS as string[]).includes(k));
+	} catch {
+		return PUSH_KINDS;
+	}
+}
+
+export function setPushKinds(app: Database.Database, kinds: unknown) {
+	const list = Array.isArray(kinds) ? PUSH_KINDS.filter((k) => kinds.includes(k)) : null;
+	if (!list) throw new InputError({ kinds: 'Список сигналов' } as Errors);
+	app.prepare(`insert into user_settings (key, value) values ('push_kinds', ?) on conflict(key) do update set value = excluded.value, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`).run(JSON.stringify(list));
+	return list;
+}
+
+export function subscribe(app: Database.Database, market: Database.Database, sub: unknown, device: unknown) {
+	const s = sub as { endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown } } | null;
+	if (!s || typeof s.endpoint !== 'string' || !/^https:\/\//.test(s.endpoint) || typeof s.keys?.p256dh !== 'string' || typeof s.keys?.auth !== 'string')
+		throw new InputError({ subscription: 'Подписка устройства без адреса или ключей' } as Errors);
+	app.prepare(
+		`insert into push_subscriptions (endpoint, p256dh, auth, device) values (?, ?, ?, ?)
+		 on conflict(endpoint) do update set p256dh = excluded.p256dh, auth = excluded.auth, device = excluded.device`
+	).run(s.endpoint, s.keys.p256dh, s.keys.auth, typeof device === 'string' ? device.slice(0, 120) : null);
+	// what is already signalled now is not sent again to the new device as news
+	markCurrent(app, market);
+}
+
+export function unsubscribe(app: Database.Database, endpoint: unknown) {
+	app.prepare('delete from push_subscriptions where endpoint = ?').run(String(endpoint ?? ''));
+}
+
+export function devices(app: Database.Database) {
+	return app.prepare('select endpoint, device, created_at as createdAt from push_subscriptions order by created_at').all() as { endpoint: string; device: string | null; createdAt: string }[];
+}
+
+const keyOf = (s: Signal) => `${s.kind}|${s.positionId}|${s.planId}`;
+
+/** the first device: the signals standing now count as sent — the banner shows them, the push is for new ones */
+function markCurrent(app: Database.Database, market: Database.Database) {
+	if ((app.prepare('select count(*) as n from push_subscriptions').get() as { n: number }).n > 1) return;
+	const put = app.prepare('insert or ignore into push_sent (key) values (?)');
+	for (const s of signals(app, market)) put.run(keyOf(s));
+}
+
+const fmt = (x: number | null) => (x === null ? '—' : x.toLocaleString('ru-RU', { maximumFractionDigits: 2 }));
+
+/** the notification of a signal: short, the symbol first; a tap opens the position */
+export function messageOf(s: Signal) {
+	const title =
+		s.kind === 'stop'
+			? `${s.symbol}: стоп пробит`
+			: s.kind === 'target'
+				? `${s.symbol}: цель достигнута`
+				: s.kind === 'model_end'
+					? `${s.symbol}: период модели закончился`
+					: `${s.symbol}: пора пересмотреть`;
+	const body =
+		s.kind === 'stop'
+			? `Цена ${fmt(s.price)} ≤ стоп ${fmt(s.stop)}. Проверь исполнение у брокера и внеси продажу.`
+			: s.kind === 'target'
+				? `Цена ${fmt(s.price)} ≥ цель ${fmt(s.target)}. Продать или пересмотреть?`
+				: s.kind === 'model_end'
+					? `Правило 2: сделка по модели закрывается в конце её квартала.`
+					: `Дата пересмотра ${s.reviewDate?.split('-').reverse().join('.') ?? ''}. Тезис ещё жив?`;
+	return { title, body: `${body} · ${s.portfolio}`, url: `/portfolio?p=${s.portfolioId}&position=${s.positionId}`, tag: keyOf(s) };
+}
+
+type Send = (sub: webpush.PushSubscription, payload: string) => Promise<unknown>;
+const realSend: Send = (sub, payload) => {
+	vapid();
+	return webpush.sendNotification(sub, payload, { TTL: 24 * 3600, urgency: 'high' });
+};
+
+/** sends one message to every device of the journal; a device the push service no longer knows is removed */
+export async function sendAll(app: Database.Database, msg: { title: string; body: string; url: string; tag?: string }, send: Send = realSend) {
+	const subs = app.prepare('select endpoint, p256dh, auth from push_subscriptions').all() as { endpoint: string; p256dh: string; auth: string }[];
+	let ok = 0;
+	for (const s of subs) {
+		try {
+			await send({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, JSON.stringify(msg));
+			ok++;
+		} catch (e) {
+			const code = (e as { statusCode?: number }).statusCode;
+			if (code === 404 || code === 410) app.prepare('delete from push_subscriptions where endpoint = ?').run(s.endpoint);
+			else console.error(`push: ${code ?? ''} ${(e as Error).message}`);
+		}
+	}
+	return ok;
+}
+
+/**
+ * The job (every 5 minutes, after the live quotes): the journal's signals not sent yet, of the kinds it chose, go to
+ * its devices. Without devices nothing is marked — the banner in the app is the record.
+ */
+export async function sendSignals(app: Database.Database, market: Database.Database, send: Send = realSend, today?: string) {
+	if (!(app.prepare('select count(*) as n from push_subscriptions').get() as { n: number }).n) return 0;
+	const list = signals(app, market, today);
+	const sent = app.prepare('select 1 from push_sent where key = ?');
+	const put = app.prepare('insert or ignore into push_sent (key) values (?)');
+	const kinds = new Set(pushKinds(app));
+	let n = 0;
+	for (const s of list) {
+		if (!kinds.has(s.kind) || sent.get(keyOf(s))) continue;
+		// marked first: a failure of one device does not send it again and again
+		put.run(keyOf(s));
+		if (await sendAll(app, messageOf(s), send)) n++;
+	}
+	return n;
+}

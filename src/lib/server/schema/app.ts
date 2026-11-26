@@ -409,3 +409,19 @@ export const rules = sqliteTable('rules', {
 	sortOrder: integer().notNull().default(0),
 	createdAt: now()
 });
+
+/** T-015, Web Push: a device that allowed notifications (the home-screen app on an iPhone, a browser) */
+export const pushSubscriptions = sqliteTable('push_subscriptions', {
+	endpoint: text().primaryKey(),
+	p256dh: text().notNull(),
+	auth: text().notNull(),
+	/** what the device said it is — to tell the devices apart in the settings */
+	device: text(),
+	createdAt: now()
+});
+
+/** a signal already sent: `<kind>|<position>|<conditions version>` — each is sent once */
+export const pushSent = sqliteTable('push_sent', {
+	key: text().primaryKey(),
+	sentAt: now()
+});

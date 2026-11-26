@@ -180,6 +180,8 @@ export type SignalKind = 'stop' | 'target' | 'review' | 'model_end';
 export interface Signal {
 	kind: SignalKind;
 	positionId: number;
+	/** the version of the conditions it comes from: a push goes once per version */
+	planId: number;
 	portfolioId: number;
 	portfolio: string;
 	securityId: number;
@@ -215,7 +217,7 @@ export function signals(app: Database.Database, market: Database.Database, today
 		const last = m.last(r.securityId);
 		const price = mv?.now ?? last?.close ?? null;
 		const priceDate = mv?.date ?? last?.date ?? null;
-		const base = { positionId: r.id, portfolioId: r.portfolioId, portfolio: r.portfolio, securityId: r.securityId, symbol: r.symbol, priceUnit: r.priceUnit, price, priceDate, stop: plan.stop, target: plan.target, reviewDate: plan.reviewDate };
+		const base = { positionId: r.id, planId: plan.id, portfolioId: r.portfolioId, portfolio: r.portfolio, securityId: r.securityId, symbol: r.symbol, priceUnit: r.priceUnit, price, priceDate, stop: plan.stop, target: plan.target, reviewDate: plan.reviewDate };
 		if (price !== null && plan.stop !== null && price <= plan.stop) out.push({ kind: 'stop', ...base });
 		else if (price !== null && plan.target !== null && price >= plan.target) out.push({ kind: 'target', ...base });
 		if (plan.reviewDate && today >= plan.reviewDate) out.push({ kind: plan.kind === 'model' ? 'model_end' : 'review', ...base });

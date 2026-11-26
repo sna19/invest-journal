@@ -42,3 +42,34 @@ self.addEventListener('fetch', (event) => {
 
 	event.respondWith(caches.match(req).then((hit) => hit ?? fetch(req)));
 });
+
+// T-015, Web Push: a signal of the trade discipline; a tap opens the position
+self.addEventListener('push', (event) => {
+	let m: { title?: string; body?: string; url?: string; tag?: string } = {};
+	try {
+		m = event.data?.json() ?? {};
+	} catch {
+		m = { body: event.data?.text() };
+	}
+	event.waitUntil(
+		self.registration.showNotification(m.title ?? 'invest-journal', {
+			body: m.body ?? '',
+			tag: m.tag,
+			icon: '/icon-192.png',
+			badge: '/icon-192.png',
+			data: { url: m.url ?? '/' }
+		})
+	);
+});
+
+self.addEventListener('notificationclick', (event) => {
+	event.notification.close();
+	const url = new URL((event.notification.data as { url?: string } | null)?.url ?? '/', self.location.origin).href;
+	event.waitUntil(
+		self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+			const c = list.find((x) => x.url.startsWith(self.location.origin)) as WindowClient | undefined;
+			if (c) return c.navigate(url).then((w) => w?.focus());
+			return self.clients.openWindow(url);
+		})
+	);
+});

@@ -9,6 +9,7 @@ import { loadProfiles, staleProfiles, type ProfilesSummary } from './market/prof
 import { eventsDue, loadEvents, type EventsSummary } from './market/events.js';
 import { heldSecurities, loadQuotes, marketsOpen, readSchedule, type QuotesSummary } from './market/quotes.js';
 import { asUser, currentUserId, forEachUser, listUsers } from './auth.js';
+import { sendSignals } from './push.js';
 import { backupDir, getApp, getMarket, rawDir } from './db.js';
 import { findGaps, enqueueMissingHistory, resetRunning, runQueue, type QueueSummary } from './market/history.js';
 import { makeFetcher } from './market/http.js';
@@ -679,6 +680,15 @@ export function runMovesJob(now = new Date()) {
 	});
 }
 
+/** T-015: every 5 minutes — new signals of the trade discipline go to each journal's devices */
+export function runPushJob() {
+	return single('push', async () => {
+		const n = (await forEachUser(() => sendSignals(getApp().sqlite, getMarket().sqlite))).reduce((a, b) => a + b, 0);
+		if (n) console.log(`push: ${n} signals sent`);
+		return n;
+	});
+}
+
 let started = false;
 const tasks: { stop: () => unknown }[] = [];
 let pricesTask: { stop: () => unknown } | null = null;
@@ -708,6 +718,8 @@ export function startScheduler() {
 	at('* * * * *', 'quotes', () => (quotesDue() ? runQuotesJob() : undefined));
 	// T-022: strong moves of the followed securities — their news and a banner
 	at('*/15 * * * *', 'moves', () => runMovesJob());
+	// T-015: the trade discipline's signals to the phones (Web Push)
+	at('*/5 * * * *', 'push', () => runPushJob());
 	at('30 6 * * 0', 'listings', runListingsJob);
 	at('20 8 * * *', 'profiles', runProfilesJob);
 	// monthly bars for the model: every night hour, a portion each, until all are fresh
