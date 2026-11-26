@@ -38,7 +38,7 @@
 </script>
 
 {#each shown as s (`${s.positionId}|${s.kind}`)}
-	<a class="sig" class:stop={s.kind === 'stop' || s.kind === 'model_end'} href="/portfolio?p={s.portfolioId}&position={s.positionId}">
+	<a class="sig" class:stop={s.kind === 'stop' || s.kind === 'model_end'} href="/position/{s.positionId}">
 		<b>{s.symbol}</b> {text(s)}
 		{#if portfolioId === null}<span class="small">{s.portfolio}</span>{/if}
 		<span class="small">{tx('Продал или пересмотрел?', 'Sold or reviewed?')} →</span>

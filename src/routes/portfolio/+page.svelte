@@ -22,7 +22,7 @@
 	import HelpIcon from '#lib/HelpIcon.svelte';
 	import Pct from '#lib/Pct.svelte';
 	import EventForm from '#lib/portfolio/EventForm.svelte';
-	import PositionCard from '#lib/portfolio/PositionCard.svelte';
+	import { goto } from '$app/navigation';
 	import { israelDate } from '#lib/hypothesis.js';
 	import { CASH_LABEL, money, priceText, qtyText, STAGE_LABEL, STAGES, type Stage } from '#lib/portfolio.js';
 	import { showToast } from '#lib/toast.svelte.js';
@@ -143,7 +143,6 @@
 	}
 	let createError = $state<string | null>(null);
 	let adding = $state<{ kind: string; securityId: number | null; hypothesisId: number | null; model?: 'A' | 'B' | 'C' | 'D' | 'G' | null; note?: string | null } | null>(null);
-	let opened = $state<number | null>(null);
 	let cashing = $state(false);
 	// deleting a portfolio whole (owner's request): the name is typed back, the app copies the journal first
 	let deleting = $state(false);
@@ -294,7 +293,8 @@
 		const pos = Number(page.url.searchParams.get('position'));
 		if (want) current = want;
 		await loadList();
-		if (pos) opened = pos;
+		// T-030: a position opens as its security's card
+		if (pos) return void goto(`/position/${pos}`, { replaceState: true });
 		if (want || pos) replaceState('/portfolio', {});
 		// from a hypothesis card: «Хочу купить» / «Купил» with the link to it (a real portfolio first)
 		const add = Number(page.url.searchParams.get('add'));
@@ -601,7 +601,7 @@
 				<ul class="list">
 					{#each rows as p (p.id)}
 						<li>
-							<button onclick={() => (opened = p.id)}>
+							<button onclick={() => goto(`/security/${p.securityId}?position=${p.id}`)}>
 								<span class="top">
 									<b>{p.symbol}</b>
 									<span class="grow"></span>
@@ -726,8 +726,7 @@
 			onsaved={(pid) => {
 				adding = null;
 				showToast(tx('Записано', 'Saved'));
-				load();
-				opened = pid;
+				goto(`/position/${pid}`);
 			}}
 			oncancel={() => (adding = null)}
 		/>
@@ -736,12 +735,6 @@
 	</Sheet>
 {/if}
 
-{#if opened !== null}
-	{@const p = v?.positions.find((x) => x.id === opened)}
-	<Sheet title={p ? `${p.symbol} · ${v?.portfolio.name}` : tx('Позиция', 'Position')} onclose={() => (opened = null)}>
-		<PositionCard positionId={opened} onchange={load} ondeleted={() => ((opened = null), load())} />
-	</Sheet>
-{/if}
 
 {#if transferring && v}
 	<Sheet title="{tx('Перенос позиций', 'Carry over positions')} · {v.portfolio.name}" onclose={() => (transferring = false)}>

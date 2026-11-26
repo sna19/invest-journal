@@ -35,7 +35,7 @@ describe('T-015 Web Push', () => {
 		expect(await sendSignals(s.app, s.market, s.send, '2026-04-30')).toBe(1);
 		expect(await sendSignals(s.app, s.market, s.send, '2026-04-30')).toBe(0);
 		const m = JSON.parse(s.sent[0].payload);
-		expect(m).toMatchObject({ title: 'UUU: цель достигнута', url: expect.stringContaining(`position=${s.pos}`) });
+		expect(m).toMatchObject({ title: 'UUU: цель достигнута', url: `/position/${s.pos}` });
 	});
 
 	it('a device the push service no longer knows (410) is removed', async () => {

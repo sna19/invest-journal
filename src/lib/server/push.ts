@@ -98,7 +98,7 @@ export function messageOf(s: Signal) {
 				: s.kind === 'model_end'
 					? `Правило 2: сделка по модели закрывается в конце её квартала.`
 					: `Дата пересмотра ${s.reviewDate?.split('-').reverse().join('.') ?? ''}. Тезис ещё жив?`;
-	return { title, body: `${body} · ${s.portfolio}`, url: `/portfolio?p=${s.portfolioId}&position=${s.positionId}`, tag: keyOf(s) };
+	return { title, body: `${body} · ${s.portfolio}`, url: `/position/${s.positionId}`, tag: keyOf(s) };
 }
 
 type Send = (sub: webpush.PushSubscription, payload: string) => Promise<unknown>;

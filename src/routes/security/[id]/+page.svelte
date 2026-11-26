@@ -11,6 +11,7 @@
 	import { keepScroll } from '#lib/scroll.js';
 	import RiskLabel from '#lib/RiskLabel.svelte';
 	import Pct from '#lib/Pct.svelte';
+	import PositionCard from '#lib/portfolio/PositionCard.svelte';
 	import TvLink from '#lib/TvLink.svelte';
 	import LineChart, { colorOf, type Line, type Mark } from '#lib/charts/LineChart.svelte';
 	import { SIGNAL, short } from '#lib/HypothesisCard.svelte';
@@ -294,6 +295,11 @@
 		void scroll.restore();
 	}
 	const scroll = keepScroll(() => `security:${page.params.id}`);
+	// T-030: the positions of this security open here, «Моя позиция» on top — the one opened from first
+	const wanted = $derived(Number(page.url.searchParams.get('position')) || null);
+	// the one opened from is drawn at once, before the chart's data come
+	const myIds = $derived([...new Set([...(wanted ? [wanted] : []), ...(c?.positions ?? []).filter((p) => p.stage !== 'closed').map((p) => p.id)])]);
+	const pastPositions = $derived((c?.positions ?? []).filter((p) => !myIds.includes(p.id)));
 	// ☆ — picked: first in the model's list, compared on «Отмеченные»
 	let picked = $state(false);
 	async function setPicked(on: boolean, origin = 'карточка') {
@@ -403,7 +409,8 @@
 		if (m.hypothesisId) goto(`/?open=${m.hypothesisId}`);
 		else if (m.positionId) {
 			const p = c!.positions.find((x) => x.id === m.positionId);
-			goto(`/portfolio?p=${p?.portfolioId ?? ''}&position=${m.positionId}`);
+			void p;
+			goto(`/security/${page.params.id}?position=${m.positionId}`).then(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
 		}
 	}
 	const sources = $derived([...new Map((c?.markers ?? []).filter((m) => m.sourceId).map((m) => [m.sourceId!, m.label.slice(2)])).entries()]);
@@ -416,6 +423,12 @@
 {#if problem}<p class="warn" role="alert">{problem}</p>{/if}
 
 <RecentCards current={Number(page.params.id)} />
+
+{#each myIds as id (id)}
+	<section class="mypos">
+		<PositionCard positionId={id} compact onchange={load} ondeleted={load} />
+	</section>
+{/each}
 
 {#if c}
 	{#if model}
@@ -696,12 +709,12 @@
 		{#if c.hypotheses.length > 10 && !allHyps}<button class="more" onclick={() => (allHyps = true)}>{tx('Показать все', 'Show all')} — {c.hypotheses.length}</button>{/if}
 		</Fold>
 	{/if}
-	{#if c.positions.length}
-		<Fold key="sec-positions" title={tx('В портфелях', 'In portfolios')} summary={c.positions.map((p) => p.portfolio).join(' · ')}>
+	{#if pastPositions.length}
+		<Fold key="sec-positions" title={tx('Закрытые позиции', 'Closed positions')} summary={pastPositions.map((p) => p.portfolio).join(' · ')}>
 		<ul class="list">
-			{#each c.positions as p (p.id)}
+			{#each pastPositions as p (p.id)}
 				<li>
-					<a href="/portfolio?p={p.portfolioId}&position={p.id}"><span>{p.portfolio}</span><span class="muted small">{STAGE_LABEL[p.stage]}</span></a>
+					<a href="/security/{page.params.id}?position={p.id}" onclick={() => window.scrollTo({ top: 0 })}><span>{p.portfolio}</span><span class="muted small">{STAGE_LABEL[p.stage]}</span></a>
 				</li>
 			{/each}
 		</ul>
@@ -713,6 +726,13 @@
 {/if}
 
 <style>
+	.mypos {
+		margin: 0 0 var(--s3);
+		padding: var(--s3) var(--s4);
+		border-radius: var(--r3);
+		background: var(--surface);
+	}
+
 	.levseg {
 		display: flex;
 		gap: var(--s2);

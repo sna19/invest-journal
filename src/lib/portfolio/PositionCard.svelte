@@ -23,8 +23,10 @@
 		onchange: () => void;
 		/** the position was deleted whole: close the card */
 		ondeleted?: () => void;
+		/** T-030: inside the security's card — no name line (the card shows it), the day and the holding time */
+		compact?: boolean;
 	}
-	let { positionId, onchange, ondeleted }: Props = $props();
+	let { positionId, onchange, ondeleted, compact = false }: Props = $props();
 	let removing = $state(false);
 	async function removePosition() {
 		problem = null;
@@ -63,6 +65,10 @@
 			fromFx: number;
 			realized: number;
 			realizedPc: number;
+			openedAt: string;
+			dayPct: number | null;
+			dayPc: number | null;
+			dayDate: string | null;
 		};
 		portfolio: { id: number; name: string; kind: string; currency: string; auto_source_id: number | null };
 		hasOpening: boolean;
@@ -199,6 +205,7 @@
 	// «17 нояб.» this year, «17 нояб. 2025» before it
 	const d = (s: string) =>
 		new Date(s + 'T12:00:00').toLocaleDateString(loc(), { day: 'numeric', month: 'short', ...(s.slice(0, 4) !== String(new Date().getFullYear()) ? { year: 'numeric' } : {}) });
+	const holdDays = (from: string) => Math.max(0, Math.round((Date.now() - Date.parse(from + 'T12:00:00')) / 86_400_000));
 	const live = (e: View['events'][number]) => !e.cancelledAt && !e.reversedBy && e.kind !== 'reverse';
 </script>
 
@@ -206,7 +213,12 @@
 	<div class="skeleton"></div>
 {:else}
 	{@const p = v.position}
+	{#if compact}
+		<h2 class="mytitle">{tx('Моя позиция', 'My position')} · {v.portfolio.name}<HelpIcon topicKey="security.position" label={tx('моя позиция', 'my position')} /></h2>
+		<p class="name"><b>{STAGE_LABEL[p.stage]}</b><HelpIcon topicKey="portfolio.stages" label={tx('этапы позиции', 'position stages')} /></p>
+	{:else}
 	<p class="name">{p.name} · {p.exchange.replace('_', ' ')} · <a href="/security/{p.securityId}">{tx('график', 'chart')}</a> <TvLink exchange={p.exchange} symbol={p.symbol} /> · <b>{STAGE_LABEL[p.stage]}</b><HelpIcon topicKey="portfolio.stages" label={tx('этапы позиции', 'position stages')} /></p>
+	{/if}
 
 	{#if p.qty > 0}
 		<div class="nums">
@@ -222,6 +234,16 @@
 				<span class="k">{p.fromTransfer ? tx('С даты переноса', 'Since carry-over') : tx('Не реализовано', 'Unrealized')}</span><b><Pct value={p.unrealizedPct} /></b>
 				<span class="sub">{money(p.unrealized, p.currency, true)}{p.currency !== pc ? ` · ${money(p.unrealizedPc, pc, true)}` : ''}</span>
 			</div>
+			{#if compact}
+				<div>
+					<span class="k">{tx('За день', 'Today')}</span><b><Pct value={p.dayPct} /></b>
+					<span class="sub">{p.dayPc !== null ? money(p.dayPc, pc, true) : '—'}</span>
+				</div>
+				<div>
+					<span class="k">{tx('Владею', 'Held')}</span><b>{holdDays(p.openedAt)} {tx('дн.', 'd')}</b>
+					<span class="sub">{tx('с', 'since')} {d(p.openedAt)}</span>
+				</div>
+			{/if}
 			{#if p.currency !== pc}
 				<div>
 					<span class="k">{tx('В валюте портфеля', 'In the portfolio currency')} <HelpIcon topicKey="portfolio.fx" label={tx('рост и курс', 'growth and rate')} /></span>
@@ -744,6 +766,13 @@
 	}
 	.stepform .btns {
 		margin-top: var(--s3);
+	}
+	.mytitle {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		margin: 0 0 var(--s2);
+		font-size: var(--fs-m);
 	}
 	.skeleton {
 		height: 200px;
