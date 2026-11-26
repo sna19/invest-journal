@@ -112,7 +112,7 @@
 		{#each KINDS as [k, ru, en] (k)}
 			<label class="check"><input type="checkbox" checked={kinds.includes(k)} onchange={() => toggle(k)} /> {tx(ru, en)}</label>
 		{/each}
-		<p class="muted small">{tx('Каждый сигнал приходит один раз; после «Пересмотрел» — снова, если условие сработает.', 'Each signal comes once; after «Reviewed» — again if the condition is met.')}</p>
+		<p class="muted small">{tx('По умолчанию — только «стоп пробит». Каждый сигнал приходит один раз; после «Пересмотрел» — снова, если условие сработает.', 'By default only «stop broken». Each signal comes once; after «Reviewed» — again if the condition is met.')}</p>
 	{/if}
 </div>
 

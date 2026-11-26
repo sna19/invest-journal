@@ -16,6 +16,8 @@ import type { Errors } from '../hypothesis.js';
 
 const SUBJECT = process.env.PUSH_SUBJECT ?? 'https://github.com/sna19/invest-journal';
 export const PUSH_KINDS: SignalKind[] = ['stop', 'target', 'review', 'model_end'];
+/** owner 26.11.2026: only «стоп пробит» is on until the others are turned on in the settings */
+export const PUSH_DEFAULT: SignalKind[] = ['stop'];
 
 let keys: { publicKey: string; privateKey: string } | null = null;
 export function vapid(dir = dataDir) {
@@ -32,11 +34,11 @@ export function vapid(dir = dataDir) {
 
 export function pushKinds(app: Database.Database): SignalKind[] {
 	const r = app.prepare(`select value from user_settings where key = 'push_kinds'`).get() as { value: string } | undefined;
-	if (!r) return PUSH_KINDS;
+	if (!r) return PUSH_DEFAULT;
 	try {
 		return (JSON.parse(r.value) as string[]).filter((k): k is SignalKind => (PUSH_KINDS as string[]).includes(k));
 	} catch {
-		return PUSH_KINDS;
+		return PUSH_DEFAULT;
 	}
 }
 
@@ -123,21 +125,26 @@ export async function sendAll(app: Database.Database, msg: { title: string; body
 }
 
 /**
+ * The common way to notify (owner 26.11.2026: later the diary's reminders, T-032, and the day's moves, T-022, come the
+ * same way): a message under a key goes to the journal's devices once; the key is kept in `push_sent`. Without devices
+ * nothing is sent or kept. Returns whether it went.
+ */
+export async function notifyOnce(app: Database.Database, key: string, msg: { title: string; body: string; url: string; tag?: string }, send: Send = realSend) {
+	if (app.prepare('select 1 from push_sent where key = ?').get(key)) return false;
+	if (!(app.prepare('select count(*) as n from push_subscriptions').get() as { n: number }).n) return false;
+	// marked first: a failure of one device does not send it again and again
+	app.prepare('insert or ignore into push_sent (key) values (?)').run(key);
+	return (await sendAll(app, { tag: key, ...msg }, send)) > 0;
+}
+
+/**
  * The job (every 5 minutes, after the live quotes): the journal's signals not sent yet, of the kinds it chose, go to
  * its devices. Without devices nothing is marked — the banner in the app is the record.
  */
 export async function sendSignals(app: Database.Database, market: Database.Database, send: Send = realSend, today?: string) {
 	if (!(app.prepare('select count(*) as n from push_subscriptions').get() as { n: number }).n) return 0;
-	const list = signals(app, market, today);
-	const sent = app.prepare('select 1 from push_sent where key = ?');
-	const put = app.prepare('insert or ignore into push_sent (key) values (?)');
 	const kinds = new Set(pushKinds(app));
 	let n = 0;
-	for (const s of list) {
-		if (!kinds.has(s.kind) || sent.get(keyOf(s))) continue;
-		// marked first: a failure of one device does not send it again and again
-		put.run(keyOf(s));
-		if (await sendAll(app, messageOf(s), send)) n++;
-	}
+	for (const s of signals(app, market, today)) if (kinds.has(s.kind) && (await notifyOnce(app, keyOf(s), messageOf(s), send))) n++;
 	return n;
 }
