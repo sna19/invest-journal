@@ -29,6 +29,7 @@
 	import TradeSignals from '#lib/TradeSignals.svelte';
 	import PortfolioProtection from '#lib/portfolio/PortfolioProtection.svelte';
 	import FlagChips from '#lib/path/FlagChips.svelte';
+	import ScoreDot from '#lib/ScoreDot.svelte';
 	import PortfolioPath from '#lib/path/PortfolioPath.svelte';
 	import type { Flag } from '#lib/path.js';
 	import { protectFocus } from '#lib/portfolio/protect.svelte.js';
@@ -627,6 +628,7 @@
 							<button onclick={() => goto(`/security/${p.securityId}?position=${p.id}`)}>
 								<span class="top">
 									<b>{p.symbol}</b>
+									{#if st !== 'closed'}<ScoreDot id={p.securityId} />{/if}
 									{#if st !== 'closed' && pathFlags[p.securityId]}<FlagChips flags={pathFlags[p.securityId]} />{/if}
 									<span class="grow"></span>
 									{#if st === 'holding' || st === 'plan_sell'}

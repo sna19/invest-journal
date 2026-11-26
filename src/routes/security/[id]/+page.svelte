@@ -18,6 +18,7 @@
 	import FundComposition from '#lib/FundComposition.svelte';
 	import Protection from '#lib/portfolio/Protection.svelte';
 	import PathBlock from '#lib/path/PathBlock.svelte';
+	import ScoreBar from '#lib/ScoreBar.svelte';
 	import ToJournal from '#lib/journal/ToJournal.svelte';
 	import DecisionForm from '#lib/journal/DecisionForm.svelte';
 	import TvLink from '#lib/TvLink.svelte';
@@ -443,6 +444,8 @@
 {#if problem}<p class="warn" role="alert">{problem}</p>{/if}
 
 <RecentCards current={Number(page.params.id)} />
+
+{#if c && c.security.type === 'stock'}<ScoreBar id={Number(page.params.id)} />{/if}
 
 <Protection securityId={Number(page.params.id)} version={protV} />
 

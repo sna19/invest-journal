@@ -1126,6 +1126,8 @@ function autoRules(app: Database.Database, sourceId: number): AutoRules {
 		const m = readMParams(app);
 		return { model: true, modes: [1], commissionPct: m.commissionPct, commissionMinUsd: 0, taxPct: m.taxPct };
 	}
+	// T-034: the quant score — the quarterly model's default fee and tax
+	if (v.variant === 'Q') return { model: true, modes: [1], commissionPct: 0.1, commissionMinUsd: 5, taxPct: 25 };
 	// T-031: the commodities' variants (cA, cB) have parameters of their own
 	const k = poolOfKey(v.variant);
 	const p = readParams(app, k.variant, k.pool);

@@ -16,6 +16,8 @@ import { monthAdd as monthAddJ } from './model/momentum.js';
 import { checkReminders, signalsBlock } from './reminders.js';
 import { backupMedia } from './snapshots.js';
 import { commoditySymbols, ensureFunds, fundIds } from './model/commodities.js';
+import { recordScores, scoresOf, staleStats } from './score.js';
+import { statsOf } from './market/stats.js';
 import { flagEntry, flagsFor, portfolioPath, securityPath, updateFlagStates } from './path.js';
 import { monthAdd as monthAddP, monthlyReturns } from '../path.js';
 import { atrOf, barsOf, portfolioProtection, protectionOf, readPParams, recordProtectionDay } from './protection.js';
@@ -500,6 +502,9 @@ export function runModelJob(now = new Date()) {
 			// T-031: the commodity funds' variants A and B
 			...POOL_VARIANTS.commodities.map((v) => ({ ...recordQuarter(getApp().db, getApp().sqlite, getMarket().sqlite, v, now, false, 'commodities'), variant: `сырьё ${v}` as never }))
 		]);
+		// T-034: the quant score's ten best green shares, once a month
+		const qs = (await forEachUser(() => recordScores(getApp().db, getApp().sqlite, getMarket().sqlite, now))).filter((r) => r.recorded);
+		if (qs.length) console.log(`score: ${qs.map((r) => `${r.month} ${r.recorded}`).join(', ')}`);
 		// T-017: the country momentum records its month (A and B)
 		const mom = (await forEachUser(() => (['A', 'B'] as const).map((v) => recordMomentum(getApp().db, getApp().sqlite, getMarket().sqlite, v, now)))).flat().filter((r) => r.recorded);
 		if (mom.length) console.log(`momentum: ${mom.map((r) => `${r.variant} ${r.month} ${r.recorded}`).join(', ')}`);
@@ -713,6 +718,22 @@ export function runPushJob() {
 	});
 }
 
+/** T-034: the ratios of the shares without them (or older than a week), 800 a night, 40 at a time */
+export function runStatsJob(limit = 800) {
+	return single('stats', async () => {
+		const m = getMarket().sqlite;
+		const ids = staleStats(m, limit);
+		let n = 0;
+		for (let i = 0; i < ids.length; i += 40) {
+			const chunk = ids.slice(i, i + 40);
+			const r = await statsOf(m, chunk, { loadAtMost: chunk.length });
+			n += [...r.values()].filter((x) => x.stats).length;
+		}
+		console.log(`stats: ${ids.length} shares asked, ${n} with ratios`);
+		return n;
+	});
+}
+
 /** T-033: the marks of every user's held securities — a new one opens a signal and a diary entry */
 export function runPathJob() {
 	return single('path', async () => {
@@ -805,6 +826,26 @@ function logCommodities() {
 		console.log(`commodities: hand check ${sym} Q1 ${sr?.years.join(',')}: model ${sr?.price.join(' / ')} · hand ${hand.join(' / ')}`);
 	}
 	console.log(`commodities: report in ${Date.now() - t0} ms`);
+}
+
+function logScores() {
+	const app = getApp().sqlite;
+	const m = getMarket().sqlite;
+	const cov = m.prepare(`select count(*) as n from ref_security_stats where data <> 'null'`).get() as { n: number };
+	const held = app.prepare(`select distinct s.security_id as id, s.symbol from positions s join portfolios p on p.id = s.portfolio_id where s.stage in ('holding', 'plan_sell', 'watch', 'plan_buy') and p.kind = 'real' and p.auto_source_id is null`).all() as { id: number; symbol: string }[];
+	const t0 = Date.now();
+	const sc = scoresOf(m, held.map((h) => h.id));
+	const ms = Date.now() - t0;
+	const g = (x: (typeof sc)[number], f: 'quality' | 'growth' | 'valuation' | 'momentum') => x.factors[f].grade ?? '—';
+	console.log(`score: ${cov.n} shares with ratios; ${held.length} held or watched in ${ms} ms — ${sc.map((x, i) => `${held[i].symbol} ${x.color}${x.total !== null ? ` ${Math.round(x.total * 100)}` : ''} Q${g(x, 'quality')} G${g(x, 'growth')} V${g(x, 'valuation')} M${g(x, 'momentum')}${x.trend ? (x.trend.above ? ' ↑sma200' : ' ↓sma200') : ''}`).join(' · ')}`);
+	// by hand: the first held share's operating margin among its sector's peers
+	const one = sc.find((x) => x.factors.quality.metrics.some((mm) => mm.key === 'operatingMargin' && mm.scope === 'sector'));
+	if (one) {
+		const mm = one.factors.quality.metrics.find((x) => x.key === 'operatingMargin')!;
+		const peers = (m.prepare(`select data from ref_security_stats where data <> 'null'`).all() as { data: string }[]).length;
+		const sym = held.find((h) => h.id === one.id)!.symbol;
+		console.log(`score: hand check ${sym} (${one.sector}): operating margin ${(mm.value * 100).toFixed(1)}% — percentile ${(mm.pct * 100).toFixed(1)} among ${mm.peers} peers of the sector (${peers} shares with ratios in all); quality ${one.factors.quality.metrics.map((x) => `${x.key} ${(x.pct * 100).toFixed(0)}`).join(', ')} → ${(one.factors.quality.pct! * 100).toFixed(1)} ${one.factors.quality.grade}; total ${one.total} = mean of ${['quality', 'growth', 'valuation', 'momentum'].map((f) => one.factors[f as 'quality'].pct ?? '—').join(', ')}`);
+	}
 }
 
 /** the momentum's numbers in the log (the owner cannot query the NAS): the table, two rebalances' choice with the closes they came from, SPY against its adjclose */
@@ -924,6 +965,12 @@ export function startScheduler() {
 			console.error(`commodities: ${e}`);
 		}
 	}, 90_000);
+	// T-034: the ratios now (not only at night), then the scores of the held shares and one percentile by hand
+	setTimeout(() => {
+		void runStatsJob()
+			.then(() => asUser(listUsers()[0]?.id ?? 1, () => logScores()))
+			.catch((e) => console.error(`score: ${e}`));
+	}, 120_000);
 	// a self-check of the portfolio screen's requests on the real data (the owner saw a 500, 26.11.2026): each one's time or its error
 	setTimeout(() => {
 		void forEachUser(() => {
@@ -990,6 +1037,8 @@ export function startScheduler() {
 	at('50 9 * * *', 'protection', () => runProtectionJob());
 	// T-033: the marks of the return's path of the held securities
 	at('52 9 * * *', 'path', () => runPathJob());
+	// T-034: the ratios of the universe's shares for the quant score, in portions at night
+	at('15 1 * * *', 'stats', () => runStatsJob());
 	at('0 9 * * 6', 'gaps', runGapsJob);
 	at('40 3 * * *', 'backup-app', () => runBackupJob('app'));
 	at('10 4 * * 0', 'backup-market', () => runBackupJob('market'));

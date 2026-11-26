@@ -27,7 +27,7 @@ export function GET({ url }) {
 	const loading = ens ? { missing: ens.missing, loading: ens.loading } : null;
 	const result = u.stocks.length ? runModel(u, v, q, params) : null;
 	const app = getApp().sqlite;
-	const recorded = app.prepare('select variant, quarter, hypotheses, recorded_at as at from model_quarters where length(variant) = 1 order by quarter desc limit 8').all();
+	const recorded = app.prepare(`select variant, quarter, hypotheses, recorded_at as at from model_quarters where variant in ('A', 'B', 'C', 'D', 'G') order by quarter desc limit 8`).all();
 	const loads = m.prepare(`select count(*) as n, sum(status = 'ok') as ok, max(fetched_at) as at from ops_monthly_loads`).get();
 	const due = m.prepare(`select count(*) as n from ref_securities where type = 'stock' and active = 1 and manual = 0`).get() as { n: number };
 	return json({
