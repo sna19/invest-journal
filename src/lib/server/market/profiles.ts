@@ -88,10 +88,12 @@ const DAY = 24 * 3600 * 1000;
 
 /** the securities among `ids` whose profile is missing or old */
 export function staleProfiles(market: Database.Database, ids: number[], now = new Date()): number[] {
-	const row = market.prepare('select kind, fetched_at as at from ref_security_profiles where security_id = ?');
+	const row = market.prepare('select kind, fetched_at as at, holdings from ref_security_profiles where security_id = ?');
 	return ids.filter((id) => {
-		const r = row.get(id) as { kind: string; at: string } | undefined;
+		const r = row.get(id) as { kind: string; at: string; holdings: string | null } | undefined;
 		if (!r) return true;
+		// T-016: a fund loaded before its top holdings were kept — once more, at the next load
+		if (r.kind === 'etf' && r.holdings === null && r.at < '2026-11-26T16:00') return true;
 		const age = now.getTime() - Date.parse(r.at);
 		// the market cap moves with the price: a week (T-021); a fund's weights and the unknown — a week too
 		return age > 7 * DAY;
