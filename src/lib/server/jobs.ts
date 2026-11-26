@@ -13,9 +13,9 @@ import { sendSignals } from './push.js';
 import { syncDecisions } from './decisions.js';
 import { momentumIds, momentumSymbols, momentumView, recordMomentum } from './model/momentumService.js';
 import { monthAdd as monthAddJ } from './model/momentum.js';
-import { checkReminders } from './reminders.js';
+import { checkReminders, signalsBlock } from './reminders.js';
 import { backupMedia } from './snapshots.js';
-import { flagEntry, flagsFor, securityPath, updateFlagStates } from './path.js';
+import { flagEntry, flagsFor, portfolioPath, securityPath, updateFlagStates } from './path.js';
 import { monthAdd as monthAddP, monthlyReturns } from '../path.js';
 import { atrOf, barsOf, portfolioProtection, protectionOf, readPParams, recordProtectionDay } from './protection.js';
 import { realPortfolios } from './risk.js';
@@ -29,7 +29,7 @@ import { ringSecurities } from './market/rings.js';
 import { tase } from './market/tase.js';
 import { loadFx, USD_ILS, type FxSummary } from './market/boi.js';
 import { updateHypotheses, type Summary } from './results.js';
-import { marketView, syncAuto } from './portfolio.js';
+import { listPortfolios, marketView, portfolioView, syncAuto } from './portfolio.js';
 import { riskView } from './risk.js';
 import { atrPct, attribution, collect, triggers } from './news/service.js';
 
@@ -870,6 +870,38 @@ export function startScheduler() {
 			)
 			.catch((e) => console.error(`path: ${e}`));
 	}, 60_000);
+	// a self-check of the portfolio screen's requests on the real data (the owner saw a 500, 26.11.2026): each one's time or its error
+	setTimeout(() => {
+		void forEachUser(() => {
+			const app = getApp().sqlite;
+			const m = getMarket().sqlite;
+			for (const port of listPortfolios(app)) {
+				const out: string[] = [];
+				const tryIt = (name: string, f: () => unknown) => {
+					const t0 = Date.now();
+					try {
+						const r = f();
+						out.push(`${name} ${Date.now() - t0} ms${r === null ? ' (null)' : ''}`);
+					} catch (e) {
+						out.push(`${name} FAILED`);
+						console.error(`selfcheck: portfolio ${port.id} ${name}:`, e);
+					}
+				};
+				tryIt('view', () => portfolioView(app, m, port.id));
+				tryIt('protection', () => portfolioProtection(app, m, port.id));
+				tryIt('path', () => portfolioPath(app, m, port.id));
+				tryIt('flags', () => flagsFor(app, m, (app.prepare('select security_id as id from positions where portfolio_id = ?').all(port.id) as { id: number }[]).map((x) => x.id)));
+				console.log(`selfcheck: user ${currentUserId()} portfolio ${port.id}: ${out.join(' · ')}`);
+			}
+			const t0 = Date.now();
+			try {
+				signalsBlock(app, m);
+				console.log(`selfcheck: user ${currentUserId()} signals ${Date.now() - t0} ms`);
+			} catch (e) {
+				console.error(`selfcheck: signals:`, e);
+			}
+		}).catch((e) => console.error(`selfcheck: ${e}`));
+	}, 75_000);
 	// T-021: the protective plan of every real position, with what it is computed from (the log stays on the NAS)
 	setTimeout(() => {
 		try {
