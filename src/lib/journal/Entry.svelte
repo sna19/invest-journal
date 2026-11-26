@@ -27,6 +27,7 @@
 		tags: { id: number; name: string; color: string; system: number }[];
 		context: { type: string; id: string; restored: boolean; then: Moment; now: Moment | null }[];
 		revisions: number;
+		reminders: { id: number; title: string; what: string; state: string; nextDue: string | null; snoozes: number }[];
 		decision: { id: number; type: string; basis: string; expectation: string | null; reviewDate: string | null; outcome: string | null; noReason: number; cancelledAt: string | null; canCancel: boolean } | null;
 		answers: EntryData[];
 	}
@@ -35,6 +36,8 @@
 <script lang="ts">
 	import Self from './Entry.svelte';
 	import RichEditor from './RichEditor.svelte';
+	import ReminderForm from './ReminderForm.svelte';
+	import AlarmClock from '@lucide/svelte/icons/alarm-clock';
 	import HelpIcon from '../HelpIcon.svelte';
 	import { loc, tl, tx } from '../i18n.js';
 	import { priceText, money } from '../portfolio.js';
@@ -53,6 +56,14 @@
 	let showAnswers = $state(false);
 	let showCtx = $state(false);
 	let deleting = $state(false);
+	let reminding = $state(false);
+	let remHist = $state<{ id: number; items: { kind: string; at: string; note: string | null }[] } | null>(null);
+	async function showRemHist(id: number) {
+		if (remHist?.id === id) return (remHist = null);
+		remHist = { id, items: (await fetch(`/api/reminders/${id}`).then((r) => r.json())).items };
+	}
+	const REM_STATE: Record<string, [string, string]> = { waiting: ['ждёт', 'waiting'], fired: ['сработало', 'fired'], snoozed: ['отложено', 'snoozed'], closed: ['закрыто', 'closed'] };
+	const REM_EVENT: Record<string, [string, string]> = { created: ['поставлено', 'set'], fired: ['сработало', 'fired'], snoozed: ['отложено до', 'snoozed until'], closed: ['закрыто', 'closed'] };
 	let word = $state('');
 
 	const time = (s: string) => new Date(s).toLocaleTimeString(loc(), { hour: '2-digit', minute: '2-digit' });
@@ -166,6 +177,20 @@
 		{/if}
 	{/if}
 
+	{#if e.reminders?.length}
+		<ul class="rems">
+			{#each e.reminders as r (r.id)}
+				<li class:done={r.state === 'closed'}>
+					<AlarmClock size={14} class="ic" /> {r.title} <span class="muted small">· {r.what} · {tx(...REM_STATE[r.state])}{#if r.state === 'snoozed' && r.nextDue}{' '}{tx('до', 'until')} {day(r.nextDue)}{/if}{#if r.snoozes}{' · '}{tx(`отложено ${r.snoozes} раз`, `snoozed ${r.snoozes}×`)}{/if}</span>
+					<button class="lnk small" onclick={() => showRemHist(r.id)}>{tx('история', 'history')}</button>
+					{#if remHist?.id === r.id}
+						<ol class="remh">{#each remHist.items as h, i (i)}<li>{day(h.at)} — {tx(...(REM_EVENT[h.kind] ?? [h.kind, h.kind]))}{#if h.note} {h.kind === 'snoozed' ? day(h.note) : h.note}{/if}</li>{/each}</ol>
+					{/if}
+				</li>
+			{/each}
+		</ul>
+	{/if}
+	{#if reminding}<ReminderForm entryId={e.id} links={e.links} onclose={() => ((reminding = false), onchange())} />{/if}
 	<footer>
 		{#if e.status === 'archived'}
 			<button class="lnk small" onclick={() => archive(false)}>{tx('Вернуть из архива', 'Restore')}</button>
@@ -173,6 +198,7 @@
 		{:else}
 			<button class="lnk small" onclick={() => openComposer({ parentId: e.id, links: e.links.filter((l) => l.type !== 'event'), kind: 'observation' })}>{tx('Ответить', 'Reply')}</button>
 			<button class="lnk small" onclick={() => ((text = e.html), (editing = true))}>{tx('Править', 'Edit')}</button>
+			<button class="lnk small" onclick={() => (reminding = true)}>{tx('Напомнить', 'Remind')}</button>
 			<button class="lnk small" onclick={() => archive(true)}>{tx('В архив', 'Archive')}</button>
 		{/if}
 		{#if e.answers.length}<button class="lnk small" onclick={() => (showAnswers = !showAnswers)}>{showAnswers ? '▾' : '▸'} {tx('ответов', 'replies')}: {e.answers.length}</button>{/if}
@@ -251,6 +277,27 @@
 		background: var(--down);
 		color: #fff;
 		text-decoration: none;
+	}
+	.rems {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		font-size: var(--fs-s);
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.rems :global(.ic) {
+		vertical-align: -2px;
+	}
+	.rems li.done {
+		opacity: 0.6;
+	}
+	.remh {
+		margin: 2px 0 0;
+		padding-left: 1.4em;
+		font-size: var(--fs-xs);
+		color: var(--muted);
 	}
 	.via {
 		font-size: var(--fs-xs);

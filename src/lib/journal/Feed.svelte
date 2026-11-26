@@ -34,13 +34,14 @@
 	let to = $state(untrack(() => P('to') ?? ''));
 	let hyp = $state(untrack(() => P('hyp') ?? ''));
 	let archived = $state(untrack(() => P('arch') === '1'));
+	let remind = $state(untrack(() => P('rem') === '1'));
 	let inherit = $state(untrack(() => P('inh') !== '0'));
 
 	let items = $state<EntryData[]>([]);
 	let next = $state<number | null>(null);
 	let loading = $state(false);
 	let cloud = $state<Tag[]>([]);
-	let filtersOpen = $state(untrack(() => !!(P('kind') || P('only') || P('from') || P('to') || P('hyp') || P('arch'))));
+	let filtersOpen = $state(untrack(() => !!(P('kind') || P('only') || P('from') || P('to') || P('hyp') || P('arch') || P('rem'))));
 
 	function params(before: number | null) {
 		const s = new URLSearchParams();
@@ -54,6 +55,7 @@
 		if (to) s.set('to', to);
 		if (hyp) s.set('hyp', hyp);
 		if (archived) s.set('archived', '1');
+		if (remind) s.set('remind', '1');
 		if (before) s.set('before', String(before));
 		return s;
 	}
@@ -69,6 +71,7 @@
 		set('to', to);
 		set('hyp', hyp);
 		set('arch', archived ? '1' : '');
+		set('rem', remind ? '1' : '');
 		set('inh', inherit ? '' : '0');
 		if (u.href !== page.url.href) replaceState(u, page.state);
 	}
@@ -139,7 +142,7 @@
 		}
 		return out;
 	});
-	const filtered = $derived(!!(q.trim() || kind || only || tags.length || from || to || hyp || archived));
+	const filtered = $derived(!!(q.trim() || kind || only || tags.length || from || to || hyp || archived || remind));
 </script>
 
 <div class="feed">
@@ -171,7 +174,7 @@
 			{/if}
 			{#if inheritToggle}<label class="check"><input type="checkbox" bind:checked={inherit} onchange={() => (changed(), loadCloud())} /> {tx('включая записи бумаг', 'including the securities\' entries')}</label>{/if}
 			<label class="check"><input type="checkbox" bind:checked={archived} onchange={changed} /> {tx('архив', 'archive')}</label>
-			<label class="check off" title={tx('напоминания — следующий подэтап (11г)', 'reminders come in the next step (11г)')}><input type="checkbox" disabled /> {tx('с открытым напоминанием', 'with an open reminder')}</label>
+			<label class="check"><input type="checkbox" bind:checked={remind} onchange={changed} /> {tx('с открытым напоминанием', 'with an open reminder')}</label>
 		</div>
 	{/if}
 	<TagCloud tags={cloud} selected={tags} onchange={(ids) => ((tags = ids), changed())} />
@@ -270,9 +273,6 @@
 		background: var(--surface);
 		color: var(--text);
 		font: inherit;
-	}
-	.check.off {
-		opacity: 0.5;
 	}
 	.day {
 		margin: var(--s3) 0 0;

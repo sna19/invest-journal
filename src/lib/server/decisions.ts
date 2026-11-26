@@ -4,6 +4,7 @@ import { InputError } from './journal.js';
 import { addEntry, syncJournal, type Link } from './diary.js';
 import { signals } from './discipline.js';
 import { sanitize, plainText } from './richtext.js';
+import { addReminder } from './reminders.js';
 
 /**
  * T-032 11б «Решения» (spec 23, Д-14 — Д-20). A decision is a thing of its own with its thesis entry in the diary. It is
@@ -230,6 +231,8 @@ export function decideOther(app: Database.Database, market: Database.Database, i
 	return app.transaction(() => {
 		const entryId = addEntry(app, market, { kind: 'decision', body: why, format: 'html', links })!;
 		markEntry(app, entryId, type!);
+		// «отложить» creates its reminder (Д-15, 11г); «не покупать» — one to check the refusal on its date
+		if (reviewDate) addReminder(app, { entryId, condition: 'date', date: reviewDate, title: `${type === 'defer' ? 'Вернуться к' : 'Проверить отказ от'} ${(market.prepare('select symbol from ref_securities where id = ?').get(securityId) as { symbol: string }).symbol}` });
 		return insert(app, { type: type!, securityId, portfolioId, positionId: null, eventId: null, basis: input.basis as Basis, basisRef, thesisEntryId: entryId, expectation: null, reviewDate, noReason: 0, planId: null });
 	})();
 }

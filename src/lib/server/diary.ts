@@ -6,6 +6,7 @@ import { InputError } from './journal.js';
 import { benchmarkId, marketView, portfolioView } from './portfolio.js';
 import { compareRefs } from './compare.js';
 import { plainText, sanitize } from './richtext.js';
+import { remindersOf } from './reminders.js';
 
 /**
  * T-032 «Дневник и решения» (spec section 23), 11а — the core. Everything the owner writes is one entry (Д-01) with a
@@ -371,6 +372,8 @@ export interface Filters {
 	hyp?: string | null;
 	q?: string | null;
 	archived?: boolean;
+	/** T-032 11г: with a reminder not closed */
+	remind?: boolean;
 	/** the cursor: entries older than this one */
 	before?: number | null;
 	limit?: number;
@@ -403,6 +406,7 @@ export function listEntries(app: Database.Database, market: Database.Database, f
 	if (f.to) (where.push('e.created_at < ?'), args.push(daysBefore(f.to, -1)));
 	if (f.hyp === 'all') where.push(`exists (select 1 from entry_links l where l.entry_id = e.id and l.object_type = 'hypothesis')`);
 	else if (f.hyp) (where.push(`exists (select 1 from entry_links l where l.entry_id = e.id and l.object_type = 'hypothesis' and l.object_id = ?)`), args.push(String(f.hyp)));
+	if (f.remind) where.push(`exists (select 1 from reminders r where r.entry_id = e.id and r.state <> 'closed')`);
 	if (f.q && ftsQuery(f.q)) (where.push('e.id in (select rowid from journal_fts where journal_fts match ?)'), args.push(ftsQuery(f.q)));
 	if (f.before) (where.push('(e.created_at, e.id) < (select created_at, id from journal_entries where id = ?)'), args.push(f.before));
 	const limit = Math.min(Math.max(f.limit ?? 30, 1), 100);
@@ -436,6 +440,7 @@ export interface EntryView extends Row {
 	tags: unknown[];
 	context: { type: string; id: string; restored: boolean; then: unknown; now: unknown }[];
 	revisions: number;
+	reminders: unknown[];
 	decision: unknown;
 	answers: EntryView[];
 }
@@ -463,6 +468,7 @@ function describe(app: Database.Database, market: Database.Database, rows: Row[]
 	const decQ = app.prepare(
 		`select id, type, basis, basis_ref as basisRef, expectation, review_date as reviewDate, outcome, no_reason as noReason, cancelled_at as cancelledAt, created_at as createdAt from decisions where thesis_entry_id = ?`
 	);
+	const rems = remindersOf(app, [...rows.map((r) => r.id), ...(rows.length ? (app.prepare(`select id from journal_entries where parent_entry_id in (${rows.map(() => '?').join(',')})`).all(...rows.map((r) => r.id)) as { id: number }[]).map((x) => x.id) : [])]);
 	const one = (r: Row, deep: boolean): EntryView => {
 		const links = (linksQ.all(r.id) as { type: LinkType; id: string; isPrimary: number }[]).map((l) => ({ ...l, label: labelOf(app, market, l.type, l.id) }));
 		const ctx = (ctxQ.all(r.id) as { type: string; id: string; data: string; restored: number }[]).map((c) => {
@@ -479,6 +485,7 @@ function describe(app: Database.Database, market: Database.Database, rows: Row[]
 			tags: tagsQ.all(r.id),
 			context: ctx,
 			revisions: (revQ.get(r.id) as { n: number }).n,
+			reminders: rems.get(r.id) ?? [],
 			decision: (() => {
 				const d = decQ.get(r.id) as { createdAt: string; cancelledAt: string | null } | undefined;
 				return d ? { ...d, canCancel: !d.cancelledAt && Date.now() - Date.parse(d.createdAt) < 24 * 3600_000 } : null;

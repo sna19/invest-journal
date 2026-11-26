@@ -7,12 +7,13 @@
 	 * T-015, «Настройки» → «Уведомления»: this device subscribes to the signals of the trade discipline (Web Push).
 	 * On an iPhone it works in the app added to the home screen (iOS 16.4+), not in a Safari tab.
 	 */
-	type Kind = 'stop' | 'target' | 'review' | 'model_end';
+	type Kind = 'stop' | 'target' | 'review' | 'model_end' | 'reminder';
 	const KINDS: [Kind, string, string][] = [
 		['stop', 'Стоп пробит', 'Stop broken'],
 		['target', 'Цель достигнута', 'Target reached'],
 		['review', 'Пора пересмотреть', 'Time to review'],
-		['model_end', 'Период модели закончился', 'The model\'s period is over']
+		['model_end', 'Период модели закончился', 'The model\'s period is over'],
+		['reminder', 'Напоминания дневника', 'Diary reminders']
 	];
 	let mode = $state<'loading' | 'unsupported' | 'ios-tab' | 'denied' | 'off' | 'on'>('loading');
 	let kinds = $state<Kind[]>([]);

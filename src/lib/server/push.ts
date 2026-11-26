@@ -15,9 +15,11 @@ import type { Errors } from '../hypothesis.js';
  */
 
 const SUBJECT = process.env.PUSH_SUBJECT ?? 'https://github.com/sna19/invest-journal';
-export const PUSH_KINDS: SignalKind[] = ['stop', 'target', 'review', 'model_end'];
+export type PushKind = SignalKind | 'reminder';
+/** «reminder» — the diary's reminders (T-032 Д-32: off by default) */
+export const PUSH_KINDS: PushKind[] = ['stop', 'target', 'review', 'model_end', 'reminder'];
 /** owner 26.11.2026: only «стоп пробит» is on until the others are turned on in the settings */
-export const PUSH_DEFAULT: SignalKind[] = ['stop'];
+export const PUSH_DEFAULT: PushKind[] = ['stop'];
 
 let keys: { publicKey: string; privateKey: string } | null = null;
 export function vapid(dir = dataDir) {
@@ -32,11 +34,11 @@ export function vapid(dir = dataDir) {
 	return keys!;
 }
 
-export function pushKinds(app: Database.Database): SignalKind[] {
+export function pushKinds(app: Database.Database): PushKind[] {
 	const r = app.prepare(`select value from user_settings where key = 'push_kinds'`).get() as { value: string } | undefined;
 	if (!r) return PUSH_DEFAULT;
 	try {
-		return (JSON.parse(r.value) as string[]).filter((k): k is SignalKind => (PUSH_KINDS as string[]).includes(k));
+		return (JSON.parse(r.value) as string[]).filter((k): k is PushKind => (PUSH_KINDS as string[]).includes(k));
 	} catch {
 		return PUSH_DEFAULT;
 	}
@@ -146,5 +148,9 @@ export async function sendSignals(app: Database.Database, market: Database.Datab
 	const kinds = new Set(pushKinds(app));
 	let n = 0;
 	for (const s of signals(app, market, today)) if (kinds.has(s.kind) && (await notifyOnce(app, keyOf(s), messageOf(s), send))) n++;
+	// T-032 Д-32: the diary's reminders that fired
+	if (kinds.has('reminder'))
+		for (const r of app.prepare(`select id, title, entry_id as e, fired_at as f from reminders where state = 'fired'`).all() as { id: number; title: string; e: number; f: string }[])
+			if (await notifyOnce(app, `reminder|${r.id}|${r.f}`, { title: 'Напоминание', body: r.title, url: '/' }, send)) n++;
 	return n;
 }

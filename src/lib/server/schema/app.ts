@@ -568,3 +568,56 @@ export const decisions = sqliteTable(
 	},
 	(t) => [index('decisions_security').on(t.securityId), index('decisions_position').on(t.positionId)]
 );
+
+/**
+ * T-032 11г, Д-27 — Д-31: a reminder to an entry or a decision — by a date, or by a condition (the price above or below a
+ * level, a change over N days, a position's drawdown, N days before a report, the start of a quarter, the end of a
+ * hypothesis's term). A fired one stands in «Сигналы» until it is snoozed or closed with a conclusion.
+ */
+export const reminders = sqliteTable(
+	'reminders',
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		entryId: integer()
+			.notNull()
+			.references(() => journalEntries.id),
+		/** date | price_above | price_below | change | drawdown | report | quarter_start | horizon */
+		condition: text().notNull(),
+		/** JSON: { date } | { securityId, level } | { securityId, days, pct } | { positionId, pct } | { securityId, days } | {} | { hypothesisId } */
+		params: text().notNull(),
+		title: text().notNull(),
+		/** waiting | fired | snoozed | closed */
+		state: text().notNull().default('waiting'),
+		/** the day it shows again after a snooze (or a date reminder's own day) */
+		nextDue: text(),
+		snoozes: integer().notNull().default(0),
+		firedAt: text(),
+		closedAt: text(),
+		createdAt: now()
+	},
+	(t) => [index('reminders_state').on(t.state), index('reminders_entry').on(t.entryId)]
+);
+
+/** Д-31: every step of a reminder — created, fired, snoozed (until), closed (with the conclusion entry) */
+export const reminderEvents = sqliteTable(
+	'reminder_events',
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		reminderId: integer()
+			.notNull()
+			.references(() => reminders.id),
+		/** created | fired | snoozed | closed */
+		kind: text().notNull(),
+		at: now(),
+		note: text()
+	},
+	(t) => [index('reminder_events_reminder').on(t.reminderId)]
+);
+
+/** the trade discipline's signals (T-015) are snoozed the same way: until a day, counted */
+export const signalSnoozes = sqliteTable('signal_snoozes', {
+	/** «stop|12|34» — the kind, the position, the conditions' version */
+	key: text().primaryKey(),
+	until: text().notNull(),
+	count: integer().notNull().default(1)
+});

@@ -11,6 +11,7 @@ import { heldSecurities, loadQuotes, marketsOpen, readSchedule, type QuotesSumma
 import { asUser, currentUserId, forEachUser, listUsers } from './auth.js';
 import { sendSignals } from './push.js';
 import { syncDecisions } from './decisions.js';
+import { checkReminders } from './reminders.js';
 import { backupDir, getApp, getMarket, rawDir } from './db.js';
 import { findGaps, enqueueMissingHistory, resetRunning, runQueue, type QueueSummary } from './market/history.js';
 import { makeFetcher } from './market/http.js';
@@ -684,7 +685,8 @@ export function runMovesJob(now = new Date()) {
 /** T-015: every 5 minutes — new signals of the trade discipline go to each journal's devices */
 export function runPushJob() {
 	return single('push', async () => {
-		const n = (await forEachUser(() => sendSignals(getApp().sqlite, getMarket().sqlite))).reduce((a, b) => a + b, 0);
+		// T-032 11г: the reminders are checked with the live quotes too (and after the daily prices — the same job)
+		const n = (await forEachUser(() => (checkReminders(getApp().sqlite, getMarket().sqlite), sendSignals(getApp().sqlite, getMarket().sqlite)))).reduce((a, b) => a + b, 0);
 		if (n) console.log(`push: ${n} signals sent`);
 		return n;
 	});

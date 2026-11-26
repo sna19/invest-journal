@@ -21,6 +21,7 @@ export function GET({ url }) {
 			hyp: p.get('hyp'),
 			q: p.get('q'),
 			archived: p.get('archived') === '1',
+			remind: p.get('remind') === '1',
 			before: Number(p.get('before')) || null,
 			limit: Number(p.get('limit')) || 30
 		})
