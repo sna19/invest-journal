@@ -421,3 +421,10 @@ export const eventsLoads = sqliteTable('ops_events_loads', {
 	dividends: integer().notNull().default(0),
 	error: text()
 });
+
+/** a security's ratios from Yahoo (owner's request 26.11.2026: P/S, beta and the rest): the raw numbers as JSON */
+export const securityStats = sqliteTable('ref_security_stats', {
+	securityId: integer().primaryKey(),
+	data: text().notNull(),
+	fetchedAt: text().notNull()
+});

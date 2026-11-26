@@ -6,6 +6,9 @@
 	import TopBar from '#lib/TopBar.svelte';
 	import HelpIcon from '#lib/HelpIcon.svelte';
 	import Fold from '#lib/Fold.svelte';
+	import RecentCards, { rememberCard } from '#lib/RecentCards.svelte';
+	import StatsGrid from '#lib/StatsGrid.svelte';
+	import { keepScroll } from '#lib/scroll.js';
 	import RiskLabel from '#lib/RiskLabel.svelte';
 	import Pct from '#lib/Pct.svelte';
 	import TvLink from '#lib/TvLink.svelte';
@@ -285,7 +288,20 @@
 		c = await r.json();
 		loadMs = Math.round(performance.now() - t0);
 		problem = null;
+		rememberCard({ id: c!.security.id, symbol: c!.security.symbol });
+		// a model's candidate opened from the model is picked by that (owner 26.11.2026)
+		if (modelVariant && !picked) void setPicked(true, `модель ${modelVariant} Q${page.url.searchParams.get('q') ?? ''}`);
+		void scroll.restore();
 	}
+	const scroll = keepScroll(() => `security:${page.params.id}`);
+	// ☆ — picked: first in the model's list, compared on «Отмеченные»
+	let picked = $state(false);
+	async function setPicked(on: boolean, origin = 'карточка') {
+		picked = on;
+		await fetch('/api/shortlist', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ securityId: Number(page.params.id), on, origin }) }).catch(() => null);
+	}
+	let stats = $state<Record<string, number | string | boolean | null> | null>(null);
+	let statsLoaded = $state(false);
 	onMount(() => {
 		try {
 			period = localStorage.getItem(KEY) ?? '1Y';
@@ -302,6 +318,8 @@
 		loadCompare();
 		loadLev();
 		loadNews();
+		void fetch('/api/shortlist').then((r) => r.json()).then((r) => (picked = (r.items ?? []).some((x: { id: number }) => x.id === Number(page.params.id)))).catch(() => {});
+		void fetch(`/api/stats?ids=${page.params.id}`).then((r) => r.json()).then((r) => ((stats = r.items?.[String(page.params.id)]?.stats ?? null), (statsLoaded = true))).catch(() => (statsLoaded = true));
 		void fetch(`/api/risk/labels?each=1&ids=${page.params.id}`)
 			.then((r) => r.json())
 			.then((r) => (riskLabels = r?.items ?? []))
@@ -397,6 +415,8 @@
 
 {#if problem}<p class="warn" role="alert">{problem}</p>{/if}
 
+<RecentCards current={Number(page.params.id)} />
+
 {#if c}
 	{#if model}
 		<Fold key="sec-model" title={`${tx('Квартальная модель', 'Quarterly model')} · ${tx(...VARIANT_NAME[model.variant])} · Q${model.quarter} ${model.forYear}`} summary={model.rank ? tx(`Кандидат №${model.rank}`, `Candidate №${model.rank}`) : undefined}>
@@ -447,6 +467,7 @@
 		<b class="price">{#if c.security.priceUnit === 'ILA'}{priceText((c.today?.price ?? c.last?.close ?? 0) / 100, 'ILS')}{:else}{priceText(c.today?.price ?? c.last?.close, c.security.priceUnit)}{/if}</b>
 		{#if c.security.priceUnit === 'ILA'}<span class="muted small">{priceText(c.today?.price ?? c.last?.close, 'ILA')}</span>{/if}
 		<TvLink exchange={c.security.exchange} symbol={c.security.symbol} />
+		<button class="star" class:on={picked} aria-pressed={picked} aria-label={picked ? tx('Снять отметку', 'Unpick') : tx('Отметить', 'Pick')} title={tx('Отмеченные — первыми в модели и в сравнении', 'Picked — first in the model and in the comparison')} onclick={() => setPicked(!picked)}>{picked ? '★' : '☆'}</button>
 		{#if c.today}<span class="day"><Pct value={c.today.dayPct} /> <span class="muted small">{c.today.date >= new Date().toISOString().slice(0, 10) ? tx('за день', 'today') : `${tx('за', 'on')} ${short(c.today.date, true)}`}</span></span>
 		{:else if c.last}<span class="muted small">{tx('закрытие', 'close')} {short(c.last.date, true)}</span>{/if}
 		<span class="grow"></span>
@@ -494,6 +515,13 @@
 		</p>
 	{/if}
 	</Fold>
+
+	{#if statsLoaded}
+		<Fold key="sec-stats" title={tx('Показатели', 'Ratios')} summary={stats ? [stats.pe !== null && stats.pe !== undefined ? `P/E ${Number(stats.pe).toFixed(1)}` : '', stats.ps ? `P/S ${Number(stats.ps).toFixed(1)}` : '', stats.beta !== null && stats.beta !== undefined ? `${tx('бета', 'beta')} ${Number(stats.beta).toFixed(2)}` : ''].filter(Boolean).join(' · ') : tx('нет данных', 'no data')}>
+			{#snippet aside()}<HelpIcon topicKey="security.stats" label={tx('показатели', 'ratios')} />{/snippet}
+			{#if stats}<StatsGrid s={stats} />{:else}<p class="muted small">{tx('У провайдера нет показателей этой бумаги.', 'The provider has no ratios for this security.')}</p>{/if}
+		</Fold>
+	{/if}
 
 	{#if news}
 		{@const at = news.attribution}
@@ -858,6 +886,18 @@
 	}
 	.trendwarn {
 		color: var(--down);
+	}
+	.star {
+		border: none;
+		background: none;
+		font-size: 1.4rem;
+		line-height: 1;
+		color: var(--muted);
+		cursor: pointer;
+		padding: 0 4px;
+	}
+	.star.on {
+		color: var(--warn-text, #b8860b);
 	}
 	.risks {
 		display: flex;

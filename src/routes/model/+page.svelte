@@ -6,6 +6,9 @@
 	import HelpIcon from '#lib/HelpIcon.svelte';
 	import TvLink from '#lib/TvLink.svelte';
 	import RiskLabel from '#lib/RiskLabel.svelte';
+	import RecentCards from '#lib/RecentCards.svelte';
+	import ScreenSwitch from '#lib/ScreenSwitch.svelte';
+	import { keepScroll } from '#lib/scroll.js';
 	import { showToast } from '#lib/toast.svelte.js';
 	import { loc, tx } from '#lib/i18n.js';
 	import { sectorName } from '#lib/allocation.js';
@@ -93,6 +96,7 @@
 	let variant = $state<Variant>('A');
 	let quarter = $state<number | null>(null);
 	let params = $state<Params | null>(null);
+	const scroll = keepScroll(() => 'model');
 	let data = $state<Data | null>(null);
 	let problem = $state<string | null>(null);
 	let busy = $state(false);
@@ -111,6 +115,7 @@
 		if (!r?.ok) return void (problem = tx('Нет связи с сервером.', 'No connection to the server.'));
 		problem = null;
 		data = await r.json();
+		void scroll.restore();
 		if (!withParams) params = { ...data!.saved };
 		// a preview kept before a parameter was added: the new ones come from the saved
 		else if (params) params = { ...data!.saved, ...params };
@@ -118,6 +123,7 @@
 		void loadTrend(q, my);
 		void loadCompare();
 		void loadRisk();
+		void loadPicks();
 		if (!quarter && data!.result) quarter = data!.result.quarter;
 	}
 	// T-012: the variant's portfolio over the last 12 quarters before and after the costs
@@ -195,6 +201,21 @@
 		afterCosts: number | null;
 	}
 	let compareV = $state<VRow[] | null>(null);
+	// picked securities (owner 26.11.2026): first in the list, kept when the parameters change
+	let picks = $state<{ id: number; symbol: string; name: string; origin: string | null }[]>([]);
+	async function loadPicks() {
+		const r = await fetch('/api/shortlist').then((x) => x.json()).catch(() => null);
+		picks = r?.items ?? [];
+	}
+	async function togglePick(id: number, on: boolean) {
+		await fetch('/api/shortlist', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ securityId: id, on, origin: `модель ${variant} Q${data?.result?.quarter ?? ''}` }) }).catch(() => null);
+		void loadPicks();
+	}
+	const pickedSet = $derived(new Set(picks.map((p) => p.id)));
+	const candsSorted = $derived(
+		data?.result ? data.result.candidates.map((c, i) => ({ c, i })).sort((a, b) => Number(pickedSet.has(b.c.id)) - Number(pickedSet.has(a.c.id)) || a.i - b.i) : []
+	);
+	const picksOutside = $derived(picks.filter((p) => !data?.result?.candidates.some((c) => c.id === p.id)));
 	// T-023 (4): what each candidate does to the largest real portfolio's risk
 	let riskLabels = $state<Record<number, { label: string; twin: string | null }>>({});
 	let riskPortfolio = $state<string | null>(null);
@@ -372,6 +393,9 @@
 	</section>
 {/if}
 
+<ScreenSwitch />
+<RecentCards />
+
 <div class="seg" role="radiogroup" aria-label={tx('Вариант', 'Variant')}>
 	<button role="radio" aria-checked={variant === 'A'} class:on={variant === 'A'} onclick={() => setVariant('A')}>{tx('А. Рост цены', 'A. Price rise')}</button>
 	<button role="radio" aria-checked={variant === 'B'} class:on={variant === 'B'} onclick={() => setVariant('B')}>{tx('Б. Против рынка', 'B. Against the market')}</button>
@@ -514,17 +538,25 @@
 		{#if res.capOut}<p class="muted small">{tx(`Вне выбранной капитализации — ${res.capOut} акций.`, `${res.capOut} shares outside the chosen market cap.`)}</p>{/if}
 		{#if res.capped}<p class="muted small">{tx(`Ещё ${res.capped} прошли, но не вошли из-за ограничений по сектору и рынку.`, `${res.capped} more passed but were left out by the sector and market caps.`)}</p>{/if}
 		<ul class="cands">
-			{#each res.candidates as c, i (c.id)}
+			{#each candsSorted as { c, i } (c.id)}
 				<li>
 					<button class="crow" onclick={() => goto(`/security/${c.id}?model=${variant}&q=${res.quarter}&${previewQuery()}`)}>
 						<span class="n">{i + 1}</span>
 						<span class="who"><b>{c.symbol}</b><span class="muted small block name">{c.name}</span><span class="muted small block">{c.market === 'US' ? tx('США', 'US') : tx('Израиль', 'Israel')} {' · '}{c.sector ? sectorName(c.sector, tx) : tx('сектор неизвестен', 'sector unknown')}{#if c.capUsd}{' · '}{capText(c.capUsd)}, {capName(c.capGroup)}{/if}{' · '}{c.up}/{res.years.length}</span><span class="muted small block">{tx('по месяцам', 'by month')} {c.months.map((m) => pct(m)).join(' · ')}{#if c.sma10 !== null}{' · '}{c.sma10 >= 0 ? tx('над', 'above') : tx('под', 'below')} SMA10 {pct(c.sma10)}{/if}</span>{#if c.reasons.earnings || c.reasons.dividend || c.reasons.sector}<span class="reasons">{#if c.reasons.earnings}<i>{tx('отчёт', 'report')}</i>{/if}{#if c.reasons.dividend}<i>{tx('дивиденд', 'dividend')}</i>{/if}{#if c.reasons.sector}<i>{tx('сектор сезонен', 'sector seasonal')}</i>{/if}</span>{/if}{#if c.own.mean !== null && variant !== 'D'}<span class="muted small block" class:warnline={Math.abs(c.own.mean) < 1 || c.own.up < 6}>{tx('к обычному кварталу', 'vs usual quarter')} {pct(c.own.mean)} · {tx('выше в', 'above in')} {c.own.up}/{c.own.years}</span>{/if}</span>
 						<span class="nums">{#if c.score !== null}<span class="score">{tx('балл', 'score')} {c.score.toFixed(1)}</span>{/if}<b class:up={c.mean > 0}>{pct(c.mean)}</b><span class="muted small block">{tx('мед.', 'med.')} {pct(c.median)}</span><span class="muted small block">{tx('худш.', 'worst')} {pct(c.worst)}</span></span>
 					</button>
+					<button class="pick" class:on={pickedSet.has(c.id)} aria-pressed={pickedSet.has(c.id)} aria-label={pickedSet.has(c.id) ? tx('Снять отметку', 'Unpick') : tx('Отметить', 'Pick')} onclick={() => togglePick(c.id, !pickedSet.has(c.id))}>{pickedSet.has(c.id) ? '★' : '☆'}</button>
 					<span class="tvpos">{#if riskLabels[c.id]}<RiskLabel small label={riskLabels[c.id].label} twin={riskLabels[c.id].twin} />{/if}<TvLink exchange={c.exchange} symbol={c.symbol} /></span>
 				</li>
 			{/each}
 		</ul>
+		{#if picksOutside.length}
+			<p class="muted small">{tx('Отмеченные, которых нет в текущем списке:', 'Picked ones not in the current list:')}</p>
+			<div class="outside">
+				{#each picksOutside as p (p.id)}<a href="/security/{p.id}">★ {p.symbol}</a>{/each}
+				<a class="all" href="/shortlist">{tx('все отмеченные →', 'all picked →')}</a>
+			</div>
+		{/if}
 	</Fold>
 
 	{#if res.walk.length}
@@ -919,6 +951,38 @@
 	.cands li {
 		position: relative;
 		border-top: 1px solid var(--line);
+	}
+	/* ☆ — at the row's top right, outside its button */
+	.pick {
+		position: absolute;
+		right: 0;
+		bottom: 4px;
+		border: none;
+		background: none;
+		font-size: 1.25rem;
+		color: var(--muted);
+		cursor: pointer;
+		padding: 4px 6px;
+	}
+	.pick.on {
+		color: var(--warn-text, #b8860b);
+	}
+	.outside {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.outside a {
+		padding: 3px 10px;
+		border: 1px solid var(--line);
+		border-radius: var(--r-pill);
+		color: var(--text);
+		text-decoration: none;
+		font-size: var(--fs-xs);
+	}
+	.outside a.all {
+		border: none;
+		color: var(--link);
 	}
 	/* «TV ↗» under the name, outside the row's button */
 	.tvpos {

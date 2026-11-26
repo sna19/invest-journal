@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { keepScroll } from '#lib/scroll.js';
 	import NewsMoves from '#lib/NewsMoves.svelte';
 	import Fold from '#lib/Fold.svelte';
 	import { loc, tl, tx } from '#lib/i18n.js';
@@ -180,7 +181,10 @@
 		v = await r.json();
 		problem = null;
 		loadChart();
+		void scroll.restore();
 	}
+	// back from a card: where the screen was (owner 26.11.2026)
+	const scroll = keepScroll(() => `portfolio:${current}`);
 
 	// section 19 «Портфель»: the return against the chosen virtual portfolios and the benchmarks
 	interface Series {

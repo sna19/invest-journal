@@ -243,3 +243,26 @@ export function riskView(app: Database.Database, market: Database.Database, port
 	};
 }
 
+
+/**
+ * The map of ties of any securities (owner's request 26.11.2026: «карта связей всех помеченных»): weekly returns in
+ * dollars, the same covariance as the portfolio's; equal weights; the pairs above 0.7.
+ */
+export function setMap(market: Database.Database, ids: number[], years = 2, today = israelDate()) {
+	const weeks = Math.min(3, Math.max(1, years)) * 52;
+	const series = weeklyReturns(market, ids, 'USD', weeks, today);
+	const { cov } = covariance(series.map((s) => s.returns));
+	const corr = corrOf(cov);
+	const xy = ids.length >= 2 ? mds(corr, ids.map(() => 1)).coords : ids.map(() => [0, 0] as [number, number]);
+	const links: [number, number, number][] = [];
+	for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) if (corr[i][j] > 0.7) links.push([i, j, Math.round(corr[i][j] * 100) / 100]);
+	return {
+		ids,
+		weeks: series.map((s) => s.weeks),
+		vol: cov.map((r, i) => Math.sqrt(Math.max(r[i], 0))),
+		corr: corr.map((r) => r.map((x) => Math.round(x * 1000) / 1000)),
+		xy: xy.map((p) => [Math.round(p[0] * 10000) / 10000, Math.round(p[1] * 10000) / 10000] as [number, number]),
+		links,
+		loading: ids.filter((_, i) => series[i].weeks === 0)
+	};
+}

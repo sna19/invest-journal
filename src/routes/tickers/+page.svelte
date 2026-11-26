@@ -7,6 +7,9 @@
 	import TopBar from '#lib/TopBar.svelte';
 	import Sheet from '#lib/Sheet.svelte';
 	import TickerSearch, { type Security } from '#lib/TickerSearch.svelte';
+	import RecentCards from '#lib/RecentCards.svelte';
+	import ScreenSwitch from '#lib/ScreenSwitch.svelte';
+	import { keepScroll } from '#lib/scroll.js';
 
 	/** Spec section 9 — «Тикеры»: the base by exchange, when it was updated, the «Обновить» button, search. */
 	interface Stats {
@@ -17,6 +20,7 @@
 	}
 
 	let stats = $state<Stats | null>(null);
+	const scroll = keepScroll(() => 'tickers');
 	let problem = $state<string | undefined>();
 	let poll: ReturnType<typeof setInterval> | undefined;
 	let picked = $state<Security | null>(null);
@@ -27,6 +31,7 @@
 			if (!r.ok) throw new Error();
 			stats = await r.json();
 			problem = undefined;
+			void scroll.restore();
 			if (!stats!.running) stopPoll();
 		} catch {
 			problem = tx('Нет связи с сервером.', 'No connection to the server.');
@@ -78,6 +83,9 @@
 </TopBar>
 
 {#if problem}<p class="warn" role="alert">{problem}</p>{/if}
+
+<ScreenSwitch />
+<RecentCards />
 
 <section class="search">
 	<TickerSearch includeInactive filters label={tx('Найти бумагу', 'Find a security')} onselect={(s) => (picked = s)} />

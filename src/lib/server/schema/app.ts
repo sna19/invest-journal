@@ -345,3 +345,14 @@ export const riskScenarios = sqliteTable('risk_scenarios', {
 	data: text().notNull(),
 	createdAt: now()
 });
+
+/**
+ * The securities the owner picked (owner's request 26.11.2026): a model's candidate opened from the model is picked by
+ * that, any card can be picked with ☆. They stay first in the model's list and are compared on «Отмеченные».
+ */
+export const shortlist = sqliteTable('shortlist', {
+	securityId: integer().primaryKey(),
+	/** where it was picked: «модель A Q1», «карточка» */
+	origin: text(),
+	addedAt: now()
+});
