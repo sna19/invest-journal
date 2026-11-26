@@ -12,6 +12,7 @@ import { asUser, currentUserId, forEachUser, listUsers } from './auth.js';
 import { sendSignals } from './push.js';
 import { syncDecisions } from './decisions.js';
 import { checkReminders } from './reminders.js';
+import { backupMedia } from './snapshots.js';
 import { backupDir, getApp, getMarket, rawDir } from './db.js';
 import { findGaps, enqueueMissingHistory, resetRunning, runQueue, type QueueSummary } from './market/history.js';
 import { makeFetcher } from './market/http.js';
@@ -328,6 +329,8 @@ export function runBackupJob(kind: 'app' | 'market') {
 		const id = startRun(`backup-${kind}`, 'local');
 		try {
 			const file = kind === 'app' ? (await forEachUser(() => backup('app', 30))).join(', ') : backup(kind, 2);
+			// T-032 Д-24: the diary's photos go with the journal's copy
+			if (kind === 'app') backupMedia();
 			finishRun(id, { status: 'ok', received: 1, added: 1, error: null });
 			console.log(`backup: ${file}`);
 			return file;

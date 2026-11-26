@@ -621,3 +621,28 @@ export const signalSnoozes = sqliteTable('signal_snoozes', {
 	until: text().notNull(),
 	count: integer().notNull().default(1)
 });
+
+/**
+ * T-032 11в, Д-21 — Д-24: a snapshot kept in an entry — the data, not a picture: a chart, a comparison, the model's
+ * candidates with the version of its parameters, a portfolio's composition, a «Что если?» result; or a photo (a file in
+ * data/media). Drawn by the same components, never updated.
+ */
+export const snapshots = sqliteTable(
+	'snapshots',
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		entryId: integer()
+			.notNull()
+			.references(() => journalEntries.id),
+		/** chart | compare | candidates | portfolio | scenario | photo */
+		type: text().notNull(),
+		/** JSON: what it is of — a security and a period, a model's variant and quarter, a portfolio */
+		params: text().notNull(),
+		/** JSON: the frozen numbers */
+		data: text().notNull(),
+		/** photo: the file under data/media */
+		photoPath: text(),
+		createdAt: now()
+	},
+	(t) => [index('snapshots_entry').on(t.entryId)]
+);

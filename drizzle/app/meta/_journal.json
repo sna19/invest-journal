@@ -141,6 +141,13 @@
       "when": 1795689298128,
       "tag": "0019_reminders",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1795691369327,
+      "tag": "0020_snapshots",
+      "breakpoints": true
     }
   ]
 }

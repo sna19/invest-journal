@@ -3,6 +3,7 @@ import { israelDate } from '../../hypothesis.js';
 import type { AppDb } from '../db.js';
 import { createHypothesis } from '../journal.js';
 import { setAuto } from '../portfolio.js';
+import { recordQuarterEntry } from '../snapshots.js';
 import { cleanParams, DEFAULTS, nextQuarter, runModel, universe, type Params, type Result, type Variant } from './quarterly.js';
 
 /**
@@ -125,6 +126,20 @@ export function recordQuarter(db: AppDb, app: Database.Database, market: Databas
 	})();
 	// the variant's virtual portfolio: its automatic portfolio buys every hypothesis on a rise
 	setAuto(app, market, sourceId, true, now);
+	// T-032 Д-26: a diary entry with the candidates' snapshot, and «разбор квартала» at its end
+	try {
+		recordQuarterEntry(app, market, {
+			variant: v,
+			quarter: key,
+			versionId,
+			params: p,
+			years: r.years.length,
+			quarterEnd: horizonDate,
+			candidates: r.candidates.map((c) => ({ id: c.id, symbol: c.symbol, name: c.name, sector: c.sector, mean: c.mean, median: c.median, worst: c.worst, up: c.up, score: c.score }))
+		});
+	} catch (e) {
+		console.error(`model ${v} ${key}: diary entry: ${e}`);
+	}
 	return out;
 }
 

@@ -9,6 +9,7 @@
 	import { SECTORS, sectorName } from '#lib/allocation.js';
 	import { loc, tx } from '#lib/i18n.js';
 	import { whatIf, type WhatIf } from '#lib/risk.js';
+	import ToJournal from '#lib/journal/ToJournal.svelte';
 
 	/**
 	 * T-023 «Риск» (Markowitz): how many independent bets the portfolio really has, how much it swings, how tied it is
@@ -347,6 +348,14 @@
 						{#if v.job !== null}<tr><td>{tx('Связь с работой', 'Tie to the job')}</td><td>{num(sim.before.job, 2)}</td><td class:good={(sim.after.job ?? 0) < (sim.before.job ?? 0)} class:bad={(sim.after.job ?? 0) > (sim.before.job ?? 0)}><b>{num(sim.after.job, 2)}</b></td></tr>{/if}
 					</tbody>
 				</table>
+				<ToJournal
+					links={adds.map((a) => ({ type: 'security', id: String(a.id), label: a.symbol }))}
+					snapshot={() => ({
+						type: 'scenario',
+						params: { amountPct, source: source === 'cash' ? 'cash' : (held.find((h) => h.id === source)?.symbol ?? String(source)), adds: adds.map((a) => a.symbol) },
+						data: { before: sim!.before, after: sim!.after, each: each.map((x) => ({ symbol: x.symbol, label: x.w.label, bets: x.w.after.bets, vol: x.w.after.vol })) }
+					})}
+				/>
 				<ul class="each">
 					{#each each as x (x.id)}
 						<li>

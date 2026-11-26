@@ -56,11 +56,19 @@ export function hrefOf(type: string, id: string): string | null {
 export const kindText = (k: string) => tx(...(KIND_LABEL[k] ?? [k, k]));
 
 /** the composer of an entry — one for the whole app, opened by «+», «Ответить» or a screen's «Записать» */
-export const composer = $state<{ open: boolean; links: ScreenLink[]; parentId: number | null; kind: string | null }>({ open: false, links: [], parentId: null, kind: null });
+/** T-032 11в: a snapshot the entry will keep — its numbers frozen as the screen showed them */
+export interface SnapshotDraft {
+	type: 'chart' | 'compare' | 'candidates' | 'portfolio' | 'scenario' | 'photo';
+	params: Record<string, unknown>;
+	data: Record<string, unknown>;
+	photoPath?: string;
+}
+export const composer = $state<{ open: boolean; links: ScreenLink[]; parentId: number | null; kind: string | null; snapshots: SnapshotDraft[] }>({ open: false, links: [], parentId: null, kind: null, snapshots: [] });
 /** grows on every saved entry: the feeds on the screen reload */
 export const journalVersion = $state({ n: 0 });
 
-export function openComposer(o: { links?: ScreenLink[]; parentId?: number | null; kind?: string | null } = {}) {
+export function openComposer(o: { links?: ScreenLink[]; parentId?: number | null; kind?: string | null; snapshot?: SnapshotDraft } = {}) {
+	composer.snapshots = o.snapshot ? [o.snapshot] : [];
 	composer.links = o.links ?? screen.links;
 	composer.parentId = o.parentId ?? null;
 	composer.kind = o.kind ?? null;

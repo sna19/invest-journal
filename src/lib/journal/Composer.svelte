@@ -8,6 +8,9 @@
 	import { showToast } from '../toast.svelte.js';
 	import { composer, journalVersion, KIND_LABEL, type ScreenLink } from './screen.svelte.js';
 	import RichEditor from './RichEditor.svelte';
+	import Snapshot from './Snapshot.svelte';
+	import ImagePlus from '@lucide/svelte/icons/image-plus';
+	import type { SnapshotDraft } from './screen.svelte.js';
 
 	/**
 	 * Д-11: a new entry, linked to the screen it was opened from (the links can be removed and added); the kind, the
@@ -23,10 +26,34 @@
 	let adding = $state(false);
 	let saving = $state(false);
 	let error = $state<string | null>(null);
+	let snaps = $state<SnapshotDraft[]>([]);
+	let uploading = $state(false);
+	/** Д-24: a photo made smaller here (to about 1 600 px, JPEG) and sent to the server before the entry */
+	async function addPhoto(file: File) {
+		uploading = true;
+		try {
+			const img = await createImageBitmap(file);
+			const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+			const c = document.createElement('canvas');
+			c.width = Math.round(img.width * k);
+			c.height = Math.round(img.height * k);
+			c.getContext('2d')!.drawImage(img, 0, 0, c.width, c.height);
+			const blob = await new Promise<Blob>((ok, no) => c.toBlob((b) => (b ? ok(b) : no(new Error('jpeg'))), 'image/jpeg', 0.82));
+			const r = await fetch('/api/media', { method: 'POST', headers: { 'content-type': 'image/jpeg' }, body: blob });
+			const j = await r.json().catch(() => ({}));
+			if (!r.ok) throw new Error(tl(j.message) || tx('Фото не загрузилось', 'The photo was not uploaded'));
+			snaps = [...snaps, { type: 'photo', params: {}, data: { width: c.width, height: c.height }, photoPath: j.path }];
+		} catch (e) {
+			showToast((e as Error).message);
+		} finally {
+			uploading = false;
+		}
+	}
 
 	const draftKey = () => `journal-draft:${composer.parentId ? `reply-${composer.parentId}` : composer.links.map((l) => `${l.type}-${l.id}`).join(',') || 'general'}`;
 	onMount(async () => {
 		links = [...composer.links];
+		snaps = [...composer.snapshots];
 		kind = composer.kind ?? 'note';
 		try {
 			const d = JSON.parse(localStorage.getItem(draftKey()) ?? 'null');
@@ -70,7 +97,7 @@
 		const r = await fetch('/api/journal', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ kind, body, format: 'html', tags, parentId: composer.parentId, links: links.map((l, i) => ({ type: l.type, id: l.id, primary: i === 0 })) })
+			body: JSON.stringify({ kind, body, format: 'html', tags, snapshots: snaps, parentId: composer.parentId, links: links.map((l, i) => ({ type: l.type, id: l.id, primary: i === 0 })) })
 		}).catch(() => null);
 		saving = false;
 		const j = await r?.json().catch(() => ({}));
@@ -95,6 +122,17 @@
 			<HelpIcon topicKey="journal.entry" label={tx('запись', 'entry')} />
 		</div>
 		<RichEditor bind:value={body} autofocus placeholder={tx('Что думаю — в момент, а не задним числом. Выдели слова — и сделай жирными, покрась или подсвети', 'What I think — now, not in hindsight. Select words to make them bold, paint or highlight them')} />
+
+		{#each snaps as s, i (i)}
+			<div class="snapwrap">
+				<Snapshot {s} />
+				<button type="button" class="rm" aria-label={tx('Убрать снимок', 'Remove the snapshot')} onclick={() => (snaps = snaps.filter((_, j) => j !== i))}><X size={16} /></button>
+			</div>
+		{/each}
+		<label class="photo">
+			<ImagePlus size={18} /> {uploading ? tx('Загружаю…', 'Uploading…') : tx('Фото или скриншот', 'Photo or screenshot')}
+			<input type="file" accept="image/*" disabled={uploading} onchange={(e) => { const f = (e.target as HTMLInputElement).files?.[0]; if (f) void addPhoto(f); (e.target as HTMLInputElement).value = ''; }} />
+		</label>
 
 		<div class="links">
 			<span class="lbl">{tx('О чём', 'About')} <HelpIcon topicKey="journal.inherit" label={tx('связи и наследование', 'links and inheritance')} /></span>
@@ -164,6 +202,40 @@
 		background: var(--surface);
 		color: var(--text);
 		font: inherit;
+	}
+	.snapwrap {
+		position: relative;
+	}
+	.rm {
+		position: absolute;
+		top: 4px;
+		right: 4px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 30px;
+		height: 30px;
+		border: none;
+		border-radius: 50%;
+		background: var(--surface);
+		color: var(--muted);
+		cursor: pointer;
+	}
+	.photo {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--s2);
+		align-self: flex-start;
+		min-height: 34px;
+		padding: 0 var(--s3);
+		border: 1px dashed var(--line);
+		border-radius: var(--r-pill);
+		color: var(--link);
+		font-size: var(--fs-s);
+		cursor: pointer;
+	}
+	.photo input {
+		display: none;
 	}
 	.links,
 	.tags {

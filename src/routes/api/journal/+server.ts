@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { getApp, getMarket } from '#lib/server/db.js';
 import { addEntry, listEntries, scopeOf } from '#lib/server/diary.js';
+import { addSnapshot } from '#lib/server/snapshots.js';
 import { body, fail } from '#lib/server/respond.js';
 
 /**
@@ -30,7 +31,14 @@ export function GET({ url }) {
 
 export async function POST({ request }) {
 	try {
-		const id = addEntry(getApp().sqlite, getMarket().sqlite, await body(request));
+		const app = getApp().sqlite;
+		const b = await body(request);
+		// T-032 11в: an entry with a snapshot (a chart, a comparison, the candidates, a portfolio, a photo) — both or none
+		const id = app.transaction(() => {
+			const e = addEntry(app, getMarket().sqlite, b);
+			for (const s of Array.isArray(b.snapshots) ? b.snapshots.slice(0, 10) : []) addSnapshot(app, e!, s);
+			return e;
+		})();
 		return json({ id }, { status: 201 });
 	} catch (e) {
 		return fail(e);

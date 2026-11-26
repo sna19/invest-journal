@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Fold from '#lib/Fold.svelte';
 	import Feed from '#lib/journal/Feed.svelte';
+	import ToJournal from '#lib/journal/ToJournal.svelte';
 	import { onDestroy, onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import TopBar from '#lib/TopBar.svelte';
@@ -551,6 +552,14 @@
 				</li>
 			{/each}
 		</ul>
+		<ToJournal
+			links={[{ type: 'model_run', id: `${variant}|${res.forYear}-Q${res.quarter}`, label: `${tx('Модель', 'Model')} ${variant} Q${res.quarter} ${res.forYear}` }]}
+			snapshot={() => ({
+				type: 'candidates',
+				params: { variant, quarter: `${res!.forYear}-Q${res!.quarter}`, years: res!.years.length, params },
+				data: { candidates: res!.candidates.map((c) => ({ id: c.id, symbol: c.symbol, name: c.name, sector: c.sector, mean: c.mean, median: c.median, worst: c.worst, up: c.up, score: c.score })) }
+			})}
+		/>
 		{#if picksOutside.length}
 			<p class="muted small">{tx('Отмеченные, которых нет в текущем списке:', 'Picked ones not in the current list:')}</p>
 			<div class="outside">

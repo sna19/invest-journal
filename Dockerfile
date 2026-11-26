@@ -15,7 +15,8 @@ WORKDIR /app
 # Volumes (spec section 10): databases in /data, backups in /backups, raw provider answers in /raw.
 ENV NODE_ENV=production PORT=3002 TZ=Asia/Jerusalem \
     DATA_DIR=/data BACKUP_DIR=/backups RAW_DIR=/raw \
-    MIGRATIONS_DIR=/app/drizzle HELP_DIR=/app/help
+    MIGRATIONS_DIR=/app/drizzle HELP_DIR=/app/help \
+    BODY_SIZE_LIMIT=8M
 COPY --from=build /app/build ./build
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./

@@ -28,6 +28,7 @@
 	import { showToast } from '#lib/toast.svelte.js';
 	import TradeSignals from '#lib/TradeSignals.svelte';
 	import Feed from '#lib/journal/Feed.svelte';
+	import ToJournal from '#lib/journal/ToJournal.svelte';
 	import { setScreenLinks } from '#lib/journal/screen.svelte.js';
 	import LineChart, { colorOf, type Line } from '#lib/charts/LineChart.svelte';
 
@@ -657,6 +658,16 @@
 	{/if}
 
 
+	<div class="tojournal">
+		<ToJournal
+			links={[{ type: 'portfolio', id: String(v.portfolio.id), label: v.portfolio.name }]}
+			snapshot={() => ({
+				type: 'portfolio',
+				params: { portfolioId: v!.portfolio.id, name: v!.portfolio.name },
+				data: { currency: v!.summary.currency, value: v!.summary.value, twrPct: v!.summary.twrPct, positions: v!.positions.filter((p) => p.qty > 0).map((p) => ({ symbol: p.symbol, weight: p.weight ?? 0, valuePc: p.valuePc, unrealizedPct: p.unrealizedPct })) }
+			})}
+		/>
+	</div>
 	<!-- T-032 Д-08: the portfolio's diary, with its securities' entries («через AAPL») -->
 	<Fold key="portfolio-journal" title={tx('Дневник', 'Diary')} open={false}>
 		{#snippet aside()}<HelpIcon topicKey="journal.inherit" label={tx('дневник портфеля', 'the portfolio\'s diary')} />{/snippet}
@@ -1416,5 +1427,8 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45`)}</pre>
 		height: 160px;
 		border-radius: var(--r3);
 		background: var(--surface);
+	}
+	.tojournal {
+		margin: var(--s2) 0;
 	}
 </style>

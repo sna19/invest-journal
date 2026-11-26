@@ -15,6 +15,7 @@
 	import Feed from '#lib/journal/Feed.svelte';
 	import History from '#lib/journal/History.svelte';
 	import About from '#lib/About.svelte';
+	import ToJournal from '#lib/journal/ToJournal.svelte';
 	import DecisionForm from '#lib/journal/DecisionForm.svelte';
 	import TvLink from '#lib/TvLink.svelte';
 	import LineChart, { colorOf, type Line, type Mark } from '#lib/charts/LineChart.svelte';
@@ -534,6 +535,14 @@
 				<HelpIcon topicKey="chart.sma" label={tx('скользящие средние', 'moving averages')} />
 			</div>
 		{/if}
+		<ToJournal
+			links={[{ type: 'security', id: String(c.security.id), label: c.security.symbol }]}
+			snapshot={() => {
+				// a long period is thinned to about 600 points a line: the snapshot stays small, the shape stays
+				const thin = (p: { date: string; value: number }[]) => (p.length > 600 ? p.filter((_, i) => i % Math.ceil(p.length / 600) === 0 || i === p.length - 1) : p);
+				return { type: 'chart', params: { securityId: c!.security.id, symbol: c!.security.symbol, period }, data: { lines: lines.map((l) => ({ ...l, points: thin(l.points) })), marks: marks.filter((m) => !m.id.startsWith('news:')) } };
+			}}
+		/>
 		<button class="hl" class:on={!!highlight} aria-pressed={!!highlight} onclick={toggleHighlight}>{highlight ? tx(`Подсвечен Q${highlight} — снять`, `Q${highlight} shaded — clear`) : tx('Подсветить квартал', 'Shade the quarter')}</button>
 		<p class="muted small keys">
 			● {tx('вход гипотезы', 'hypothesis entry')} · ■ {tx('выход', 'exit')} · <span class="up">▲</span> {tx('купил', 'bought')} · <span class="down">▼</span> {tx('продал', 'sold')}{#if newsMarks.length} · <span class="newsdot">●</span> {tx('новости (тап — новости дня)', 'news (tap — the day\'s news)')}{/if}{#if sources.length} · {#each sources as [id, name] (id)}<span class="src"><i style:background={colorOf(id)}></i>{tl(name)}</span>{/each}{/if}
@@ -667,6 +676,10 @@
 					{/each}
 				</tbody>
 			</table></div>
+			<ToJournal
+				links={[{ type: 'security', id: String(c.security.id), label: c.security.symbol }]}
+				snapshot={() => ({ type: 'compare', params: { securityId: c!.security.id, symbol: c!.security.symbol }, data: { periods: cmp!.periods, rows: [{ label: c!.security.symbol, returns: cmp!.security }, ...cmp!.refs.map((r) => ({ label: `${r.symbol} · ${refLabel(r)}`, returns: r.returns }))] } })}
+			/>
 			<p class="muted small">
 				{tx(`Под доходностью ориентира — на сколько п.п. ${c.security.symbol} была лучше (+) или хуже (−). Галочка — линия на графике.`, `Under a reference's return — by how many pp ${c.security.symbol} did better (+) or worse (−). The tick puts its line on the chart.`)}
 				{#if cmp.refs.some((r) => !r.loaded)}{tx(' Часть ориентиров ещё загружается — откройте карточку позже.', ' Some references are still loading — open the card later.')}{/if}

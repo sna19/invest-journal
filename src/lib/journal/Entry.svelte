@@ -27,6 +27,7 @@
 		tags: { id: number; name: string; color: string; system: number }[];
 		context: { type: string; id: string; restored: boolean; then: Moment; now: Moment | null }[];
 		revisions: number;
+		snapshots: (SnapshotDraft & { id: number; photo: string | null; createdAt: string })[];
 		reminders: { id: number; title: string; what: string; state: string; nextDue: string | null; snoozes: number }[];
 		decision: { id: number; type: string; basis: string; expectation: string | null; reviewDate: string | null; outcome: string | null; noReason: number; cancelledAt: string | null; canCancel: boolean } | null;
 		answers: EntryData[];
@@ -37,6 +38,8 @@
 	import Self from './Entry.svelte';
 	import RichEditor from './RichEditor.svelte';
 	import ReminderForm from './ReminderForm.svelte';
+	import Snapshot from './Snapshot.svelte';
+	import type { SnapshotDraft } from './screen.svelte.js';
 	import AlarmClock from '@lucide/svelte/icons/alarm-clock';
 	import HelpIcon from '../HelpIcon.svelte';
 	import { loc, tl, tx } from '../i18n.js';
@@ -128,6 +131,7 @@
 	{:else}
 		<div class="body">{@html e.html}</div>
 	{/if}
+	{#each e.snapshots ?? [] as s (s.id)}<Snapshot {s} at={s.createdAt} />{/each}
 	{#if showRevs}
 		<ol class="revs">
 			{#each revs as r, i (r.id)}<li><span class="muted small">{i === 0 ? tx('исходный', 'original') : `${tx('правка', 'edit')} ${i}`} · {day(r.createdAt)} {time(r.createdAt)}</span><div class="body">{@html r.html}</div></li>{/each}

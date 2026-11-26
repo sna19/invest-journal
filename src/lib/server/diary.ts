@@ -7,6 +7,7 @@ import { benchmarkId, marketView, portfolioView } from './portfolio.js';
 import { compareRefs } from './compare.js';
 import { plainText, sanitize } from './richtext.js';
 import { remindersOf } from './reminders.js';
+import { snapshotsOf } from './snapshots.js';
 
 /**
  * T-032 «Дневник и решения» (spec section 23), 11а — the core. Everything the owner writes is one entry (Д-01) with a
@@ -276,7 +277,9 @@ export function deleteEntry(app: Database.Database, id: number, word: unknown, b
 	if (!app.prepare('select 1 from journal_entries where id = ?').get(id)) throw new InputError({ id: 'Нет такой записи' } as Errors);
 	const file = backup?.(`before-delete-entry-${id}`) ?? null;
 	app.transaction(() => {
-		for (const t of ['entry_revisions', 'entry_links', 'entry_context', 'entry_tags']) app.prepare(`delete from ${t} where entry_id = ?`).run(id);
+		app.prepare('delete from reminder_events where reminder_id in (select id from reminders where entry_id = ?)').run(id);
+		app.prepare('delete from reminders where entry_id = ?').run(id);
+		for (const t of ['entry_revisions', 'entry_links', 'entry_context', 'entry_tags', 'snapshots']) app.prepare(`delete from ${t} where entry_id = ?`).run(id);
 		app.prepare('update journal_entries set parent_entry_id = null where parent_entry_id = ?').run(id);
 		app.prepare('delete from journal_entries where id = ?').run(id);
 	})();
@@ -441,6 +444,7 @@ export interface EntryView extends Row {
 	context: { type: string; id: string; restored: boolean; then: unknown; now: unknown }[];
 	revisions: number;
 	reminders: unknown[];
+	snapshots: unknown[];
 	decision: unknown;
 	answers: EntryView[];
 }
@@ -469,6 +473,7 @@ function describe(app: Database.Database, market: Database.Database, rows: Row[]
 		`select id, type, basis, basis_ref as basisRef, expectation, review_date as reviewDate, outcome, no_reason as noReason, cancelled_at as cancelledAt, created_at as createdAt from decisions where thesis_entry_id = ?`
 	);
 	const rems = remindersOf(app, [...rows.map((r) => r.id), ...(rows.length ? (app.prepare(`select id from journal_entries where parent_entry_id in (${rows.map(() => '?').join(',')})`).all(...rows.map((r) => r.id)) as { id: number }[]).map((x) => x.id) : [])]);
+	const snaps = snapshotsOf(app, [...rows.map((r) => r.id), ...(rows.length ? (app.prepare(`select id from journal_entries where parent_entry_id in (${rows.map(() => '?').join(',')})`).all(...rows.map((r) => r.id)) as { id: number }[]).map((x) => x.id) : [])]);
 	const one = (r: Row, deep: boolean): EntryView => {
 		const links = (linksQ.all(r.id) as { type: LinkType; id: string; isPrimary: number }[]).map((l) => ({ ...l, label: labelOf(app, market, l.type, l.id) }));
 		const ctx = (ctxQ.all(r.id) as { type: string; id: string; data: string; restored: number }[]).map((c) => {
@@ -486,6 +491,7 @@ function describe(app: Database.Database, market: Database.Database, rows: Row[]
 			context: ctx,
 			revisions: (revQ.get(r.id) as { n: number }).n,
 			reminders: rems.get(r.id) ?? [],
+			snapshots: snaps.get(r.id) ?? [],
 			decision: (() => {
 				const d = decQ.get(r.id) as { createdAt: string; cancelledAt: string | null } | undefined;
 				return d ? { ...d, canCancel: !d.cancelledAt && Date.now() - Date.parse(d.createdAt) < 24 * 3600_000 } : null;
