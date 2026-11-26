@@ -187,7 +187,7 @@
 			</table>
 		</div>
 		<p class="muted small">
-			{tx(`Окно ${v.window?.from} — ${v.window?.to}. После комиссии ${v.params.commissionPct}% и налога ${v.params.taxPct}% с прибыли при продаже: издержки за всё окно — А ${v.costs?.A}%, Б ${v.costs?.B}% капитала. Доля в ${v.params.safe} у Б — ${v.table?.[1]?.safeShare ?? 0}% месяцев.`, `Window ${v.window?.from} — ${v.window?.to}. After a ${v.params.commissionPct}% commission and a ${v.params.taxPct}% tax on gains when selling: costs over the window — A ${v.costs?.A}%, B ${v.costs?.B}% of the capital. B held ${v.params.safe} ${v.table?.[1]?.safeShare ?? 0}% of the months.`)}
+			{tx(`Окно ${v.window?.from} — ${v.window?.to}. После комиссии ${v.params.commissionPct}% и налога ${v.params.taxPct}% с прибыли при продаже: издержки за всё окно — А ${v.costs?.A}%, Б ${v.costs?.B}% капитала. Доля в ${v.params.safe} у Б — ${v.table?.[1]?.safeShare ?? 0}% месяцев. Оборот в год: А ${v.table?.[0]?.turnover}%, Б ${v.table?.[1]?.turnover}%.`, `Window ${v.window?.from} — ${v.window?.to}. After a ${v.params.commissionPct}% commission and a ${v.params.taxPct}% tax on gains when selling: costs over the window — A ${v.costs?.A}%, B ${v.costs?.B}% of the capital. B held ${v.params.safe} ${v.table?.[1]?.safeShare ?? 0}% of the months. Yearly turnover: A ${v.table?.[0]?.turnover}%, B ${v.table?.[1]?.turnover}%.`)}
 		</p>
 	</Fold>
 
