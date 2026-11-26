@@ -9,7 +9,7 @@
 	const NAME = { green: ['сильная', 'strong'], yellow: ['смешанная', 'mixed'], red: ['слабая', 'weak'], grey: ['мало данных', 'little data'] } as const;
 </script>
 
-{#if s}<i class="dot {s.color}" title={`${tx('Квант-оценка', 'Quant score')}: ${tx(NAME[s.color][0], NAME[s.color][1])}${s.total !== null && s.color !== 'grey' ? ` ${Math.round(s.total * 100)}` : ''}`} aria-label={`${tx('Квант-оценка', 'Quant score')}: ${tx(NAME[s.color][0], NAME[s.color][1])}`}></i>{/if}
+{#if s && s.market}<i class="dot {s.color}" title={`${tx('Квант-оценка', 'Quant score')}: ${tx(NAME[s.color][0], NAME[s.color][1])}${s.total !== null && s.color !== 'grey' ? ` ${Math.round(s.total * 100)}` : ''}`} aria-label={`${tx('Квант-оценка', 'Quant score')}: ${tx(NAME[s.color][0], NAME[s.color][1])}`}></i>{/if}
 
 <style>
 	.dot {
