@@ -436,6 +436,7 @@ export interface EntryView extends Row {
 	tags: unknown[];
 	context: { type: string; id: string; restored: boolean; then: unknown; now: unknown }[];
 	revisions: number;
+	decision: unknown;
 	answers: EntryView[];
 }
 
@@ -458,6 +459,10 @@ function describe(app: Database.Database, market: Database.Database, rows: Row[]
 	const ctxQ = app.prepare('select object_type as type, object_id as id, data, restored from entry_context where entry_id = ?');
 	const kidsQ = app.prepare(`select id, created_at as createdAt, kind, body, format from journal_entries where parent_entry_id = ? and status = 'active' order by created_at, id`);
 	const revQ = app.prepare('select count(*) as n from entry_revisions where entry_id = ?');
+	// 11б: the decision whose thesis the entry is
+	const decQ = app.prepare(
+		`select id, type, basis, basis_ref as basisRef, expectation, review_date as reviewDate, outcome, no_reason as noReason, cancelled_at as cancelledAt, created_at as createdAt from decisions where thesis_entry_id = ?`
+	);
 	const one = (r: Row, deep: boolean): EntryView => {
 		const links = (linksQ.all(r.id) as { type: LinkType; id: string; isPrimary: number }[]).map((l) => ({ ...l, label: labelOf(app, market, l.type, l.id) }));
 		const ctx = (ctxQ.all(r.id) as { type: string; id: string; data: string; restored: number }[]).map((c) => {
@@ -474,6 +479,10 @@ function describe(app: Database.Database, market: Database.Database, rows: Row[]
 			tags: tagsQ.all(r.id),
 			context: ctx,
 			revisions: (revQ.get(r.id) as { n: number }).n,
+			decision: (() => {
+				const d = decQ.get(r.id) as { createdAt: string; cancelledAt: string | null } | undefined;
+				return d ? { ...d, canCancel: !d.cancelledAt && Date.now() - Date.parse(d.createdAt) < 24 * 3600_000 } : null;
+			})(),
 			answers: deep ? (kidsQ.all(r.id) as Row[]).map((k) => one(k, true)) : []
 		};
 	};

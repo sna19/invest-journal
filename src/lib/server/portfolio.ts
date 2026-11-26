@@ -28,6 +28,7 @@ import type { Errors } from '../hypothesis.js';
 import { fxOn } from './market/boi.js';
 import { readQuotes } from './market/quotes.js';
 import { checkPlan, checkReview, insertPlan, insertReview, planOf, signals, type PlanInput } from './discipline.js';
+import { buyForSale, positionDecisions } from './decisions.js';
 
 /**
  * Spec section 18 — portfolios on the server: events in, positions and returns out. Plain SQL on both files:
@@ -617,6 +618,9 @@ export function positionView(app: Database.Database, market: Database.Database, 
 	return {
 		plan: planOf(app, id),
 		reviews,
+		// T-032 11б: the position's decisions and the purchase a sale answers (Д-18)
+		decisions: positionDecisions(app, id).filter((d) => !d.cancelledAt),
+		buyForSale: buyForSale(app, id),
 		signals: signals(app, market, today).filter((s) => s.positionId === id),
 		portfolioValue: view.summary.value,
 		position: pos,

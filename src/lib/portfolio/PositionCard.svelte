@@ -10,6 +10,7 @@
 	import EventForm from './EventForm.svelte';
 	import TradePlan, { newDraft, planBody, PLAN_KIND_LABEL, type PlanDraft, type PlanKind } from './TradePlan.svelte';
 	import { israelDate } from '../hypothesis.js';
+	import { journalVersion } from '../journal/screen.svelte.js';
 	import { CASH_LABEL, EVENT_LABEL, money, priceText, qtyText, STAGE_LABEL, type Stage } from '../portfolio.js';
 	import { showToast } from '../toast.svelte.js';
 
@@ -99,6 +100,8 @@
 		plan: { id: number; kind: PlanKind; thesis: string | null; wrongIf: string | null; stop: number | null; target: number | null; reviewDate: string | null; noStopReason: string | null; reason: string | null; createdAt: string } | null;
 		reviews: Record<string, { reason: string; followed: number }>;
 		signals: { kind: 'stop' | 'target' | 'review' | 'model_end'; price: number | null; priceDate: string | null }[];
+		decisions: { id: number; type: string; basis: string; noReason: number; outcome: string | null }[];
+		buyForSale: { id: number; type: string; basis: string; expectation: string | null; createdAt: string; html: string } | null;
 	}
 
 	// T-015: the trade's conditions — filled later or changed by «Пересмотрел»
@@ -131,6 +134,7 @@
 		}
 		problem = null;
 		planning = false;
+		journalVersion.n++;
 		showToast(v.plan ? tx('Пересмотр записан', 'Review saved') : tx('Условия сделки записаны', 'Trade conditions saved'));
 		await load();
 		onchange();
@@ -296,6 +300,7 @@
 			<p class="ph">
 				<span>{tx('Условия сделки', 'Trade conditions')} · {tx(...PLAN_KIND_LABEL[x.kind])}</span>
 				{#if x.stop === null}<span class="nostop">{tx('без стопа', 'no stop')}</span>{/if}
+				{#if v.decisions.at(-1)?.noReason}<span class="nostop">{tx('без обоснования', 'no reason')}</span>{/if}
 				<HelpIcon topicKey="trade.stop" label={tx('стоп, цель и риск', 'stop, target and risk')} />
 			</p>
 			{#if x.thesis}<p class="th">{x.thesis}</p>{/if}
@@ -385,6 +390,7 @@
 				portfolioCurrency={pc}
 				portfolioValue={v.portfolioValue}
 				existingPlan={v.plan}
+				buyForSale={v.buyForSale}
 				onsaved={async () => {
 					showToast(`${p.symbol}: ${tl(NEXT_LABEL[step!]).toLowerCase()} — ${tx('записано', 'saved')}`);
 					step = null;

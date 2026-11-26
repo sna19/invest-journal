@@ -10,7 +10,7 @@ import { eventsDue, loadEvents, type EventsSummary } from './market/events.js';
 import { heldSecurities, loadQuotes, marketsOpen, readSchedule, type QuotesSummary } from './market/quotes.js';
 import { asUser, currentUserId, forEachUser, listUsers } from './auth.js';
 import { sendSignals } from './push.js';
-import { syncJournal } from './diary.js';
+import { syncDecisions } from './decisions.js';
 import { backupDir, getApp, getMarket, rawDir } from './db.js';
 import { findGaps, enqueueMissingHistory, resetRunning, runQueue, type QueueSummary } from './market/history.js';
 import { makeFetcher } from './market/http.js';
@@ -712,8 +712,8 @@ export function startScheduler() {
 	if (started) return;
 	started = true;
 	// T-032: the notes and theses written before the diary move into it once (and stay in step after)
-	void forEachUser(() => syncJournal(getApp().sqlite, getMarket().sqlite))
-		.then((n) => n.some((x) => x) && console.log(`journal: moved in ${n.reduce((a, b) => a + b, 0)} notes`))
+	void forEachUser(() => syncDecisions(getApp().sqlite, getMarket().sqlite))
+		.then((n) => n.some((x) => x) && console.log(`journal: ${n.reduce((a, b) => a + b, 0)} decisions from earlier purchases`))
 		.catch((e) => console.error(`journal: ${e}`));
 	const at = (expr: string, name: string, f: () => unknown) =>
 		tasks.push(cron.schedule(expr, () => void Promise.resolve(f()).catch((e) => console.error(`${name}: ${e}`)), { timezone: TZ, name }));

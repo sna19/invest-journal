@@ -77,6 +77,7 @@
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import HelpIcon from './HelpIcon.svelte';
 	import Feed from './journal/Feed.svelte';
+	import History from './journal/History.svelte';
 	import { setScreenLinks } from './journal/screen.svelte.js';
 	import Pct from './Pct.svelte';
 	import { showToast } from './toast.svelte.js';
@@ -243,6 +244,7 @@
 	<!-- T-032 Д-08: the hypothesis's diary -->
 	<details class="journal">
 		<summary>{tx('Дневник гипотезы', 'The hypothesis\'s diary')}<HelpIcon topicKey="journal.screen" label={tx('дневник', 'diary')} /></summary>
+		<History hypothesisId={h.id} />
 		<Feed scope={`hypothesis:${h.id}`} links={[{ type: 'hypothesis', id: String(h.id), label: `№${h.id}` }, { type: 'security', id: String(h.securityId), label: h.symbol }]} />
 	</details>
 

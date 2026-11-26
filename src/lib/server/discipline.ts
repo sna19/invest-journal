@@ -144,6 +144,7 @@ export function savePlan(app: Database.Database, positionId: number, input: Plan
 		{ thesis: prev?.thesis, wrongIf: prev?.wrongIf, kind: prev?.kind, reviewDate: keepDate, ...input },
 		{ entry: null, date: today, strict: false, fallbackKind: prev?.kind ?? 'own' }
 	);
+	let noteEventId: number | null = null;
 	return app.transaction(() => {
 		const row = insertPlan(app, positionId, null, clean, reason);
 		if (prev) {
@@ -152,9 +153,9 @@ export function savePlan(app: Database.Database, positionId: number, input: Plan
 			if (prev.target !== clean.target) parts.push(`цель ${prev.target ?? '—'} → ${clean.target ?? '—'}`);
 			if (prev.reviewDate !== clean.reviewDate) parts.push(`пересмотр ${clean.reviewDate.split('-').reverse().join('.')}`);
 			const cur = app.prepare('select currency from positions where id = ?').get(positionId) as { currency: string };
-			app.prepare(`insert into position_events (position_id, kind, date, currency, note) values (?, 'note', ?, ?, ?)`).run(positionId, today, cur.currency, parts.join(' · '));
+			noteEventId = (app.prepare(`insert into position_events (position_id, kind, date, currency, note) values (?, 'note', ?, ?, ?) returning id`).get(positionId, today, cur.currency, parts.join(' · ')) as { id: number }).id;
 		}
-		return { id: row.id, plan: planOf(app, positionId) };
+		return { id: row.id, plan: planOf(app, positionId), noteEventId, reviewed: !!prev, reason };
 	})();
 }
 

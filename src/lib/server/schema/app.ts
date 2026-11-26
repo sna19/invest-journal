@@ -529,3 +529,42 @@ export const entryTags = sqliteTable(
 	},
 	(t) => [primaryKey({ columns: [t.entryId, t.tagId] }), index('entry_tags_tag').on(t.tagId)]
 );
+
+/**
+ * T-032 11б, Д-14 — Д-19: a decision with its own thesis entry. Built over the trade conditions (T-015): a purchase's
+ * thesis is the thesis entry, «Пересмотрел» at a signal is a «hold», a sale's review is the conclusion with «Сбылось?».
+ * The key fields never change after saving; within 24 hours a decision can be cancelled.
+ */
+export const decisions = sqliteTable(
+	'decisions',
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		createdAt: now(),
+		/** buy | add | sell | trim | hold | skip | defer */
+		type: text().notNull(),
+		securityId: integer().notNull(),
+		portfolioId: integer(),
+		positionId: integer(),
+		/** the trade it came with */
+		eventId: integer(),
+		/** intuition | hypothesis | model | consensus | mixed */
+		basis: text().notNull(),
+		/** a hypothesis's id, a model run «A|2027-Q1» */
+		basisRef: text(),
+		thesisEntryId: integer().notNull(),
+		/** what is expected: the target, the stop, words */
+		expectation: text(),
+		reviewDate: text(),
+		/** «Сбылось?» at the sale: yes | partly | no | early */
+		outcome: text(),
+		outcomeAt: text(),
+		conclusionEntryId: integer(),
+		/** saved with an empty «Почему» — the position is marked «без обоснования» */
+		noReason: integer().notNull().default(0),
+		/** the trade conditions version it stands on */
+		planId: integer(),
+		cancelledAt: text(),
+		origin: text().unique()
+	},
+	(t) => [index('decisions_security').on(t.securityId), index('decisions_position').on(t.positionId)]
+);

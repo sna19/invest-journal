@@ -27,6 +27,7 @@
 		tags: { id: number; name: string; color: string; system: number }[];
 		context: { type: string; id: string; restored: boolean; then: Moment; now: Moment | null }[];
 		revisions: number;
+		decision: { id: number; type: string; basis: string; expectation: string | null; reviewDate: string | null; outcome: string | null; noReason: number; cancelledAt: string | null; canCancel: boolean } | null;
 		answers: EntryData[];
 	}
 </script>
@@ -81,6 +82,12 @@
 	async function archive(on: boolean) {
 		if (await call('POST', `/api/journal/${e.id}`, { action: on ? 'archive' : 'restore' })) (showToast(on ? tx('В архиве', 'Archived') : tx('Возвращено', 'Restored')), onchange());
 	}
+	const TYPE: Record<string, [string, string]> = { buy: ['купить', 'buy'], add: ['докупить', 'add'], sell: ['продать', 'sell'], trim: ['сократить', 'trim'], hold: ['держать', 'hold'], skip: ['не покупать', 'not buying'], defer: ['отложить', 'defer'] };
+	const BASIS: Record<string, [string, string]> = { intuition: ['интуиция', 'intuition'], hypothesis: ['гипотеза', 'hypothesis'], model: ['модель', 'model'], consensus: ['консенсус', 'consensus'], mixed: ['смешанное', 'mixed'] };
+	const OUT: Record<string, [string, string]> = { yes: ['да', 'yes'], partly: ['частично', 'partly'], no: ['нет', 'no'], early: ['рано судить', 'too early'] };
+	async function cancelDecision() {
+		if (await call('POST', `/api/decisions/${e.decision!.id}/cancel`, {})) (showToast(tx('Решение отменено', 'Decision cancelled')), onchange());
+	}
 	async function remove() {
 		if (await call('DELETE', `/api/journal/${e.id}`, { word })) (showToast(tx('Удалено навсегда', 'Deleted for good')), journalVersion.n++, onchange());
 	}
@@ -93,6 +100,14 @@
 		{#if e.via}<span class="via">{tx('через', 'via')} {e.via}</span>{/if}
 		{#if e.revisions > 1}<button class="lnk small" onclick={loadRevs}>{tx('правок', 'edits')}: {e.revisions - 1}</button>{/if}
 	</header>
+	{#if e.decision}
+		{@const dd = e.decision}
+		<p class="dec" class:off={!!dd.cancelledAt}>
+			<b>{tx(...(TYPE[dd.type] ?? [dd.type, dd.type]))}</b> · {tx('основание', 'basis')}: {tx(...(BASIS[dd.basis] ?? [dd.basis, dd.basis]))}{#if dd.expectation} · {dd.expectation}{/if}{#if dd.reviewDate} · {tx('пересмотр', 'review')} {day(dd.reviewDate)}{/if}{#if dd.outcome} · {tx('сбылось', 'came true')}: <b>{tx(...OUT[dd.outcome])}</b>{/if}
+			{#if dd.noReason}<span class="flag">{tx('без обоснования', 'no reason')}</span>{/if}
+			{#if dd.cancelledAt}<span class="flag">{tx('отменено', 'cancelled')}</span>{:else if dd.canCancel}<button class="lnk small" onclick={cancelDecision}>{tx('отменить решение', 'cancel the decision')}</button>{/if}
+		</p>
+	{/if}
 	{#if editing}
 		<RichEditor bind:value={text} autofocus minHeight="6em" />
 		<div class="row">
@@ -212,6 +227,30 @@
 	}
 	.k-conclusion {
 		background: color-mix(in srgb, #b45309 18%, var(--surface));
+	}
+	.dec {
+		margin: 0;
+		font-size: var(--fs-s);
+		padding: var(--s1) var(--s2);
+		border-radius: var(--r1);
+		background: color-mix(in srgb, #1d4ed8 10%, var(--surface));
+		line-height: 1.5;
+	}
+	.dec .flag,
+	.dec .lnk {
+		margin-left: 4px;
+	}
+	.dec.off {
+		opacity: 0.6;
+		text-decoration: line-through;
+	}
+	.flag {
+		font-size: var(--fs-xs);
+		padding: 0 var(--s2);
+		border-radius: var(--r-pill);
+		background: var(--down);
+		color: #fff;
+		text-decoration: none;
 	}
 	.via {
 		font-size: var(--fs-xs);

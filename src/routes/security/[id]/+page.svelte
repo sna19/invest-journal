@@ -13,6 +13,8 @@
 	import Pct from '#lib/Pct.svelte';
 	import PositionCard from '#lib/portfolio/PositionCard.svelte';
 	import Feed from '#lib/journal/Feed.svelte';
+	import History from '#lib/journal/History.svelte';
+	import DecisionForm from '#lib/journal/DecisionForm.svelte';
 	import TvLink from '#lib/TvLink.svelte';
 	import LineChart, { colorOf, type Line, type Mark } from '#lib/charts/LineChart.svelte';
 	import { SIGNAL, short } from '#lib/HypothesisCard.svelte';
@@ -296,6 +298,8 @@
 		void scroll.restore();
 	}
 	const scroll = keepScroll(() => `security:${page.params.id}`);
+	// T-032 11б: «Не покупаю» / «Отложить»
+	let deciding = $state<'skip' | 'defer' | null>(null);
 	// T-030: the positions of this security open here, «Моя позиция» on top — the one opened from first
 	const wanted = $derived(Number(page.url.searchParams.get('position')) || null);
 	// the one opened from is drawn at once, before the chart's data come
@@ -530,6 +534,12 @@
 	{/if}
 	</Fold>
 
+	<!-- T-032 Д-20: the history — hypotheses, observations, decisions and conclusions on one line with the price -->
+	<Fold key="sec-history" title={tx('История', 'History')} open={false}>
+		{#snippet aside()}<HelpIcon topicKey="decision.history" label={tx('история', 'history')} />{/snippet}
+		{#key page.params.id}<History securityId={Number(page.params.id)} />{/key}
+	</Fold>
+
 	<!-- T-032 Д-08: the diary of the security; an ETF or an index sees its shares' entries too -->
 	<Fold key="sec-journal" title={tx('Дневник', 'Diary')}>
 		{#snippet aside()}<HelpIcon topicKey="journal.inherit" label={tx('дневник бумаги', 'the security\'s diary')} />{/snippet}
@@ -703,7 +713,10 @@
 		<a href="/portfolio?add={c.security.id}&kind=plan_buy{mq}">{tx('Хочу купить', 'Want to buy')}</a>
 		<a href="/portfolio?add={c.security.id}&kind=buy{mq}">{tx('Купил', 'Bought')}</a>
 		<a href="/new">{tx('Гипотеза', 'Hypothesis')}</a>
+		<button onclick={() => (deciding = 'skip')}>{tx('Не покупаю', 'Not buying')}</button>
+		<button onclick={() => (deciding = 'defer')}>{tx('Отложить', 'Defer')}</button>
 	</div>
+	{#if deciding}<DecisionForm securityId={c.security.id} symbol={c.security.symbol} type={deciding} onclose={() => (deciding = null)} />{/if}
 
 	{#if c.hypotheses.length}
 		<Fold key="sec-hyps" title={tx('Гипотезы', 'Hypotheses')} summary={String(c.hypotheses.length)}>
@@ -1184,7 +1197,8 @@
 		gap: var(--s2);
 		margin: var(--s3) 0;
 	}
-	.buttons a {
+	.buttons a,
+	.buttons button {
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -1195,6 +1209,9 @@
 		color: var(--text);
 		font-weight: 600;
 		text-decoration: none;
+		font-family: inherit;
+		font-size: inherit;
+		cursor: pointer;
 	}
 	.list {
 		list-style: none;

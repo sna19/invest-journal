@@ -8,6 +8,9 @@
 	import Fold from '../Fold.svelte';
 	import HelpIcon from '../HelpIcon.svelte';
 	import TradePlan, { newDraft, planBody, type PlanDraft, type PlanKind } from './TradePlan.svelte';
+	import BasisPicker from '../journal/BasisPicker.svelte';
+	import RichEditor from '../journal/RichEditor.svelte';
+	import { journalVersion } from '../journal/screen.svelte.js';
 
 	/**
 	 * Spec section 18 «Быстрый ввод» — one form for every step of a position. «Купил / Продал» in under 30 s:
@@ -43,11 +46,13 @@
 		/** T-015: the portfolio's value in its currency — the trade's risk in % of it */
 		portfolioValue?: number | null;
 		/** T-015: the position's conditions so far («Хочу купить» → «Купил» keeps them) */
+		/** T-032 11б, Д-18: the purchase a sale answers — its thesis is shown with «Сбылось?» */
+		buyForSale?: { id: number; type: string; basis: string; expectation: string | null; createdAt: string; html: string } | null;
 		existingPlan?: { kind: PlanKind; thesis: string | null; wrongIf: string | null; stop: number | null; target: number | null; reviewDate: string | null; noStopReason: string | null } | null;
 		onsaved: (positionId: number) => void;
 		oncancel: () => void;
 	}
-	let { portfolioId, kind, position = null, securityId = null, hypothesisId = null, modelVariant = null, lastFee = {}, portfolioCurrency = 'ILS', edit = null, initialNote = null, portfolioValue = null, existingPlan = null, onsaved, oncancel }: Props = $props();
+	let { portfolioId, kind, position = null, securityId = null, hypothesisId = null, modelVariant = null, lastFee = {}, portfolioCurrency = 'ILS', edit = null, initialNote = null, portfolioValue = null, existingPlan = null, buyForSale = null, onsaved, oncancel }: Props = $props();
 	let costTotal = $state('');
 	let warning = $state<string | null>(null);
 
@@ -83,6 +88,19 @@
 		['changed_mind', 'Передумал', 'Changed my mind']
 	];
 	let rules = $state<{ id: number; text: string }[]>([]);
+	// T-032 11б: the decision of a purchase or a sale — its basis (by default from the trade's kind or the purchase), the
+	// sale's «Почему», «Сбылось?» and the conclusion
+	let basisPicked = $state('');
+	const basis = $derived(basisPicked || (kind === 'sell' ? (buyForSale?.basis ?? 'intuition') : tplan.kind === 'model' ? 'model' : tplan.kind === 'hypothesis' ? 'hypothesis' : 'intuition'));
+	let why = $state('');
+	let outcome = $state<string | null>(null);
+	let conclusion = $state('');
+	const OUTCOMES: [string, string, string][] = [
+		['yes', 'Да', 'Yes'],
+		['partly', 'Частично', 'Partly'],
+		['no', 'Нет', 'No'],
+		['early', 'Рано судить', 'Too early']
+	];
 	const plan = $derived(kind === 'plan_buy' || kind === 'plan_sell');
 	const unitLabel = $derived(sec ? (sec.priceUnit === 'ILA' ? tx('агорот', 'agorot') : sec.currency === 'USD' ? '$' : '₪') : '');
 
@@ -185,6 +203,7 @@
 			plan: withPlan ? planBody(tplan, n(price)) : undefined,
 			review: withReview ? { reason: exitReason, followed } : undefined,
 			discipline: edit ? undefined : true,
+			decision: edit || (kind !== 'buy' && kind !== 'sell') ? undefined : { basis, why: kind === 'sell' ? why : undefined, outcome: kind === 'sell' ? outcome : undefined, conclusion: kind === 'sell' ? conclusion : undefined },
 			confirm
 		};
 		try {
@@ -202,6 +221,8 @@
 				return;
 			}
 			ask = null;
+			// the diary, its feeds and the history show the new decision at once
+			journalVersion.n++;
 			// a buy without enough money only warns (section 18)
 			if (j.warning) {
 				warning = j.warning;
@@ -310,10 +331,28 @@
 				{fxUsd}
 				{errors}
 			/>
+			{#if kind === 'buy'}<BasisPicker bind:basis={() => basis, (v) => (basisPicked = v)} />{/if}
 		{/if}
 
 		{#if withReview}
 			<div class="review">
+				<span class="lbl">{tx('Почему продаю', 'Why I sell')} <HelpIcon topicKey="decision.basis" label={tx('решение', 'decision')} /></span>
+				<RichEditor bind:value={why} minHeight="3.5em" placeholder={tx('Можно пусто — тогда решение пометится «без обоснования»', 'May be empty — then the decision is marked «no reason»')} />
+				<BasisPicker bind:basis={() => basis, (v) => (basisPicked = v)} />
+				{#if buyForSale}
+					<div class="bought">
+						<span class="lbl">{tx('Покупка', 'Purchase')} {new Date(buyForSale.createdAt).toLocaleDateString()}{buyForSale.expectation ? ` · ${buyForSale.expectation}` : ''}</span>
+						<div class="thesis">{@html buyForSale.html}</div>
+					</div>
+					<span class="lbl">{tx('Сбылось?', 'Did it come true?')} <HelpIcon topicKey="decision.outcome" label={tx('сбылось ли', 'did it come true')} /></span>
+					<div class="chips">
+						{#each OUTCOMES as [k, ru, en] (k)}
+							<button type="button" class:on={outcome === k} aria-pressed={outcome === k} onclick={() => (outcome = k)}>{tx(ru, en)}</button>
+						{/each}
+					</div>
+					{#if errors.outcome}<em class="err">{errors.outcome}</em>{/if}
+					<RichEditor bind:value={conclusion} minHeight="3em" placeholder={tx('Вывод: что подтвердилось, что нет, чему научился', 'Conclusion: what held, what did not, what I learned')} />
+				{/if}
 				<span class="lbl">{tx('Причина выхода', 'Reason for the exit')} <HelpIcon topicKey="trade.review" label={tx('разбор при продаже', 'review at the sale')} /></span>
 				<div class="chips">
 					{#each EXIT_REASONS as [k, ru, en] (k)}
@@ -497,6 +536,18 @@
 		border-color: var(--accent);
 		background: var(--accent);
 		color: var(--accent-text);
+	}
+	.bought {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		padding: var(--s2) var(--s3);
+		border-left: 3px solid var(--accent);
+		border-radius: var(--r1);
+		background: var(--surface);
+	}
+	.thesis :global(p) {
+		margin: 0;
 	}
 	.rules {
 		margin: 0 0 var(--s2);
