@@ -24,7 +24,8 @@
 	}
 	interface Trade {
 		key: string;
-		kind: 'stop' | 'target' | 'review' | 'model_end';
+		kind: 'stop' | 'target' | 'review' | 'model_end' | 'no_stop';
+		order?: boolean;
 		positionId: number;
 		portfolio: string;
 		symbol: string;
@@ -70,7 +71,8 @@
 		if (j) ((closing = null), (conclusion = ''), journalVersion.n++, showToast(tx('Закрыто', 'Closed')));
 	}
 	function tradeText(s: Trade) {
-		if (s.kind === 'stop') return `${tx('стоп пробит', 'stop broken')}: ${priceText(s.price, s.priceUnit)} ≤ ${priceText(s.stop, s.priceUnit)}`;
+		if (s.kind === 'no_stop') return tx('куплено без стопа — выставь стоп у брокера', 'bought without a stop — place one at the broker');
+		if (s.kind === 'stop') return `${s.order ? tx('стоп у брокера должен был сработать', 'the stop at the broker should have worked') : tx('стоп пробит', 'stop broken')}: ${priceText(s.price, s.priceUnit)} ≤ ${priceText(s.stop, s.priceUnit)}`;
 		if (s.kind === 'target') return `${tx('цель достигнута', 'target reached')}: ${priceText(s.price, s.priceUnit)} ≥ ${priceText(s.target, s.priceUnit)}`;
 		if (s.kind === 'model_end') return tx('период модели закончился — правило 2: продать', 'the model\'s period is over — rule 2: sell');
 		return `${tx('пора пересмотреть', 'time to review')} (${s.reviewDate ? until(s.reviewDate) : ''})`;
@@ -81,7 +83,7 @@
 	<section class="signals" aria-label={tx('Сигналы', 'Signals')}>
 		<h2>{tx('Сигналы', 'Signals')} <span class="n">{rems.length + trade.length}</span><HelpIcon topicKey="reminder.signals" label={tx('сигналы', 'signals')} /></h2>
 		{#each trade as s (s.key)}
-			<div class="sig" class:hot={s.kind === 'stop' || s.kind === 'model_end'}>
+			<div class="sig" class:hot={s.kind === 'stop' || s.kind === 'model_end' || s.kind === 'no_stop'}>
 				<a href="/position/{s.positionId}"><b>{s.symbol}</b> {tradeText(s)} <span class="muted">· {s.portfolio} · {tx('Продал или пересмотрел?', 'Sold or reviewed?')} →</span></a>
 				<Snooze snoozes={s.snoozes} onpick={(h) => snoozeTrade(s.key, h)} />
 			</div>

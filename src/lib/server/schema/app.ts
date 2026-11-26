@@ -681,3 +681,44 @@ export const positionReviews = sqliteTable(
 	},
 	(t) => [index('position_reviews_position').on(t.positionId)]
 );
+
+// ── T-021 «Защитный план»: the stops placed at the broker and the protected share by day ──────────────────
+
+/**
+ * «Я выставил у брокера»: the order the owner placed — a fixed stop-limit (stop, limit) or a trailing stop (%; its
+ * level follows the highest close since it was placed, never down). A newer one replaces it (cancelledAt).
+ */
+export const protectionOrders = sqliteTable(
+	'protection_orders',
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		positionId: integer()
+			.notNull()
+			.references(() => positions.id),
+		/** fixed | trail */
+		type: text().notNull(),
+		/** prices in the position's price unit */
+		stop: real(),
+		limitPrice: real(),
+		trailPct: real(),
+		/** the price when it was placed: the trailing level starts from it */
+		basePrice: real(),
+		qty: real(),
+		setDate: text().notNull(),
+		cancelledAt: text(),
+		createdAt: now()
+	},
+	(t) => [index('protection_orders_position').on(t.positionId)]
+);
+
+/** one row a day per real portfolio: the share of its positions' value under a stop (the «Статистика» number) */
+export const protectionDays = sqliteTable(
+	'protection_days',
+	{
+		date: text().notNull(),
+		portfolioId: integer().notNull(),
+		protectedPct: real().notNull(),
+		unprotected: integer().notNull()
+	},
+	(t) => [primaryKey({ columns: [t.date, t.portfolioId] })]
+);

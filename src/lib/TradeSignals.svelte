@@ -9,7 +9,8 @@
 	 * «Продал» / «Пересмотрел»; the banner stays until one of them is done.
 	 */
 	interface Signal {
-		kind: 'stop' | 'target' | 'review' | 'model_end';
+		kind: 'stop' | 'target' | 'review' | 'model_end' | 'no_stop';
+		order?: boolean;
 		positionId: number;
 		portfolioId: number;
 		portfolio: string;
@@ -30,7 +31,8 @@
 	const shown = $derived(portfolioId === null ? items : items.filter((s) => s.portfolioId === portfolioId));
 	const d = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString(loc(), { day: 'numeric', month: 'short' });
 	function text(s: Signal) {
-		if (s.kind === 'stop') return `${tx('стоп пробит', 'stop broken')}: ${priceText(s.price, s.priceUnit)} ≤ ${priceText(s.stop, s.priceUnit)}`;
+		if (s.kind === 'no_stop') return tx('куплено без стопа — выставь стоп у брокера', 'bought without a stop — place one at the broker');
+		if (s.kind === 'stop') return `${s.order ? tx('стоп у брокера должен был сработать', 'the stop at the broker should have worked') : tx('стоп пробит', 'stop broken')}: ${priceText(s.price, s.priceUnit)} ≤ ${priceText(s.stop, s.priceUnit)}`;
 		if (s.kind === 'target') return `${tx('цель достигнута', 'target reached')}: ${priceText(s.price, s.priceUnit)} ≥ ${priceText(s.target, s.priceUnit)}`;
 		if (s.kind === 'model_end') return `${tx('период модели закончился', 'the model\'s period is over')} ${s.reviewDate ? d(s.reviewDate) : ''} — ${tx('правило 2: продать', 'rule 2: sell')}`;
 		return `${tx('пора пересмотреть', 'time to review')} (${s.reviewDate ? d(s.reviewDate) : ''})`;
@@ -38,7 +40,7 @@
 </script>
 
 {#each shown as s (`${s.positionId}|${s.kind}`)}
-	<a class="sig" class:stop={s.kind === 'stop' || s.kind === 'model_end'} href="/position/{s.positionId}">
+	<a class="sig" class:stop={s.kind === 'stop' || s.kind === 'model_end' || s.kind === 'no_stop'} href="/position/{s.positionId}">
 		<b>{s.symbol}</b> {text(s)}
 		{#if portfolioId === null}<span class="small">{s.portfolio}</span>{/if}
 		<span class="small">{tx('Продал или пересмотрел?', 'Sold or reviewed?')} →</span>

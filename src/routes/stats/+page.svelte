@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Fold from '#lib/Fold.svelte';
 	import DisciplineStats from '#lib/DisciplineStats.svelte';
+	import ProtectionStats from '#lib/portfolio/ProtectionStats.svelte';
 	import { tl, tx } from '#lib/i18n.js';
 	import { onMount } from 'svelte';
 	import GripVertical from '@lucide/svelte/icons/grip-vertical';
@@ -217,6 +218,7 @@
 	</ul>
 {/if}
 <DisciplineStats />
+<ProtectionStats />
 
 {#snippet compare(sides: Side[])}
 	<ul class="rows">

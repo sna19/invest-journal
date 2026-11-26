@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { protectFocus } from './protect.svelte.js';
 	import TvLink from '../TvLink.svelte';
 	import { loc, tl, tx } from '#lib/i18n.js';
 	import { onMount, tick } from 'svelte';
@@ -99,7 +100,7 @@
 		portfolioValue: number;
 		plan: { id: number; kind: PlanKind; thesis: string | null; wrongIf: string | null; stop: number | null; target: number | null; reviewDate: string | null; noStopReason: string | null; reason: string | null; createdAt: string } | null;
 		reviews: Record<string, { reason: string; followed: number }>;
-		signals: { kind: 'stop' | 'target' | 'review' | 'model_end'; price: number | null; priceDate: string | null }[];
+		signals: { kind: 'stop' | 'target' | 'review' | 'model_end' | 'no_stop'; order?: boolean; price: number | null; priceDate: string | null }[];
 		decisions: { id: number; type: string; basis: string; noReason: number; outcome: string | null }[];
 		review: { date: string; wouldBuy: number; thesis: string | null; exitCondition: string | null } | null;
 		buyForSale: { id: number; type: string; basis: string; expectation: string | null; createdAt: string; html: string } | null;
@@ -142,6 +143,7 @@
 	}
 	const SIGNAL_TEXT: Record<string, [string, string]> = {
 		stop: ['Стоп пробит', 'Stop broken'],
+		no_stop: ['Куплено без стопа — выставь стоп у брокера (блок «Защита»)', 'Bought without a stop — place one at the broker (block «Protection»)'],
 		target: ['Цель достигнута', 'Target reached'],
 		review: ['Пора пересмотреть', 'Time to review'],
 		model_end: ['Период модели закончился — по правилу 2 продать', 'The model\'s period is over — rule 2 says sell']
@@ -394,6 +396,11 @@
 				buyForSale={v.buyForSale}
 				onsaved={async () => {
 					showToast(`${p.symbol}: ${tl(NEXT_LABEL[step!]).toLowerCase()} — ${tx('записано', 'saved')}`);
+					// T-021: after «Купил» the block «Защита» opens its cheat sheet for this position
+					if (step === 'buy') {
+						protectFocus.positionId = p.id;
+						window.scrollTo({ top: 0, behavior: 'smooth' });
+					}
 					step = null;
 					await load();
 					onchange();

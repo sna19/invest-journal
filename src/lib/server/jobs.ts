@@ -15,6 +15,8 @@ import { momentumIds, momentumSymbols, momentumView, recordMomentum } from './mo
 import { monthAdd as monthAddJ } from './model/momentum.js';
 import { checkReminders } from './reminders.js';
 import { backupMedia } from './snapshots.js';
+import { atrOf, barsOf, portfolioProtection, protectionOf, readPParams, recordProtectionDay } from './protection.js';
+import { realPortfolios } from './risk.js';
 import { backupDir, getApp, getMarket, rawDir } from './db.js';
 import { findGaps, enqueueMissingHistory, resetRunning, runQueue, type QueueSummary } from './market/history.js';
 import { makeFetcher } from './market/http.js';
@@ -702,6 +704,51 @@ export function runPushJob() {
 	});
 }
 
+/** T-021: the day's protected share of every user's real portfolios */
+export function runProtectionJob() {
+	return single('protection', async () => {
+		const n = (await forEachUser(() => recordProtectionDay(getApp().sqlite, getMarket().sqlite))).reduce((a, b) => a + b, 0);
+		console.log(`protection: ${n} portfolios recorded`);
+		return n;
+	});
+}
+
+function logProtection() {
+	const app = getApp().sqlite;
+	const m = getMarket().sqlite;
+	const p = readPParams(app);
+	// the securities held in the real portfolios: their whole calculation, to check by hand
+	const held = new Set<number>();
+	for (const port of realPortfolios(app)) for (const x of portfolioProtection(app, m, port.id)?.items ?? []) held.add(x.securityId);
+	for (const id of held) {
+		const sym = (m.prepare('select symbol from ref_securities where id = ?').get(id) as { symbol: string }).symbol;
+		const sec = { id };
+		const t0 = Date.now();
+		const it = protectionOf(app, m, sec.id).items[0];
+		if (!it) continue;
+		const b = barsOf(m, sec.id, 220);
+		const last = b.slice(-p.atrDays - 1);
+		const f = it.f;
+		console.log(
+			`protection: ${sym} ${Date.now() - t0} ms · close ${b.at(-1)?.date} ${b.at(-1)?.close} · price ${it.price} · ATR${p.atrDays} ${f.atr.toFixed(4)} (${f.atrPct.toFixed(2)}%) from ${last.map((x) => `${x.date.slice(5)} ${x.low}/${x.high}/${x.close}`).join(', ')}`
+		);
+		const low = (n: number) => Math.min(...b.slice(-n).map((x) => x.low ?? x.close));
+		const sma = b.length >= p.sma ? b.slice(-p.sma).reduce((a, x) => a + x.close, 0) / p.sma : null;
+		console.log(
+			`protection: ${sym} low${p.lowShort} ${low(p.lowShort)} · low${p.lowLong} ${low(p.lowLong)} · sma${p.sma} ${sma?.toFixed(4) ?? '—'} → level ${f.level ? `${f.level.kind} ${f.level.value}` : 'none'} · stop ${f.stop} · limit ${f.limit} · trail ${f.trailPct}% (${f.trailStop}) · ${it.size ? `size ${it.size.qty} for ${it.size.budget.toFixed(2)} risk` : `position ${it.position?.qty}`} · check ATR ${atrOf(b, p.atrDays)?.toFixed(4)}`
+		);
+	}
+	for (const port of realPortfolios(app)) {
+		const s = portfolioProtection(app, m, port.id);
+		if (!s) continue;
+		console.log(`protection: portfolio ${port.id} protected ${s.protectedPct.toFixed(1)}% · max loss ${s.maxLoss.toFixed(2)} ${s.currency} · unprotected ${s.unprotected}`);
+		for (const it of s.items)
+			console.log(
+				`protection: p${port.id} ${it.symbol} price ${it.price} · ATR ${it.f.atrPct.toFixed(2)}% · ${it.f.level ? `${it.f.level.kind} ${it.f.level.value}` : 'no level'} · stop ${it.f.stop} limit ${it.f.limit} · trail ${it.f.trailPct}% · ${it.recommended} (${it.why}) · loss ${it.maxLoss?.fixed.toFixed(0)}/${it.maxLoss?.trail.toFixed(0)} ${it.maxLoss?.currency} (${it.maxLoss?.pctFixed?.toFixed(1)}%/${it.maxLoss?.pctTrail?.toFixed(1)}%) · qty ${it.position?.qty}${it.approx ? ' · approx' : ''}`
+			);
+	}
+}
+
 /** the momentum's numbers in the log (the owner cannot query the NAS): the table, two rebalances' choice with the closes they came from, SPY against its adjclose */
 function logMomentum() {
 	const app = getApp().sqlite;
@@ -770,6 +817,14 @@ export function startScheduler() {
 			}
 		}, 20_000 + (3 - left) * 100_000);
 	report(3);
+	// T-021: the protective plan of every real position, with what it is computed from (the log stays on the NAS)
+	setTimeout(() => {
+		try {
+			asUser(listUsers()[0]?.id ?? 1, () => logProtection());
+		} catch (e) {
+			console.error(`protection: ${e}`);
+		}
+	}, 40_000);
 	// T-032: the notes and theses written before the diary move into it once (and stay in step after)
 	void forEachUser(() => syncDecisions(getApp().sqlite, getMarket().sqlite))
 		.then((n) => n.some((x) => x) && console.log(`journal: ${n.reduce((a, b) => a + b, 0)} decisions from earlier purchases`))
@@ -792,6 +847,8 @@ export function startScheduler() {
 	at('50 5 * * *', 'events', () => runEventsJob());
 	// after the morning closes: the first weekday of a quarter is the model's
 	at('55 9 * * 1-5', 'model', () => runModelJob());
+	// T-021: the protected share of each real portfolio, once a day after the morning closes
+	at('50 9 * * *', 'protection', () => runProtectionJob());
 	at('0 9 * * 6', 'gaps', runGapsJob);
 	at('40 3 * * *', 'backup-app', () => runBackupJob('app'));
 	at('10 4 * * 0', 'backup-market', () => runBackupJob('market'));

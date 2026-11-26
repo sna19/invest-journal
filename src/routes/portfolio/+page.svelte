@@ -27,6 +27,8 @@
 	import { CASH_LABEL, money, priceText, qtyText, STAGE_LABEL, STAGES, type Stage } from '#lib/portfolio.js';
 	import { showToast } from '#lib/toast.svelte.js';
 	import TradeSignals from '#lib/TradeSignals.svelte';
+	import PortfolioProtection from '#lib/portfolio/PortfolioProtection.svelte';
+	import { protectFocus } from '#lib/portfolio/protect.svelte.js';
 	import Feed from '#lib/journal/Feed.svelte';
 	import ToJournal from '#lib/journal/ToJournal.svelte';
 	import RiskReview from '#lib/portfolio/RiskReview.svelte';
@@ -180,11 +182,13 @@
 		list = (await r.json()).items;
 		if (!list!.some((p) => p.id === current)) current = list![0]?.id ?? null;
 	}
+	let loads = $state(0);
 	async function load() {
 		if (current === null) return (v = null);
 		const r = await fetch(`/api/portfolios/${current}`).catch(() => null);
 		if (!r?.ok) return (problem = tx('Нет связи с сервером.', 'No connection to the server.'));
 		v = await r.json();
+		loads++;
 		problem = null;
 		loadChart();
 		void scroll.restore();
@@ -527,6 +531,7 @@
 	</Empty>
 {:else if v}
 	{@const s = v.summary}
+	{#if v.portfolio.kind === 'real' && !v.portfolio.auto_source_id}<PortfolioProtection portfolioId={v.portfolio.id} version={loads} />{/if}
 	{#if v.portfolio.auto_source_id}
 		<p class="auto">
 			{tx('Автоматический: каждая гипотеза', 'Automatic: each hypothesis of')} «{tl(v.portfolio.sourceName)}» {tx('на рост покупается на', 'on a rise is bought for')} {money(v.portfolio.auto_amount_ils, v.portfolio.currency)} {tx('и продаётся при закрытии.', 'and sold when it closes.')}
@@ -747,6 +752,8 @@
 			portfolioCurrency={v.summary.currency}
 			portfolioValue={v.summary.value}
 			onsaved={(pid) => {
+				// T-021: a purchase opens its card with the cheat sheet for the broker
+				if (adding?.kind === 'buy') protectFocus.positionId = pid;
 				adding = null;
 				showToast(tx('Записано', 'Saved'));
 				goto(`/position/${pid}`);

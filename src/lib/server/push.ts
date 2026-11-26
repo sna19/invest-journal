@@ -17,9 +17,9 @@ import type { Errors } from '../hypothesis.js';
 const SUBJECT = process.env.PUSH_SUBJECT ?? 'https://github.com/sna19/invest-journal';
 export type PushKind = SignalKind | 'reminder';
 /** «reminder» — the diary's reminders (T-032 Д-32: off by default) */
-export const PUSH_KINDS: PushKind[] = ['stop', 'target', 'review', 'model_end', 'reminder'];
+export const PUSH_KINDS: PushKind[] = ['stop', 'no_stop', 'target', 'review', 'model_end', 'reminder'];
 /** owner 26.11.2026: only «стоп пробит» is on until the others are turned on in the settings */
-export const PUSH_DEFAULT: PushKind[] = ['stop'];
+export const PUSH_DEFAULT: PushKind[] = ['stop', 'no_stop'];
 
 let keys: { publicKey: string; privateKey: string } | null = null;
 export function vapid(dir = dataDir) {
@@ -85,7 +85,9 @@ const fmt = (x: number | null) => (x === null ? '—' : x.toLocaleString('ru-RU'
 /** the notification of a signal: short, the symbol first; a tap opens the position */
 export function messageOf(s: Signal) {
 	const title =
-		s.kind === 'stop'
+		s.kind === 'no_stop'
+			? `${s.symbol}: позиция без защиты`
+			: s.kind === 'stop'
 			? `${s.symbol}: стоп пробит`
 			: s.kind === 'target'
 				? `${s.symbol}: цель достигнута`
@@ -93,8 +95,12 @@ export function messageOf(s: Signal) {
 					? `${s.symbol}: период модели закончился`
 					: `${s.symbol}: пора пересмотреть`;
 	const body =
-		s.kind === 'stop'
-			? `Цена ${fmt(s.price)} ≤ стоп ${fmt(s.stop)}. Проверь исполнение у брокера и внеси продажу.`
+		s.kind === 'no_stop'
+			? `Куплено без подтверждённого стопа. Открой «Защиту»: шпаргалка для брокера и «Я выставил».`
+			: s.kind === 'stop'
+			? s.order
+				? `Цена ${fmt(s.price)} ≤ стоп ${fmt(s.stop)}: стоп у брокера должен был сработать. Проверь исполнение и внеси продажу.`
+				: `Цена ${fmt(s.price)} ≤ стоп ${fmt(s.stop)}. Проверь исполнение у брокера и внеси продажу.`
 			: s.kind === 'target'
 				? `Цена ${fmt(s.price)} ≥ цель ${fmt(s.target)}. Продать или пересмотреть?`
 				: s.kind === 'model_end'

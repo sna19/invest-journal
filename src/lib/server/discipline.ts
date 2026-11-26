@@ -3,6 +3,9 @@ import { israelDate, type Errors } from '../hypothesis.js';
 import { InputError } from './journal.js';
 import { listPortfolios, marketView } from './portfolio.js';
 import { portfolioReport } from './report.js';
+import { activeOrder, orderLevel } from './protection.js';
+
+const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
 
 /**
  * T-015 «Дисциплина сделки». The review of 20.11.2026: three positions made most of a portfolio's
@@ -177,7 +180,7 @@ export function insertReview(app: Database.Database, eventId: number, r: { reaso
 
 // ── signals ──────────────────────────────────────────────────────────────────────────────────────────────
 
-export type SignalKind = 'stop' | 'target' | 'review' | 'model_end';
+export type SignalKind = 'stop' | 'target' | 'review' | 'model_end' | 'no_stop';
 export interface Signal {
 	kind: SignalKind;
 	positionId: number;
@@ -193,6 +196,8 @@ export interface Signal {
 	stop: number | null;
 	target: number | null;
 	reviewDate: string | null;
+	/** T-021: the stop is an order placed at the broker («Я выставил») — it should have been filled */
+	order?: boolean;
 }
 
 /**
@@ -211,17 +216,32 @@ export function signals(app: Database.Database, market: Database.Database, today
 		.all() as { id: number; portfolioId: number; portfolio: string; securityId: number; symbol: string; priceUnit: string }[];
 	const m = marketView(market);
 	const out: Signal[] = [];
+	// the newest purchase (not one carried over, not reversed)
+	const lastBuy = app.prepare(`select max(date) as d from position_events e where position_id = ? and kind = 'buy' and not exists (select 1 from position_events r where r.reverses_event_id = e.id)`);
 	for (const r of rows) {
 		const plan = planOf(app, r.id);
-		if (!plan) continue;
+		// T-021: a stop placed at the broker — the trailing one followed by the closes — is the stop that counts
+		const order = activeOrder(app, r.id);
+		if (!plan && !order) {
+			// a fresh purchase without a stop: a day later the app asks for one (T-021), for two weeks
+			const d = (lastBuy.get(r.id) as { d: string | null }).d;
+			if (d && d < today && daysBetween(d, today) <= 14)
+				out.push({ kind: 'no_stop', positionId: r.id, planId: 0, portfolioId: r.portfolioId, portfolio: r.portfolio, securityId: r.securityId, symbol: r.symbol, priceUnit: r.priceUnit, price: null, priceDate: null, stop: null, target: null, reviewDate: null });
+			continue;
+		}
 		const mv = m.dayMove(r.securityId);
 		const last = m.last(r.securityId);
 		const price = mv?.now ?? last?.close ?? null;
 		const priceDate = mv?.date ?? last?.date ?? null;
-		const base = { positionId: r.id, planId: plan.id, portfolioId: r.portfolioId, portfolio: r.portfolio, securityId: r.securityId, symbol: r.symbol, priceUnit: r.priceUnit, price, priceDate, stop: plan.stop, target: plan.target, reviewDate: plan.reviewDate };
-		if (price !== null && plan.stop !== null && price <= plan.stop) out.push({ kind: 'stop', ...base });
-		else if (price !== null && plan.target !== null && price >= plan.target) out.push({ kind: 'target', ...base });
-		if (plan.reviewDate && today >= plan.reviewDate) out.push({ kind: plan.kind === 'model' ? 'model_end' : 'review', ...base });
+		const stop = order ? orderLevel(market, order, r.securityId, mv?.live ? mv.now : null) : (plan?.stop ?? null);
+		const base = { positionId: r.id, planId: plan?.id ?? 0, portfolioId: r.portfolioId, portfolio: r.portfolio, securityId: r.securityId, symbol: r.symbol, priceUnit: r.priceUnit, price, priceDate, stop, target: plan?.target ?? null, reviewDate: plan?.reviewDate ?? null, order: !!order };
+		if (price !== null && stop !== null && price <= stop) out.push({ kind: 'stop', ...base, planId: order ? -order.id : base.planId });
+		else if (price !== null && base.target !== null && price >= base.target) out.push({ kind: 'target', ...base });
+		if (plan?.reviewDate && today >= plan.reviewDate) out.push({ kind: plan.kind === 'model' ? 'model_end' : 'review', ...base });
+		if (!order && !plan?.stop && !plan?.noStopReason) {
+			const d = (lastBuy.get(r.id) as { d: string | null }).d;
+			if (d && d < today && daysBetween(d, today) <= 14) out.push({ kind: 'no_stop', ...base });
+		}
 	}
 	return out;
 }

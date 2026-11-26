@@ -140,9 +140,22 @@
 		if (sec?.id === id && r?.items?.[id]) risk = r.items[id];
 	}
 
+	/** T-021: the stop of a purchase starts from the protective plan (the block «Защита») */
+	let fromProtection = $state(false);
+	async function protectionStop(id: number) {
+		if (!tplan || existingPlan?.stop || tplan.stop.trim()) return;
+		const r = await fetch(`/api/protection?security=${id}&portfolio=${portfolioId}`).then((x) => (x.ok ? x.json() : null)).catch(() => null);
+		const it = r?.items?.[0];
+		if (!it || !tplan || tplan.stop.trim() || sec?.id !== id) return;
+		tplan.stop = it.priceUnit === 'ILA' ? String(Math.round(it.f.stop)) : String(it.f.stop);
+		tplan.stopPct = false;
+		fromProtection = true;
+	}
+
 	function use(s: { id: number; symbol: string; name: string; currency: string; priceUnit: string }) {
 		sec = s;
 		void loadRisk(s.id);
+		if (kind === 'buy' && !edit) void protectionStop(s.id);
 		if (trade && fee === '') fee = lastFee[s.currency] !== undefined ? String(lastFee[s.currency]) : '';
 		quote();
 	}
@@ -347,6 +360,7 @@
 				{fxUsd}
 				{errors}
 			/>
+			{#if fromProtection}<p class="muted small">{tx('Стоп — из защитного плана; поправь, если не согласен.', 'The stop comes from the protective plan; change it if you disagree.')}</p>{/if}
 			{#if kind === 'buy'}<BasisPicker bind:basis={() => basis, (v) => (basisPicked = v)} />{/if}
 		{/if}
 

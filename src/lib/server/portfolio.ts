@@ -656,6 +656,8 @@ export function recomputeStage(app: Database.Database, market: Database.Database
 	const live = effective(list);
 	const closedAt = stage === 'closed' ? (live.at(-1)?.date ?? r.opened_at) : null;
 	app.prepare('update positions set stage = ?, closed_at = ? where id = ?').run(stage, closedAt, positionId);
+	// T-021: nothing left to protect — the order at the broker is gone with the shares
+	if (qty <= EPS) app.prepare('update protection_orders set cancelled_at = ? where position_id = ? and cancelled_at is null').run(new Date().toISOString(), positionId);
 	return stage;
 }
 

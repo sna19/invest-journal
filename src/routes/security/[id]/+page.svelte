@@ -16,6 +16,7 @@
 	import History from '#lib/journal/History.svelte';
 	import About from '#lib/About.svelte';
 	import FundComposition from '#lib/FundComposition.svelte';
+	import Protection from '#lib/portfolio/Protection.svelte';
 	import ToJournal from '#lib/journal/ToJournal.svelte';
 	import DecisionForm from '#lib/journal/DecisionForm.svelte';
 	import TvLink from '#lib/TvLink.svelte';
@@ -288,6 +289,7 @@
 		return points.filter((p) => p.date >= start.date).map((p) => ({ date: p.date, value: Math.round((p.value / base.value) * start.value * 10000) / 10000 }));
 	}
 
+	let protV = $state(0);
 	async function load() {
 		const t0 = performance.now();
 		const r = await fetch(`/api/securities/${page.params.id}/chart?period=${period}`).catch(() => null);
@@ -432,9 +434,11 @@
 
 <RecentCards current={Number(page.params.id)} />
 
+<Protection securityId={Number(page.params.id)} version={protV} />
+
 {#each myIds as id (id)}
 	<section class="mypos">
-		<PositionCard positionId={id} compact onchange={load} ondeleted={load} />
+		<PositionCard positionId={id} compact onchange={() => (protV++, load())} ondeleted={() => (protV++, load())} />
 	</section>
 {/each}
 
