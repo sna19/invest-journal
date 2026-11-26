@@ -5,6 +5,7 @@ import { SECTORS } from '../allocation.js';
 import { InputError } from './journal.js';
 import { benchmarkId, marketView, portfolioView } from './portfolio.js';
 import { compareRefs } from './compare.js';
+import { plainText, sanitize } from './richtext.js';
 
 /**
  * T-032 «Дневник и решения» (spec section 23), 11а — the core. Everything the owner writes is one entry (Д-01) with a
@@ -156,6 +157,8 @@ function systemTags(app: Database.Database, market: Database.Database, l: Link):
 export interface EntryInput {
 	kind?: unknown;
 	body?: unknown;
+	/** md (default: old notes, tests) | html (the rich editor) */
+	format?: unknown;
 	links?: unknown;
 	tags?: unknown;
 	parentId?: unknown;
@@ -192,14 +195,24 @@ const personalTags = (v: unknown) =>
 		? [...new Set(v.map((t) => String(t).trim().replace(/^#/, '').slice(0, 40)).filter(Boolean))]
 		: [];
 
+/** the text of an entry as kept: sanitized HTML from the rich editor, or markdown; and its words for the search */
+function textOf(body: unknown, format: unknown) {
+	const raw = typeof body === 'string' ? body.trim().slice(0, 60000) : '';
+	if (format === 'html') {
+		const html = sanitize(raw);
+		return { body: html, format: 'html' as const, text: plainText(html) };
+	}
+	return { body: raw, format: 'md' as const, text: raw };
+}
+
 /**
  * A new entry. `at` — a moved-in old note's own time: its moment is rebuilt from the prices of that date, marked
  * «восстановлено». `origin` — where it came from, so a move runs once.
  */
 export function addEntry(app: Database.Database, market: Database.Database, input: EntryInput, opts: { at?: string; origin?: string } = {}) {
-	const body = typeof input.body === 'string' ? input.body.trim().slice(0, 20000) : '';
+	const { body, format, text } = textOf(input.body, input.format);
 	const kind = (KINDS as readonly string[]).includes(String(input.kind)) ? (input.kind as Kind) : 'note';
-	if (!body) throw new InputError({ body: 'Текст записи' } as Errors);
+	if (!text) throw new InputError({ body: 'Текст записи' } as Errors);
 	const parentId = input.parentId ? Number(input.parentId) : null;
 	if (parentId && !app.prepare('select 1 from journal_entries where id = ?').get(parentId)) throw new InputError({ parentId: 'Нет такой записи' } as Errors);
 	const links = expandLinks(app, cleanLinks(input.links));
@@ -208,9 +221,9 @@ export function addEntry(app: Database.Database, market: Database.Database, inpu
 		if (opts.origin && app.prepare('select 1 from journal_entries where origin = ?').get(opts.origin)) return null;
 		const at = opts.at ?? new Date().toISOString();
 		const e = app
-			.prepare(`insert into journal_entries (created_at, kind, body, parent_entry_id, origin, updated_at) values (?, ?, ?, ?, ?, ?) returning id`)
-			.get(at, kind, body, parentId, opts.origin ?? null, at) as { id: number };
-		app.prepare('insert into entry_revisions (entry_id, body, created_at) values (?, ?, ?)').run(e.id, body, at);
+			.prepare(`insert into journal_entries (created_at, kind, body, format, body_text, parent_entry_id, origin, updated_at) values (?, ?, ?, ?, ?, ?, ?, ?) returning id`)
+			.get(at, kind, body, format, text, parentId, opts.origin ?? null, at) as { id: number };
+		app.prepare('insert into entry_revisions (entry_id, body, format, created_at) values (?, ?, ?, ?)').run(e.id, body, format, at);
 		const link = app.prepare('insert or ignore into entry_links (entry_id, object_type, object_id, is_primary) values (?, ?, ?, ?)');
 		for (const l of links) link.run(e.id, l.type, l.id, l.primary ? 1 : 0);
 		// a note written just now (a «Заметка» in the card) gets the live moment; an old one — rebuilt for its date
@@ -224,17 +237,17 @@ export function addEntry(app: Database.Database, market: Database.Database, inpu
 }
 
 /** Д-33: an edit is a new revision; the links, the tags and the moment stay */
-export function editEntry(app: Database.Database, id: number, input: { body?: unknown; kind?: unknown; tags?: unknown }) {
+export function editEntry(app: Database.Database, id: number, input: { body?: unknown; format?: unknown; kind?: unknown; tags?: unknown }) {
 	const e = app.prepare('select id, body, kind from journal_entries where id = ?').get(id) as { id: number; body: string; kind: string } | undefined;
 	if (!e) throw new InputError({ id: 'Нет такой записи' } as Errors);
 	return app.transaction(() => {
 		if (typeof input.body === 'string') {
-			const body = input.body.trim().slice(0, 20000);
-			if (!body) throw new InputError({ body: 'Текст записи' } as Errors);
+			const { body, format, text } = textOf(input.body, input.format);
+			if (!text) throw new InputError({ body: 'Текст записи' } as Errors);
 			if (body !== e.body) {
 				const now = new Date().toISOString();
-				app.prepare('update journal_entries set body = ?, updated_at = ? where id = ?').run(body, now, id);
-				app.prepare('insert into entry_revisions (entry_id, body, created_at) values (?, ?, ?)').run(id, body, now);
+				app.prepare('update journal_entries set body = ?, format = ?, body_text = ?, updated_at = ? where id = ?').run(body, format, text, now, id);
+				app.prepare('insert into entry_revisions (entry_id, body, format, created_at) values (?, ?, ?, ?)').run(id, body, format, now);
 			}
 		}
 		if ((KINDS as readonly string[]).includes(String(input.kind))) app.prepare('update journal_entries set kind = ? where id = ?').run(input.kind, id);
@@ -248,7 +261,7 @@ export function editEntry(app: Database.Database, id: number, input: { body?: un
 }
 
 export function revisions(app: Database.Database, id: number) {
-	return app.prepare('select id, body, created_at as createdAt from entry_revisions where entry_id = ? order by id').all(id) as { id: number; body: string; createdAt: string }[];
+	return app.prepare('select id, body, format, created_at as createdAt from entry_revisions where entry_id = ? order by id').all(id) as { id: number; body: string; format: string; createdAt: string }[];
 }
 
 /** Д-35: «удалить» is the archive; back from it any time */
@@ -395,7 +408,7 @@ export function listEntries(app: Database.Database, market: Database.Database, f
 	const limit = Math.min(Math.max(f.limit ?? 30, 1), 100);
 	const rows = app
 		.prepare(
-			`select e.id, e.created_at as createdAt, e.updated_at as updatedAt, e.kind, e.body, e.parent_entry_id as parentId, e.status, e.origin
+			`select e.id, e.created_at as createdAt, e.updated_at as updatedAt, e.kind, e.body, e.format, e.parent_entry_id as parentId, e.status, e.origin
 			   from journal_entries e where ${where.join(' and ')} order by e.created_at desc, e.id desc limit ?`
 		)
 		.all(...args, limit + 1) as Row[];
@@ -410,6 +423,7 @@ interface Row {
 	updatedAt: string;
 	kind: Kind;
 	body: string;
+	format: string;
 	parentId: number | null;
 	status: string;
 	origin: string | null;
@@ -426,6 +440,9 @@ export interface EntryView extends Row {
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+/** what a feed shows: a rich text as it was kept (sanitized at saving), a markdown one rendered */
+export const htmlOf = (body: string, format: string) => (format === 'html' ? sanitize(body) : render(body));
+
 /** the owner's markdown, safe: no HTML of its own, links only to http(s) */
 export function render(md: string) {
 	const html = marked.parse(esc(md), { async: false, breaks: true }) as string;
@@ -439,7 +456,7 @@ function describe(app: Database.Database, market: Database.Database, rows: Row[]
 	const linksQ = app.prepare('select object_type as type, object_id as id, is_primary as isPrimary from entry_links where entry_id = ?');
 	const tagsQ = app.prepare('select t.id, t.name, t.grp, t.system, t.color from entry_tags x join tags t on t.id = x.tag_id where x.entry_id = ? order by t.system desc, t.name');
 	const ctxQ = app.prepare('select object_type as type, object_id as id, data, restored from entry_context where entry_id = ?');
-	const kidsQ = app.prepare(`select id, created_at as createdAt, kind, body from journal_entries where parent_entry_id = ? and status = 'active' order by created_at, id`);
+	const kidsQ = app.prepare(`select id, created_at as createdAt, kind, body, format from journal_entries where parent_entry_id = ? and status = 'active' order by created_at, id`);
 	const revQ = app.prepare('select count(*) as n from entry_revisions where entry_id = ?');
 	const one = (r: Row, deep: boolean): EntryView => {
 		const links = (linksQ.all(r.id) as { type: LinkType; id: string; isPrimary: number }[]).map((l) => ({ ...l, label: labelOf(app, market, l.type, l.id) }));
@@ -451,7 +468,7 @@ function describe(app: Database.Database, market: Database.Database, rows: Row[]
 		});
 		return {
 			...r,
-			html: render(r.body),
+			html: htmlOf(r.body, r.format),
 			via: via.get(r.id) ?? null,
 			links,
 			tags: tagsQ.all(r.id),

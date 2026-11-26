@@ -437,8 +437,12 @@ export const journalEntries = sqliteTable(
 		createdAt: now(),
 		/** note | observation | decision | conclusion */
 		kind: text().notNull().default('note'),
-		/** markdown, the latest revision */
+		/** the latest revision: markdown (format md) or sanitized HTML (format html, the rich editor) */
 		body: text().notNull(),
+		/** md | html */
+		format: text().notNull().default('md'),
+		/** the text without marks — what the search reads */
+		bodyText: text().notNull().default(''),
 		/** Д-06: a continuation of or an answer to another entry */
 		parentEntryId: integer(),
 		/** active | archived */
@@ -459,6 +463,7 @@ export const entryRevisions = sqliteTable(
 			.notNull()
 			.references(() => journalEntries.id),
 		body: text().notNull(),
+		format: text().notNull().default('md'),
 		createdAt: now()
 	},
 	(t) => [index('entry_revisions_entry').on(t.entryId)]

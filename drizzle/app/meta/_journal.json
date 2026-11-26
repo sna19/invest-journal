@@ -120,6 +120,13 @@
       "when": 1795679452066,
       "tag": "0016_journal",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1795681853946,
+      "tag": "0017_journal_rich",
+      "breakpoints": true
     }
   ]
 }

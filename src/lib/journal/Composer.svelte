@@ -7,6 +7,7 @@
 	import { tl, tx } from '../i18n.js';
 	import { showToast } from '../toast.svelte.js';
 	import { composer, journalVersion, KIND_LABEL, type ScreenLink } from './screen.svelte.js';
+	import RichEditor from './RichEditor.svelte';
 
 	/**
 	 * Д-11: a new entry, linked to the screen it was opened from (the links can be removed and added); the kind, the
@@ -69,7 +70,7 @@
 		const r = await fetch('/api/journal', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ kind, body, tags, parentId: composer.parentId, links: links.map((l, i) => ({ type: l.type, id: l.id, primary: i === 0 })) })
+			body: JSON.stringify({ kind, body, format: 'html', tags, parentId: composer.parentId, links: links.map((l, i) => ({ type: l.type, id: l.id, primary: i === 0 })) })
 		}).catch(() => null);
 		saving = false;
 		const j = await r?.json().catch(() => ({}));
@@ -93,8 +94,7 @@
 			{/each}
 			<HelpIcon topicKey="journal.entry" label={tx('запись', 'entry')} />
 		</div>
-		<!-- svelte-ignore a11y_autofocus -->
-		<textarea rows="6" bind:value={body} autofocus placeholder={tx('Что думаю — в момент, а не задним числом. **жирный**, списки через «- »', 'What I think — now, not in hindsight. **bold**, lists with «- »')}></textarea>
+		<RichEditor bind:value={body} autofocus placeholder={tx('Что думаю — в момент, а не задним числом. Выдели слова — и сделай жирными, покрась или подсвети', 'What I think — now, not in hindsight. Select words to make them bold, paint or highlight them')} />
 
 		<div class="links">
 			<span class="lbl">{tx('О чём', 'About')} <HelpIcon topicKey="journal.inherit" label={tx('связи и наследование', 'links and inheritance')} /></span>
@@ -121,7 +121,7 @@
 
 		{#if error}<p class="err">{error}</p>{/if}
 		<div class="btns">
-			<button class="primary" disabled={saving || !body.trim()} onclick={save}>{saving ? tx('Сохраняю…', 'Saving…') : tx('Записать', 'Save')}</button>
+			<button class="primary" disabled={saving || !body.replace(/<[^>]*>|&nbsp;/g, '').trim()} onclick={save}>{saving ? tx('Сохраняю…', 'Saving…') : tx('Записать', 'Save')}</button>
 			{#if !composer.parentId}<a class="ghost" href="/new" onclick={() => (composer.open = false)}>{tx('Новая гипотеза', 'New hypothesis')} →</a>{/if}
 		</div>
 	</div>
@@ -154,7 +154,6 @@
 		background: var(--accent);
 		color: var(--accent-text);
 	}
-	textarea,
 	input,
 	select {
 		box-sizing: border-box;
@@ -165,10 +164,6 @@
 		background: var(--surface);
 		color: var(--text);
 		font: inherit;
-	}
-	textarea {
-		width: 100%;
-		resize: vertical;
 	}
 	.links,
 	.tags {

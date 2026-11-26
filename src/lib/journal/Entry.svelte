@@ -33,6 +33,7 @@
 
 <script lang="ts">
 	import Self from './Entry.svelte';
+	import RichEditor from './RichEditor.svelte';
 	import HelpIcon from '../HelpIcon.svelte';
 	import { loc, tl, tx } from '../i18n.js';
 	import { priceText, money } from '../portfolio.js';
@@ -68,7 +69,7 @@
 		return true;
 	}
 	async function saveEdit() {
-		if (await call('PATCH', `/api/journal/${e.id}`, { body: text })) {
+		if (await call('PATCH', `/api/journal/${e.id}`, { body: text, format: 'html' })) {
 			editing = false;
 			onchange();
 		}
@@ -93,7 +94,7 @@
 		{#if e.revisions > 1}<button class="lnk small" onclick={loadRevs}>{tx('правок', 'edits')}: {e.revisions - 1}</button>{/if}
 	</header>
 	{#if editing}
-		<textarea rows="5" bind:value={text}></textarea>
+		<RichEditor bind:value={text} autofocus minHeight="6em" />
 		<div class="row">
 			<button class="main" onclick={saveEdit}>{tx('Сохранить правку', 'Save the edit')}</button>
 			<button class="ghost" onclick={() => (editing = false)}>{tx('Отмена', 'Cancel')}</button>
@@ -156,7 +157,7 @@
 			<button class="lnk small danger" onclick={() => (deleting = !deleting)}>{tx('Удалить навсегда', 'Delete for good')}</button>
 		{:else}
 			<button class="lnk small" onclick={() => openComposer({ parentId: e.id, links: e.links.filter((l) => l.type !== 'event'), kind: 'observation' })}>{tx('Ответить', 'Reply')}</button>
-			<button class="lnk small" onclick={() => ((text = e.body), (editing = true))}>{tx('Править', 'Edit')}</button>
+			<button class="lnk small" onclick={() => ((text = e.html), (editing = true))}>{tx('Править', 'Edit')}</button>
 			<button class="lnk small" onclick={() => archive(true)}>{tx('В архив', 'Archive')}</button>
 		{/if}
 		{#if e.answers.length}<button class="lnk small" onclick={() => (showAnswers = !showAnswers)}>{showAnswers ? '▾' : '▸'} {tx('ответов', 'replies')}: {e.answers.length}</button>{/if}
@@ -217,6 +218,17 @@
 		color: var(--muted);
 		font-style: italic;
 	}
+	/* a highlight stays readable in the dark theme */
+	.body :global(span[style*='background-color']) {
+		color: #1a1a1a;
+		border-radius: 3px;
+		padding: 0 2px;
+	}
+	.body :global(blockquote) {
+		margin: 0 0 var(--s1);
+		padding-left: var(--s2);
+		border-left: 3px solid var(--line);
+	}
 	.body :global(p) {
 		margin: 0 0 var(--s1);
 	}
@@ -271,7 +283,6 @@
 	.down {
 		color: var(--down);
 	}
-	textarea,
 	.del input {
 		box-sizing: border-box;
 		width: 100%;
