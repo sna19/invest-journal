@@ -435,6 +435,8 @@ export function binomTail(n: number, k: number, p: number) {
 }
 
 export interface Candidate {
+	/** «Ещё»: beyond the candidates — left out by a cap, or short of K */
+	extra?: 'capped' | 'below_k' | null;
 	id: number;
 	symbol: string;
 	name: string;
@@ -637,7 +639,7 @@ function pick<T extends { s: Series; score: number }>(list: T[], p: Params): { c
 
 const scoreOf = (m: number[], sort: Params['sort']) => (sort === 'median' ? median(m) : sort === 'worst' ? Math.min(...m) : m.reduce((a, b) => a + b, 0) / m.length);
 
-export function runModel(u: Universe, variant: Variant, quarter: number, input: Params): Result {
+export function runModel(u: Universe, variant: Variant, quarter: number, input: Params, extra = 0): Result {
 	const p = { ...input, k: Math.min(input.k, input.years) };
 	const years = windowYears(u.lastMonth, quarter, p.years);
 	let noHistory = 0;
@@ -696,6 +698,23 @@ export function runModel(u: Universe, variant: Variant, quarter: number, input: 
 	const pool = (scored(variant) ? ranked : passed).filter((x) => trendOk(x.s, u.lastMonth, p.trendFilter));
 	const trendOut = (scored(variant) ? ranked : passed).length - pool.length;
 	const { chosen, capped } = pick(pool, p);
+	// «Ещё» (owner 27.11.2026): after the candidates, the next ones — first those that passed but were left out by the
+	// caps, then those a year or two short of K (by their years up, then their score), still within the trend filter
+	const taken = new Set(chosen.map((x) => x.s.id));
+	const more: { s: Series; score: number; m: number[]; row: Row; why: 'capped' | 'below_k' }[] = [];
+	if (extra > 0) {
+		for (const x of pool) if (!taken.has(x.s.id)) more.push({ ...x, why: 'capped' });
+		if (!scored(variant)) {
+			const rest = rows
+				.map((row, i) => ({ s: row.s, m: ms[i], row, score: scoreOf(ms[i], p.sort), up: ms[i].filter((v) => v > 0).length }))
+				.filter((x) => kept(x.row) && x.up < p.k && trendOk(x.s, u.lastMonth, p.trendFilter))
+				.sort((a, b) => b.up - a.up || b.score - a.score);
+			for (const x of rest) more.push({ s: x.s, score: x.score, m: x.m, row: x.row, why: 'below_k' });
+		} else
+			for (const x of ranked.filter((r) => !taken.has(r.s.id) && !pool.includes(r) && trendOk(r.s, u.lastMonth, p.trendFilter)).sort((a, b) => b.score - a.score))
+				more.push({ ...x, why: 'below_k' });
+	}
+	const extras = more.slice(0, extra);
 	const monthsOf = (x: Series) => [0, 1, 2].map((k) => {
 		const xs = years.map((y) => monthReturns(x, y, quarter)[k]).filter((v) => Number.isFinite(v));
 		return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN;
@@ -722,7 +741,9 @@ export function runModel(u: Universe, variant: Variant, quarter: number, input: 
 		expected: Math.round(universeN * binomTail(p.years, p.k, prob) * 10) / 10,
 		placebo: placebo(u, rows.filter(kept), years, quarter, variant, p, passed.length, 100, variant === 'G' ? rows.filter(kept).map((r) => hasReason(reasonsOf.get(r)!)) : undefined),
 		p: Math.round(prob * 1000) / 1000,
-		candidates: chosen.map((x) => ({
+		candidates: [...chosen.map((x) => ({ ...x, why: null as 'capped' | 'below_k' | null })), ...extras].map((x) => ({
+			/** «Ещё»: beyond the candidates — left out by a cap, or short of K */
+			extra: x.why,
 			id: x.s.id,
 			symbol: x.s.symbol,
 			name: x.s.name,

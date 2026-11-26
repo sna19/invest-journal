@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ScoreDot from '#lib/ScoreDot.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -186,7 +187,7 @@
 				<tbody>
 					{#each members.slice(0, limit) as m (m.id)}
 						<tr>
-							<th><a href="/security/{m.id}">{m.symbol}</a><span class="muted name">{m.name}</span></th>
+							<th><a href="/security/{m.id}">{m.symbol}</a><ScoreDot id={m.id} /><span class="muted name">{m.name}</span></th>
 							<td>{cap(m.capUsd)}</td>
 							<td class:up={(m.m1 ?? 0) > 0} class:down={(m.m1 ?? 0) < 0}>{pct(m.m1)}</td>
 							<td class:up={(m.m3 ?? 0) > 0} class:down={(m.m3 ?? 0) < 0}>{pct(m.m3)}</td>

@@ -93,7 +93,7 @@ export interface Score {
 }
 
 /** the scores of `ids` against `all` (the peers: every share with ratios), pure */
-export function scoreAll(all: Input[], ids: number[], trend: (id: number) => Score['trend']): Score[] {
+export function scoreAll(all: Input[], ids: number[], trend: (id: number) => Score['trend'], outsiders: Input[] = []): Score[] {
 	// the peers' values by sector and by market, per metric
 	const bySector = new Map<string, number[]>();
 	const byMarket = new Map<string, number[]>();
@@ -106,7 +106,7 @@ export function scoreAll(all: Input[], ids: number[], trend: (id: number) => Sco
 			if (x.sector) (bySector.get(ks) ?? bySector.set(ks, []).get(ks)!).push(v);
 			(byMarket.get(km) ?? byMarket.set(km, []).get(km)!).push(v);
 		}
-	const byId = new Map(all.map((x) => [x.id, x]));
+	const byId = new Map([...all, ...outsiders].map((x) => [x.id, x]));
 	return ids.map((id) => {
 		const x = byId.get(id);
 		const factors = Object.fromEntries(FACTORS.map((f) => [f, { pct: null, grade: null, metrics: [] }])) as unknown as Record<Factor, FactorScore>;
@@ -178,10 +178,43 @@ function trendOf(market: Database.Database, id: number): Score['trend'] {
 	return { price, sma200: Math.round(sma * 100) / 100, above: price >= sma };
 }
 
-/** the scores of the securities (shares; a fund or a share outside the model's universe gets grey) */
+/**
+ * A share outside the model's universe (no monthly prices yet — owner 27.11.2026: «для всех тикеров»): its sector from
+ * its profile, its ratios if loaded, its momentum from the daily closes (12 months less the last ≈ 252 and 21 days back).
+ */
+function outsider(market: Database.Database, id: number): Input | null {
+	const r = market
+		.prepare(`select s.type, s.exchange_code as ex, p.sector, p.kind, st.data from ref_securities s left join ref_security_profiles p on p.security_id = s.id left join ref_security_stats st on st.security_id = s.id where s.id = ?`)
+		.get(id) as { type: string; ex: string; sector: string | null; kind: string | null; data: string | null } | undefined;
+	if (!r || r.type !== 'stock' || (r.kind && r.kind !== 'stock')) return null;
+	const st = r.data ? (JSON.parse(r.data) as Stats | null) : null;
+	if (st && st.kind !== 'stock') return null;
+	const b = barsOf(market, id, 260);
+	const a = b.length >= 253 ? b[b.length - 253].close : null;
+	const z = b.length >= 22 ? b[b.length - 22].close : null;
+	const values: Input['values'] = { mom12: a && z ? z / a - 1 : null };
+	if (st) for (const d of METRICS) if (d.key !== 'mom12') values[d.key] = st[d.key as keyof Stats] as number | null;
+	return { id, sector: r.sector, market: r.ex === 'TASE' ? 'IL' : 'US', values };
+}
+
+/** the scores of the securities (shares; a fund gets nothing — its market is null) */
 export function scoresOf(market: Database.Database, ids: number[]): Score[] {
 	const u = universe(market);
-	return scoreAll(inputs(market, u), ids, (id) => trendOf(market, id));
+	const all = inputs(market, u);
+	const have = new Set(all.map((x) => x.id));
+	const extra = ids.filter((id) => !have.has(id)).map((id) => outsider(market, id)).filter((x): x is Input => !!x);
+	// an outsider is ranked among the universe's peers, but is not a peer itself
+	return scoreAll(all, ids, (id) => trendOf(market, id), extra);
+}
+
+/** the shares among `ids` whose ratios are not loaded yet (or older than a week) — a request loads a few of them */
+export function missingStats(market: Database.Database, ids: number[], now = new Date()) {
+	const q = market.prepare(`select s.type, st.fetched_at as at from ref_securities s left join ref_security_stats st on st.security_id = s.id where s.id = ?`);
+	const week = now.getTime() - 7 * 86_400_000;
+	return ids.filter((id) => {
+		const r = q.get(id) as { type: string; at: string | null } | undefined;
+		return r?.type === 'stock' && (!r.at || Date.parse(r.at) < week);
+	});
 }
 
 /** the shares whose ratios are missing or older than a week — the nightly load takes them in portions */

@@ -262,3 +262,22 @@ describe('quarterly model 10a', () => {
 		expect(cleanParams({ k: '12', years: '10', count: 0, sort: 'worst', compareWith: 'sector' })).toMatchObject({ k: 10, count: 1, sort: 'worst', compareWith: 'sector' });
 	});
 });
+
+describe('«Ещё» (owner 27.11.2026)', () => {
+	it('after the candidates: the capped ones first, then the nearest to K', () => {
+		// three tech shares rise in every Q1 (one is capped by «2 per sector»), one rises in 8 of 10 years, one in 5
+		const every = (id: number, sector = 'technology', g = 0.01) => series(id, (y, m) => (m <= 3 ? g : 0), { sector });
+		const some = (id: number, upYears: number) => series(id, (y, m) => (m <= 3 ? (y >= 2026 - upYears + 1 ? 0.01 : -0.01) : 0), { sector: 'energy' });
+		const uni = u([every(1, 'technology', 0.03), every(2, 'technology', 0.02), every(3, 'technology', 0.01), some(4, 8), some(5, 5)]);
+		const p = { ...DEFAULTS, k: 9, count: 10, perSector: 2, minPriceUsd: 0, minTurnoverUsd: 0 };
+		const r = runModel(uni, 'A', 1, p, 3);
+		expect(r.candidates.map((c) => [c.id, c.extra])).toEqual([
+			[1, null],
+			[2, null],
+			[3, 'capped'],
+			[4, 'below_k'],
+			[5, 'below_k']
+		]);
+		expect(runModel(uni, 'A', 1, p).candidates.map((c) => c.id)).toEqual([1, 2]);
+	});
+});

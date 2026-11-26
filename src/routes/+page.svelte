@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ScoreDot from '#lib/ScoreDot.svelte';
 	import NewsMoves from '#lib/NewsMoves.svelte';
 	import SignalsBlock from '#lib/journal/SignalsBlock.svelte';
 	import { loc, tl, tx } from '#lib/i18n.js';
@@ -274,7 +275,7 @@
 						aria-label="{h.symbol}: {tx('открыть карточку', 'open the card')}"
 					>
 						<span class="top">
-							<b class="sym">{h.symbol}</b>
+							<b class="sym">{h.symbol}</b><ScoreDot id={h.securityId} />
 							<span class="dir {h.direction}">{h.direction === 'long' ? tx('▲ рост', '▲ up') : tx('▼ падение', '▼ down')}</span>
 							<span class="grow"></span>
 							{#if h.entryPrice === null}

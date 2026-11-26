@@ -16,7 +16,7 @@ import { monthAdd as monthAddJ } from './model/momentum.js';
 import { checkReminders, signalsBlock } from './reminders.js';
 import { backupMedia } from './snapshots.js';
 import { commoditySymbols, ensureFunds, fundIds } from './model/commodities.js';
-import { recordScores, scoresOf, staleStats } from './score.js';
+import { missingStats, recordScores, scoresOf, staleStats } from './score.js';
 import { statsOf } from './market/stats.js';
 import { flagEntry, flagsFor, portfolioPath, securityPath, updateFlagStates } from './path.js';
 import { monthAdd as monthAddP, monthlyReturns } from '../path.js';
@@ -722,7 +722,13 @@ export function runPushJob() {
 export function runStatsJob(limit = 800) {
 	return single('stats', async () => {
 		const m = getMarket().sqlite;
-		const ids = staleStats(m, limit);
+		// the user's own shares first (held, watched, picked, with open hypotheses), then the universe's
+		const own = (
+			await forEachUser(() =>
+				(getApp().sqlite.prepare(`select security_id as id from positions where stage <> 'closed' union select security_id from shortlist union select security_id from hypotheses where status = 'open'`).all() as { id: number }[]).map((r) => r.id)
+			)
+		).flat();
+		const ids = [...new Set([...missingStats(m, own), ...staleStats(m, limit)])].slice(0, limit + 200);
 		let n = 0;
 		for (let i = 0; i < ids.length; i += 40) {
 			const chunk = ids.slice(i, i + 40);

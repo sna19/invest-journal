@@ -2,6 +2,7 @@
 	import Fold from '#lib/Fold.svelte';
 	import FlagChips from '#lib/path/FlagChips.svelte';
 	import ScoreDot from '#lib/ScoreDot.svelte';
+	import { scores } from '#lib/score.svelte.js';
 	import type { Flag } from '#lib/path.js';
 	import Feed from '#lib/journal/Feed.svelte';
 	import ToJournal from '#lib/journal/ToJournal.svelte';
@@ -43,6 +44,7 @@
 		lagThreshold: number;
 	}
 	interface Cand {
+		extra?: 'capped' | 'below_k' | null;
 		id: number;
 		symbol: string;
 		name: string;
@@ -103,6 +105,8 @@
 		}
 	};
 	let variant = $state<Variant>('A');
+	/** «Ещё»: how many candidates are shown beyond the parameter (owner 27.11.2026); not saved */
+	let extra = $state(0);
 	let quarter = $state<number | null>(null);
 	let params = $state<Params | null>(null);
 	const scroll = keepScroll(() => 'model');
@@ -115,6 +119,7 @@
 	async function load(withParams: boolean) {
 		const q = new URLSearchParams({ variant });
 		if (pool === 'commodities') q.set('pool', pool);
+		if (extra) q.set('extra', String(extra));
 		if (quarter) q.set('quarter', String(quarter));
 		if (withParams && params) for (const [k, v] of Object.entries(params)) q.set(k, String(v));
 		const my = ++seq;
@@ -222,8 +227,15 @@
 		void loadPicks();
 	}
 	const pickedSet = $derived(new Set(picks.map((p) => p.id)));
+	// owner 27.11.2026: the candidates by the model's order or by the quant score (T-034); the picked ones first
+	let byScore = $state(false);
+	const qs = (id: number) => scores[id]?.total ?? -1;
 	const candsSorted = $derived(
-		data?.result ? data.result.candidates.map((c, i) => ({ c, i })).sort((a, b) => Number(pickedSet.has(b.c.id)) - Number(pickedSet.has(a.c.id)) || a.i - b.i) : []
+		data?.result
+			? data.result.candidates
+					.map((c, i) => ({ c, i }))
+					.sort((a, b) => Number(pickedSet.has(b.c.id)) - Number(pickedSet.has(a.c.id)) || (byScore ? qs(b.c.id) - qs(a.c.id) : 0) || a.i - b.i)
+			: []
 	);
 	const picksOutside = $derived(picks.filter((p) => !data?.result?.candidates.some((c) => c.id === p.id)));
 	// T-023 (4): what each candidate does to the largest real portfolio's risk
@@ -292,6 +304,7 @@
 	/** a parameter changed: the preview follows at once (a short pause while a stepper is tapped) */
 	function set<K extends keyof Params>(k: K, v: Params[K]) {
 		if (!params) return;
+		extra = 0;
 		params = { ...params, [k]: v };
 		if (k === 'years' && params.k > params.years) params.k = params.years;
 		kept.preview = { ...kept.preview, [vkey()]: params };
@@ -300,6 +313,7 @@
 		timer = setTimeout(() => void load(true), 200);
 	}
 	function setPool(p: Pool) {
+		extra = 0;
 		pool = p;
 		kept.pool = p;
 		if (p === 'commodities' && variant !== 'A' && variant !== 'B') variant = 'A';
@@ -309,12 +323,14 @@
 		open(variant);
 	}
 	function setVariant(v: Variant) {
+		extra = 0;
 		variant = v;
 		kept.variant = v;
 		keep();
 		open(v);
 	}
 	function setQuarter(q: number) {
+		extra = 0;
 		quarter = q;
 		kept.quarter = q;
 		keep();
@@ -584,12 +600,19 @@
 		{#if res.candidates.length < 5 && params?.trendFilter !== 'none'}<p class="warn small">{tx('Кандидатов меньше 5 — риск концентрации.', 'Fewer than 5 candidates — a concentration risk.')}</p>{/if}
 		{#if res.capOut}<p class="muted small">{tx(`Вне выбранной капитализации — ${res.capOut} акций.`, `${res.capOut} shares outside the chosen market cap.`)}</p>{/if}
 		{#if res.capped}<p class="muted small">{tx(`Ещё ${res.capped} прошли, но не вошли из-за ограничений по сектору и рынку.`, `${res.capped} more passed but were left out by the sector and market caps.`)}</p>{/if}
+		{#if pool === 'stocks' && res.candidates.length > 1}
+			<div class="seg2 sortby" role="radiogroup" aria-label={tx('Порядок', 'Order')}>
+				<button role="radio" aria-checked={!byScore} class:on={!byScore} onclick={() => (byScore = false)}>{tx('по модели', 'by the model')}</button>
+				<button role="radio" aria-checked={byScore} class:on={byScore} onclick={() => (byScore = true)}>{tx('по квант-оценке', 'by quant score')}</button>
+				<HelpIcon topicKey="security.score" label={tx('квант-оценка', 'quant score')} />
+			</div>
+		{/if}
 		<ul class="cands">
 			{#each candsSorted as { c, i } (c.id)}
-				<li>
+				<li class:extra={!!c.extra}>
 					<button class="crow" onclick={() => goto(`/security/${c.id}?model=${vkey()}&q=${res.quarter}&${previewQuery()}`)}>
 						<span class="n">{i + 1}</span>
-						<span class="who"><b>{c.symbol}</b>{#if pool === 'stocks'}<ScoreDot id={c.id} />{/if}{#if pathFlags[c.id]} <FlagChips flags={pathFlags[c.id]} />{/if}<span class="muted small block name">{c.name}</span><span class="muted small block">{c.market === 'US' ? tx('США', 'US') : tx('Израиль', 'Israel')} {' · '}{c.sector ? sectorName(c.sector, tx) : tx('сектор неизвестен', 'sector unknown')}{#if c.capUsd}{' · '}{capText(c.capUsd)}, {capName(c.capGroup)}{/if}{' · '}{c.up}/{res.years.length}</span><span class="muted small block">{tx('по месяцам', 'by month')} {c.months.map((m) => pct(m)).join(' · ')}{#if c.sma10 !== null}{' · '}{c.sma10 >= 0 ? tx('над', 'above') : tx('под', 'below')} SMA10 {pct(c.sma10)}{/if}</span>{#if c.reasons.earnings || c.reasons.dividend || c.reasons.sector}<span class="reasons">{#if c.reasons.earnings}<i>{tx('отчёт', 'report')}</i>{/if}{#if c.reasons.dividend}<i>{tx('дивиденд', 'dividend')}</i>{/if}{#if c.reasons.sector}<i>{tx('сектор сезонен', 'sector seasonal')}</i>{/if}</span>{/if}{#if c.own.mean !== null && variant !== 'D'}<span class="muted small block" class:warnline={Math.abs(c.own.mean) < 1 || c.own.up < 6}>{tx('к обычному кварталу', 'vs usual quarter')} {pct(c.own.mean)} · {tx('выше в', 'above in')} {c.own.up}/{c.own.years}</span>{/if}</span>
+						<span class="who"><b>{c.symbol}</b>{#if pool === 'stocks'}<ScoreDot id={c.id} />{/if}{#if c.extra}<span class="xmark">{c.extra === 'capped' ? tx('сверх ограничения сектора', 'beyond the sector cap') : isScored(variant) ? tx('балл ниже 2', 'score under 2') : tx(`не прошла K: ${c.up} из ${res.years.length}`, `short of K: ${c.up} of ${res.years.length}`)}</span>{/if}{#if pathFlags[c.id]} <FlagChips flags={pathFlags[c.id]} />{/if}<span class="muted small block name">{c.name}</span><span class="muted small block">{c.market === 'US' ? tx('США', 'US') : tx('Израиль', 'Israel')} {' · '}{c.sector ? sectorName(c.sector, tx) : tx('сектор неизвестен', 'sector unknown')}{#if c.capUsd}{' · '}{capText(c.capUsd)}, {capName(c.capGroup)}{/if}{' · '}{c.up}/{res.years.length}</span><span class="muted small block">{tx('по месяцам', 'by month')} {c.months.map((m) => pct(m)).join(' · ')}{#if c.sma10 !== null}{' · '}{c.sma10 >= 0 ? tx('над', 'above') : tx('под', 'below')} SMA10 {pct(c.sma10)}{/if}</span>{#if c.reasons.earnings || c.reasons.dividend || c.reasons.sector}<span class="reasons">{#if c.reasons.earnings}<i>{tx('отчёт', 'report')}</i>{/if}{#if c.reasons.dividend}<i>{tx('дивиденд', 'dividend')}</i>{/if}{#if c.reasons.sector}<i>{tx('сектор сезонен', 'sector seasonal')}</i>{/if}</span>{/if}{#if c.own.mean !== null && variant !== 'D'}<span class="muted small block" class:warnline={Math.abs(c.own.mean) < 1 || c.own.up < 6}>{tx('к обычному кварталу', 'vs usual quarter')} {pct(c.own.mean)} · {tx('выше в', 'above in')} {c.own.up}/{c.own.years}</span>{/if}</span>
 						<span class="nums">{#if c.score !== null}<span class="score">{tx('балл', 'score')} {c.score.toFixed(1)}</span>{/if}<b class:up={c.mean > 0}>{pct(c.mean)}</b><span class="muted small block">{tx('мед.', 'med.')} {pct(c.median)}</span><span class="muted small block">{tx('худш.', 'worst')} {pct(c.worst)}</span></span>
 					</button>
 					<button class="pick" class:on={pickedSet.has(c.id)} aria-pressed={pickedSet.has(c.id)} aria-label={pickedSet.has(c.id) ? tx('Снять отметку', 'Unpick') : tx('Отметить', 'Pick')} onclick={() => togglePick(c.id, !pickedSet.has(c.id))}>{pickedSet.has(c.id) ? '★' : '☆'}</button>
@@ -597,6 +620,10 @@
 				</li>
 			{/each}
 		</ul>
+		{#if extra === 0 || res.candidates.filter((c) => c.extra).length >= extra}
+			<button class="morebtn" onclick={() => ((extra += 10), load(true))}>{tx('Ещё 10', '10 more')}</button>
+		{/if}
+		{#if extra}<p class="muted small">{tx('После кандидатов — следующие: сначала прошедшие фильтр, но не вошедшие из-за ограничения сектора или рынка, затем ближайшие к K. В гипотезы квартала они не записываются.', 'After the candidates — the next ones: first those that passed but were left out by the sector or market cap, then the nearest to K. They are not recorded as the quarter\'s hypotheses.')}</p>{/if}
 		<ToJournal
 			links={[{ type: 'model_run', id: `${variant}|${res.forYear}-Q${res.quarter}`, label: `${tx('Модель', 'Model')} ${variant} Q${res.quarter} ${res.forYear}` }]}
 			snapshot={() => ({
@@ -1183,5 +1210,34 @@
 	.plain li {
 		padding: 4px 0;
 		font-size: var(--fs-s);
+	}
+	.sortby {
+		display: flex;
+		align-items: center;
+		margin: var(--s2) 0;
+	}
+	.cands li.extra {
+		opacity: 0.85;
+	}
+	.xmark {
+		display: inline-block;
+		margin-left: 4px;
+		padding: 0 6px;
+		border-radius: 999px;
+		background: var(--warn-bg);
+		color: var(--warn-text);
+		font-size: var(--fs-xs);
+		font-weight: 500;
+	}
+	.morebtn {
+		width: 100%;
+		min-height: var(--tap);
+		margin-top: var(--s2);
+		border: 1px solid var(--line);
+		border-radius: var(--r2);
+		background: none;
+		color: var(--text);
+		font-size: var(--fs-s);
+		cursor: pointer;
 	}
 </style>

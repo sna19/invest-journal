@@ -40,6 +40,7 @@
 </script>
 
 <script lang="ts">
+	import ScoreDot from './ScoreDot.svelte';
 	import { onMount } from 'svelte';
 	import Search from '@lucide/svelte/icons/search';
 	import HelpIcon from './HelpIcon.svelte';
@@ -271,7 +272,7 @@
 			{#each shown as s, i (s.id)}
 				<li role="option" aria-selected={i === active} class:active={i === active}>
 					<button onclick={() => choose(s)}>
-						<span class="sym">{s.symbol}</span>
+						<span class="sym">{s.symbol}</span>{#if s.type === 'stock'}<ScoreDot id={s.id} />{/if}
 						<span class="name">
 							— {s.nameEn}{#if s.nameHe}&nbsp;<bdi class="he" lang="he">{s.nameHe}</bdi>{/if}
 						</span>

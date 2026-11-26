@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ScoreDot from '#lib/ScoreDot.svelte';
 	import { onMount } from 'svelte';
 	import TopBar from '#lib/TopBar.svelte';
 	import Fold from '#lib/Fold.svelte';
@@ -157,7 +158,7 @@
 			{#each items as it (it.id)}
 				<li>
 					<a class="row" href="/security/{it.id}">
-						<span class="who"><b>{it.symbol}</b> <span class="muted small">{it.name}</span><span class="muted small block">{it.sector ? sectorName(it.sector, tx) : ''}{it.origin ? ` · ${it.origin}` : ''}</span></span>
+						<span class="who"><b>{it.symbol}</b><ScoreDot id={it.id} /> <span class="muted small">{it.name}</span><span class="muted small block">{it.sector ? sectorName(it.sector, tx) : ''}{it.origin ? ` · ${it.origin}` : ''}</span></span>
 						<span class="vals"><b>{price(it)}</b><span class="small" class:up={(it.dayPct ?? 0) > 0} class:down={(it.dayPct ?? 0) < 0}>{pct(it.dayPct)}</span></span>
 					</a>
 					<span class="side"><TvLink exchange={it.exchange} symbol={it.symbol} /><button class="unpick" aria-label={tx('Снять отметку', 'Unpick')} onclick={() => unpick(it.id)}>★</button></span>
