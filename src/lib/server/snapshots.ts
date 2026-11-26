@@ -16,7 +16,7 @@ import { addReminder } from './reminders.js';
  * data/media, one folder per user; the daily backup copies the new files (Д-24, Д-36).
  */
 
-export const SNAPSHOT_TYPES = ['chart', 'compare', 'candidates', 'portfolio', 'scenario', 'photo'] as const;
+export const SNAPSHOT_TYPES = ['chart', 'compare', 'candidates', 'portfolio', 'scenario', 'stats', 'photo'] as const;
 export type SnapshotType = (typeof SNAPSHOT_TYPES)[number];
 
 export const mediaRoot = () => join(dataDir, 'media');

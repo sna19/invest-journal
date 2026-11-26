@@ -579,7 +579,10 @@
 	{#if statsLoaded}
 		<Fold key="sec-stats" title={tx('Показатели', 'Ratios')} summary={stats ? [stats.pe !== null && stats.pe !== undefined ? `P/E ${Number(stats.pe).toFixed(1)}` : '', stats.ps ? `P/S ${Number(stats.ps).toFixed(1)}` : '', stats.beta !== null && stats.beta !== undefined ? `${tx('бета', 'beta')} ${Number(stats.beta).toFixed(2)}` : ''].filter(Boolean).join(' · ') : tx('нет данных', 'no data')}>
 			{#snippet aside()}<HelpIcon topicKey="security.stats" label={tx('показатели', 'ratios')} />{/snippet}
-			{#if stats}<StatsGrid s={stats} />{:else}<p class="muted small">{tx('У провайдера нет показателей этой бумаги.', 'The provider has no ratios for this security.')}</p>{/if}
+			{#if stats}
+				<StatsGrid s={stats} />
+				<ToJournal links={[{ type: 'security', id: String(c.security.id), label: c.security.symbol }]} snapshot={() => ({ type: 'stats', params: { securityId: c!.security.id, symbol: c!.security.symbol }, data: { stats: $state.snapshot(stats) } })} />
+			{:else}<p class="muted small">{tx('У провайдера нет показателей этой бумаги.', 'The provider has no ratios for this security.')}</p>{/if}
 		</Fold>
 	{/if}
 

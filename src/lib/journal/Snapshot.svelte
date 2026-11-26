@@ -3,6 +3,8 @@
 	import HelpIcon from '../HelpIcon.svelte';
 	import { loc, tx } from '../i18n.js';
 	import { money } from '../portfolio.js';
+	import StatsGrid from '../StatsGrid.svelte';
+	import { onMount } from 'svelte';
 	import type { SnapshotDraft } from './screen.svelte.js';
 
 	/**
@@ -15,6 +17,14 @@
 	const P = $derived(s.params as Record<string, never>);
 	const D = $derived(s.data as Record<string, never>);
 	let width = $state(0);
+	// the ratios: today's next to the kept ones — «тогда → сейчас»
+	let nowStats = $state<Record<string, number | string | boolean | null> | null>(null);
+	onMount(async () => {
+		const id = (s.params as { securityId?: number }).securityId;
+		if (s.type !== 'stats' || !at || !id) return;
+		const r = await fetch(`/api/ratios?ids=${id}`).then((x) => x.json()).catch(() => null);
+		nowStats = r?.items?.[String(id)]?.stats ?? null;
+	});
 </script>
 
 <figure class="snap">
@@ -41,6 +51,9 @@
 				{/each}
 			</tbody>
 		</table>
+	{:else if s.type === 'stats'}
+		<StatsGrid s={(D.stats ?? {}) as Record<string, number | string | boolean | null>} now={nowStats} />
+		{#if nowStats}<p class="muted small">{tx('Слева — на день снимка, справа — сейчас.', 'Left — on the snapshot\'s day, right — now.')}</p>{/if}
 	{:else if s.type === 'scenario'}
 		{@const b = D.before as { bets: number; vol: number; job: number | null }}
 		{@const a = D.after as { bets: number; vol: number; job: number | null }}
@@ -65,7 +78,7 @@
 		</table>
 	{/if}
 	<figcaption class="muted small">
-		{s.type === 'photo' ? tx('Фото', 'Photo') : s.type === 'chart' ? `${tx('График', 'Chart')} ${P.symbol ?? ''} ${P.period ?? ''}` : s.type === 'compare' ? `${tx('Сравнение', 'Comparison')} ${P.symbol ?? ''}` : s.type === 'candidates' ? `${tx('Кандидаты модели', 'Model candidates')} ${P.variant ?? ''} ${String(P.quarter ?? '').replace('-', ' ')}${P.versionId ? ` · ${tx('версия параметров', 'parameters version')} ${P.versionId}` : ''}` : s.type === 'portfolio' ? `${tx('Портфель', 'Portfolio')} ${P.name ?? ''}` : s.type === 'scenario' ? tx('«Что если?»', '«What if?»') : tx('Снимок', 'Snapshot')}
+		{s.type === 'photo' ? tx('Фото', 'Photo') : s.type === 'chart' ? `${tx('График', 'Chart')} ${P.symbol ?? ''} ${P.period ?? ''}` : s.type === 'compare' ? `${tx('Сравнение', 'Comparison')} ${P.symbol ?? ''}` : s.type === 'candidates' ? `${tx('Кандидаты модели', 'Model candidates')} ${P.variant ?? ''} ${String(P.quarter ?? '').replace('-', ' ')}${P.versionId ? ` · ${tx('версия параметров', 'parameters version')} ${P.versionId}` : ''}` : s.type === 'portfolio' ? `${tx('Портфель', 'Portfolio')} ${P.name ?? ''}` : s.type === 'scenario' ? tx('«Что если?»', '«What if?»') : s.type === 'stats' ? `${tx('Показатели', 'Ratios')} ${P.symbol ?? ''}` : tx('Снимок', 'Snapshot')}
 		· {tx('снимок от', 'snapshot of')} {d(at ?? new Date().toISOString())}
 		<HelpIcon topicKey="snapshot.screen" label={tx('снимки', 'snapshots')} />
 	</figcaption>

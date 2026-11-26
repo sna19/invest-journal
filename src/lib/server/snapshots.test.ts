@@ -20,6 +20,9 @@ describe('T-032 11в: snapshots', () => {
 		addSnapshot(s.app, id, { type: 'chart', params: { securityId: s.a, symbol: 'MPC', period: '1Y' }, data: { lines: [{ key: 'sec', label: 'MPC', points: [{ date: '2026-11-01', value: 100 }], main: true }], marks: [] } });
 		const e = listEntries(s.app, s.market, {}).items[0];
 		expect(e.snapshots).toMatchObject([{ type: 'chart', params: { symbol: 'MPC' }, data: { lines: [{ points: [{ value: 100 }] }] } }]);
+		// the ratios (owner 26.11.2026): kept as they were, compared with today's on the screen
+		addSnapshot(s.app, id, { type: 'stats', params: { securityId: s.a, symbol: 'MPC' }, data: { stats: { pe: 12.5, beta: 1.1 } } });
+		expect(listEntries(s.app, s.market, {}).items[0].snapshots).toMatchObject([{ type: 'chart' }, { type: 'stats', data: { stats: { pe: 12.5 } } }]);
 		expect(() => addSnapshot(s.app, id, { type: 'video', data: {} })).toThrow(/Тип снимка/);
 		expect(() => addSnapshot(s.app, id, { type: 'chart', data: { x: 'a'.repeat(700_000) } })).toThrow(/большой/);
 		expect(() => addSnapshot(s.app, id, { type: 'photo', photoPath: 'u1/2026/nope.jpg' })).toThrow(/фото/);

@@ -1,93 +1,99 @@
 <script lang="ts">
 	import { loc, tx } from './i18n.js';
 
-	/** a security's ratios (owner's request 26.11.2026), grouped; an empty value is not shown */
+	/**
+	 * A security's ratios (owner's request 26.11.2026), grouped; an empty value is not shown. With `now` (a diary snapshot,
+	 * owner 26.11.2026: «смотреть и сравнивать») each value of then is shown with today's next to it.
+	 */
+	type S = Record<string, number | string | boolean | null>;
 	interface Props {
-		s: Record<string, number | string | boolean | null>;
+		s: S;
+		now?: S | null;
 	}
-	let { s }: Props = $props();
+	let { s, now = null }: Props = $props();
 	const num = (x: unknown, d = 1) => (typeof x === 'number' ? x.toLocaleString(loc(), { maximumFractionDigits: d, minimumFractionDigits: d }) : null);
 	const pct = (x: unknown, d = 1) => (typeof x === 'number' ? `${(x * 100).toLocaleString(loc(), { maximumFractionDigits: d, minimumFractionDigits: d })}%` : null);
 	const big = (x: unknown) => (typeof x === 'number' ? (x >= 1e9 ? `${num(x / 1e9, 0)} ${tx('млрд', 'B')}` : `${num(x / 1e6, 0)} ${tx('млн', 'M')}`) : null);
 	const REC: Record<string, [string, string]> = { strong_buy: ['активно покупать', 'strong buy'], buy: ['покупать', 'buy'], hold: ['держать', 'hold'], underperform: ['хуже рынка', 'underperform'], sell: ['продавать', 'sell'] };
+	type F = (x: S) => string | null;
+	const ROWS: { t: string; rows: [string, F][] }[] = $derived([
+		{
+			t: tx('Оценка', 'Valuation'),
+			rows: [
+				['P/E', (x) => num(x.pe)],
+				[tx('P/E прогноз', 'Forward P/E'), (x) => num(x.forwardPe)],
+				['P/S', (x) => num(x.ps)],
+				['P/B', (x) => num(x.pb)],
+				['EV/EBITDA', (x) => num(x.evEbitda)],
+				['PEG', (x) => num(x.peg, 2)]
+			]
+		},
+		{
+			t: tx('Риск', 'Risk'),
+			rows: [
+				[tx('Бета (к рынку)', 'Beta (vs market)'), (x) => num(x.beta, 2)],
+				[tx('Бета за 3 года', '3-year beta'), (x) => num(x.beta3y, 2)],
+				[tx('Шорт, % акций', 'Short, % of float'), (x) => pct(x.shortFloat)]
+			]
+		},
+		{
+			t: tx('Качество', 'Quality'),
+			rows: [
+				[tx('Чистая маржа', 'Net margin'), (x) => pct(x.profitMargin)],
+				[tx('Операционная маржа', 'Operating margin'), (x) => pct(x.operatingMargin)],
+				[tx('Валовая маржа', 'Gross margin'), (x) => pct(x.grossMargin)],
+				['ROE', (x) => pct(x.roe)],
+				['ROA', (x) => pct(x.roa)],
+				[tx('Долг / капитал', 'Debt / equity'), (x) => (typeof x.debtToEquity === 'number' ? pct(x.debtToEquity / 100, 0) : null)],
+				[tx('Текущая ликвидность', 'Current ratio'), (x) => num(x.currentRatio, 2)]
+			]
+		},
+		{
+			t: tx('Рост (год к году)', 'Growth (year on year)'),
+			rows: [
+				[tx('Выручка', 'Revenue'), (x) => pct(x.revenueGrowth)],
+				[tx('Прибыль', 'Earnings'), (x) => pct(x.earningsGrowth)]
+			]
+		},
+		{
+			t: tx('Доход и владельцы', 'Income and holders'),
+			rows: [
+				[tx('Дивидендная доходность', 'Dividend yield'), (x) => pct(x.dividendYield, 2)],
+				[tx('Доля прибыли на дивиденды', 'Payout ratio'), (x) => pct(x.payoutRatio, 0)],
+				[tx('У инсайдеров', 'Insiders'), (x) => pct(x.insiders, 0)],
+				[tx('У фондов', 'Institutions'), (x) => pct(x.institutions, 0)]
+			]
+		},
+		{
+			t: tx('Аналитики', 'Analysts'),
+			rows: [
+				[tx('Цель, средняя', 'Mean target'), (x) => num(x.target, 2)],
+				[tx('Цель, разброс', 'Target range'), (x) => (typeof x.targetLow === 'number' && typeof x.targetHigh === 'number' ? `${num(x.targetLow, 0)}–${num(x.targetHigh, 0)}` : null)],
+				[tx('Мнение', 'Opinion'), (x) => (typeof x.recommendation === 'string' ? tx(...(REC[x.recommendation] ?? [x.recommendation, x.recommendation])) : null)],
+				[tx('Аналитиков', 'Analysts'), (x) => num(x.analysts, 0)]
+			]
+		},
+		{
+			t: tx('Фонд', 'Fund'),
+			rows: [
+				[tx('Активы', 'Assets'), (x) => big(x.totalAssets)],
+				[tx('С начала года', 'Year to date'), (x) => pct(x.ytd)],
+				[tx('3 года, в год', '3 years, a year'), (x) => pct(x.threeYear)]
+			]
+		}
+	]);
 	const groups = $derived(
-		[
-			{
-				t: tx('Оценка', 'Valuation'),
-				rows: [
-					['P/E', num(s.pe)],
-					[tx('P/E прогноз', 'Forward P/E'), num(s.forwardPe)],
-					['P/S', num(s.ps)],
-					['P/B', num(s.pb)],
-					['EV/EBITDA', num(s.evEbitda)],
-					['PEG', num(s.peg, 2)]
-				]
-			},
-			{
-				t: tx('Риск', 'Risk'),
-				rows: [
-					[tx('Бета (к рынку)', 'Beta (vs market)'), num(s.beta, 2)],
-					[tx('Бета за 3 года', '3-year beta'), num(s.beta3y, 2)],
-					[tx('Шорт, % акций', 'Short, % of float'), pct(s.shortFloat)]
-				]
-			},
-			{
-				t: tx('Качество', 'Quality'),
-				rows: [
-					[tx('Чистая маржа', 'Net margin'), pct(s.profitMargin)],
-					[tx('Операционная маржа', 'Operating margin'), pct(s.operatingMargin)],
-					[tx('Валовая маржа', 'Gross margin'), pct(s.grossMargin)],
-					['ROE', pct(s.roe)],
-					['ROA', pct(s.roa)],
-					[tx('Долг / капитал', 'Debt / equity'), typeof s.debtToEquity === 'number' ? pct(s.debtToEquity / 100, 0) : null],
-					[tx('Текущая ликвидность', 'Current ratio'), num(s.currentRatio, 2)]
-				]
-			},
-			{
-				t: tx('Рост (год к году)', 'Growth (year on year)'),
-				rows: [
-					[tx('Выручка', 'Revenue'), pct(s.revenueGrowth)],
-					[tx('Прибыль', 'Earnings'), pct(s.earningsGrowth)]
-				]
-			},
-			{
-				t: tx('Доход и владельцы', 'Income and holders'),
-				rows: [
-					[tx('Дивидендная доходность', 'Dividend yield'), pct(s.dividendYield, 2)],
-					[tx('Доля прибыли на дивиденды', 'Payout ratio'), pct(s.payoutRatio, 0)],
-					[tx('У инсайдеров', 'Insiders'), pct(s.insiders, 0)],
-					[tx('У фондов', 'Institutions'), pct(s.institutions, 0)]
-				]
-			},
-			{
-				t: tx('Аналитики', 'Analysts'),
-				rows: [
-					[tx('Цель, средняя', 'Mean target'), num(s.target, 2)],
-					[tx('Цель, разброс', 'Target range'), s.targetLow !== null && s.targetHigh !== null ? `${num(s.targetLow, 0)}–${num(s.targetHigh, 0)}` : null],
-					[tx('Мнение', 'Opinion'), typeof s.recommendation === 'string' ? tx(...(REC[s.recommendation] ?? [s.recommendation, s.recommendation])) : null],
-					[tx('Аналитиков', 'Analysts'), num(s.analysts, 0)]
-				]
-			},
-			{
-				t: tx('Фонд', 'Fund'),
-				rows: [
-					[tx('Активы', 'Assets'), big(s.totalAssets)],
-					[tx('С начала года', 'Year to date'), pct(s.ytd)],
-					[tx('3 года, в год', '3 years, a year'), pct(s.threeYear)]
-				]
-			}
-		]
-			.map((g) => ({ ...g, rows: g.rows.filter((r) => r[1] !== null) as [string, string][] }))
-			.filter((g) => g.rows.length)
+		ROWS.map((g) => ({ t: g.t, rows: g.rows.map(([k, f]) => [k, f(s), now ? f(now) : null] as [string, string | null, string | null]).filter((r) => r[1] !== null) as [string, string, string | null][] })).filter((g) => g.rows.length)
 	);
 </script>
 
-<div class="grid">
+<div class="grid" class:cmp={!!now}>
+	{#if now}<div class="r head"><span></span><b>{tx('тогда', 'then')}</b><b>{tx('сейчас', 'now')}</b></div>{/if}
 	{#each groups as g (g.t)}
 		<div class="g">
 			<p class="gt">{g.t}</p>
-			{#each g.rows as [k, val] (k)}
-				<div class="r"><span>{k}</span><b>{val}</b></div>
+			{#each g.rows as [k, val, nowVal] (k)}
+				<div class="r"><span>{k}</span><b>{val}</b>{#if now}<b class="now" class:same={nowVal === val}>{nowVal ?? '—'}</b>{/if}</div>
 			{/each}
 		</div>
 	{/each}
@@ -117,6 +123,30 @@
 	.r b {
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
+	}
+	.grid.cmp {
+		grid-template-columns: 1fr;
+		gap: var(--s2);
+	}
+	.cmp .r {
+		display: grid;
+		grid-template-columns: 1fr auto 72px;
+		gap: var(--s2);
+		text-align: right;
+	}
+	.cmp .r span {
+		text-align: left;
+	}
+	.r.head b {
+		font-weight: 400;
+		color: var(--muted);
+	}
+	.now {
+		font-weight: 400;
+		color: var(--link);
+	}
+	.now.same {
+		color: var(--muted);
 	}
 	.note {
 		font-size: var(--fs-xs);

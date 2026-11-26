@@ -58,7 +58,7 @@ export const kindText = (k: string) => tx(...(KIND_LABEL[k] ?? [k, k]));
 /** the composer of an entry — one for the whole app, opened by «+», «Ответить» or a screen's «Записать» */
 /** T-032 11в: a snapshot the entry will keep — its numbers frozen as the screen showed them */
 export interface SnapshotDraft {
-	type: 'chart' | 'compare' | 'candidates' | 'portfolio' | 'scenario' | 'photo';
+	type: 'chart' | 'compare' | 'candidates' | 'portfolio' | 'scenario' | 'stats' | 'photo';
 	params: Record<string, unknown>;
 	data: Record<string, unknown>;
 	photoPath?: string;
