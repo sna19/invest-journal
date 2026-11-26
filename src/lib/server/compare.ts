@@ -10,7 +10,7 @@ import { splitScale } from './market/splits.js';
  */
 
 /** Yahoo sector key → the SPDR sector ETF */
-const US_SECTOR: Record<string, string> = {
+export const US_SECTOR: Record<string, string> = {
 	technology: 'XLK',
 	financial_services: 'XLF',
 	healthcare: 'XLV',
@@ -25,7 +25,7 @@ const US_SECTOR: Record<string, string> = {
 };
 
 /** Yahoo industry → an ETF of that industry (where one is common) */
-const US_INDUSTRY: [RegExp, string][] = [
+export const US_INDUSTRY: [RegExp, string][] = [
 	[/^Semiconductor/, 'SOXX'],
 	[/^Biotechnology/, 'IBB'],
 	[/^Banks - Regional/, 'KRE'],
@@ -54,14 +54,14 @@ const US_INDUSTRY: [RegExp, string][] = [
 ];
 
 /** Yahoo sector of an Israeli share → the KSM ETF on that TASE index */
-const IL_SECTOR: Record<string, string> = {
+export const IL_SECTOR: Record<string, string> = {
 	technology: 'KSM.F244',
 	financial_services: 'KSM.F57',
 	realestate: 'KSM.F56',
 	energy: 'KSM.F103',
 	industrials: 'KSM.F206'
 };
-const IL_INDUSTRY: [RegExp, string][] = [[/^Insurance/, 'KSM.F34']];
+export const IL_INDUSTRY: [RegExp, string][] = [[/^Insurance/, 'KSM.F34']];
 
 const US_EXCHANGES = ['NYSE', 'NASDAQ', 'NYSE_AMERICAN', 'NYSE_ARCA', 'CBOE_BZX'];
 
@@ -75,7 +75,7 @@ export interface Ref {
 	exchange: string;
 }
 
-function find(market: Database.Database, symbol: string) {
+export function find(market: Database.Database, symbol: string) {
 	const tase = symbol.startsWith('KSM.');
 	return market
 		.prepare(

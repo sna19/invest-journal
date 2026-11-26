@@ -485,7 +485,7 @@
 	{/if}
 	{#if c.profile && (c.profile.sector || c.profile.capUsd)}
 		<p class="muted small facts">
-			{[c.profile.sector ? sectorName(c.profile.sector, tx) : '', c.profile.industry ?? '', c.profile.capUsd ? `${tx('капитализация', 'market cap')} ${capText(c.profile.capUsd)}` : '', c.profile.country ?? ''].filter(Boolean).join(' · ')}
+			{#if c.profile.sector}<a class="seclink" href="/sector?sector={c.profile.sector}&country={c.security.exchange === 'TASE' ? 'IL' : 'US'}">{sectorName(c.profile.sector, tx)}</a>{/if}{#if c.profile.industry}{' · '}<a class="seclink" href="/sector?{c.profile.sector ? `sector=${c.profile.sector}&` : ''}industry={encodeURIComponent(c.profile.industry)}&country={c.security.exchange === 'TASE' ? 'IL' : 'US'}">{c.profile.industry}</a>{/if}{[c.profile.capUsd ? `${tx('капитализация', 'market cap')} ${capText(c.profile.capUsd)}` : '', c.profile.country ?? ''].filter(Boolean).map((x) => ` · ${x}`).join('')}
 		</p>
 	{/if}
 
@@ -1044,6 +1044,10 @@
 	}
 	.sum {
 		margin: 6px 0 0;
+	}
+	.seclink {
+		color: var(--link);
+		text-decoration: none;
 	}
 	.facts {
 		margin: 0 0 var(--s2);

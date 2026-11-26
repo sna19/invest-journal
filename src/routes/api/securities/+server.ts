@@ -1,6 +1,8 @@
 import { json } from '@sveltejs/kit';
 import { getMarket } from '#lib/server/db.js';
 import { searchSecurities, securityHit, type Kind, type Market } from '#lib/server/market/search.js';
+import { searchSectors } from '#lib/server/sector.js';
+import { SECTORS } from '#lib/allocation.js';
 
 /** GET /api/securities?q=…&market=us|il|all[&inactive=1][&kind=stock|etf|commodity][&sector=…][&offset=…] — the ticker field (spec section 4). */
 export function GET({ url }) {
@@ -21,5 +23,7 @@ export function GET({ url }) {
 		limit: Math.min(Number(url.searchParams.get('limit')) || 20, 100),
 		offset: Math.max(0, Math.floor(Number(url.searchParams.get('offset')) || 0))
 	});
-	return json({ items, ms: Math.round((performance.now() - t0) * 10) / 10 });
+	// the «Тикеры» screen also finds sectors and industries by name (26.11.2026)
+	const sectors = url.searchParams.get('sectors') === '1' ? searchSectors(getMarket().sqlite, url.searchParams.get('q') ?? '', SECTORS) : undefined;
+	return json({ items, sectors, ms: Math.round((performance.now() - t0) * 10) / 10 });
 }

@@ -70,6 +70,8 @@
 	let kind = $state<Kind>('');
 	let sector = $state('');
 	let more = $state(false);
+	// sectors and industries found by name (the «Тикеры» screen)
+	let secHits = $state<{ sectors: { key: string }[]; industries: { name: string; sector: string | null; n: number }[] } | null>(null);
 
 	let q = $state('');
 	let market = $state<Market>('all');
@@ -129,6 +131,7 @@
 				if (sector) p.set('sector', sector);
 				p.set('limit', String(PAGE));
 				if (append) p.set('offset', String(items.length));
+				if (query.length >= 2) p.set('sectors', '1');
 			}
 			if (includeInactive) p.set('inactive', '1');
 			if (noIndex) p.set('noindex', '1');
@@ -138,6 +141,7 @@
 			const j = await r.json();
 			if (my !== seq) return;
 			items = append ? [...items, ...j.items] : j.items;
+			if (!append) secHits = j.sectors ?? null;
 			more = filters && j.items.length === PAGE;
 			if (!append) active = items.length ? 0 : -1;
 			error = undefined;
@@ -253,6 +257,14 @@
 		<p class="note">{tx('Ещё один символ — поиск начинается со второго.', 'One more character — search starts from the second.')}</p>
 	{/if}
 
+	{#if filters && query.length >= 2 && secHits && (secHits.sectors.length || secHits.industries.length)}
+		<p class="caption">{tx('Секторы и отрасли', 'Sectors and industries')}</p>
+		<div class="sechits">
+			{#each secHits.sectors as x (x.key)}<a href="/sector?sector={x.key}">{sectorName(x.key, tx)}</a>{/each}
+			{#each secHits.industries as x (x.name)}<a href="/sector?{x.sector ? `sector=${x.sector}&` : ''}industry={encodeURIComponent(x.name)}">{x.name} <span>{x.n}</span></a>{/each}
+		</div>
+	{/if}
+
 	{#if shown.length}
 		{#if browsing}<p class="caption">{items.some((s) => s.capUsd) ? tx('По капитализации', 'By market cap') : tx('По алфавиту', 'Alphabetically')}</p>{:else if query.length < 2}<p class="caption">{tx('Недавние', 'Recent')}</p>{/if}
 		<ul id="{inputId}-list" role="listbox" aria-label={tx('Бумаги', 'Securities')}>
@@ -362,6 +374,24 @@
 		border-radius: var(--r2);
 		background: var(--surface);
 		cursor: pointer;
+	}
+	.sechits {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		margin: 0 0 var(--s2);
+	}
+	.sechits a {
+		padding: 4px 10px;
+		border: 1px solid var(--line);
+		border-radius: var(--r-pill);
+		background: var(--surface);
+		color: var(--text);
+		text-decoration: none;
+		font-size: var(--fs-xs);
+	}
+	.sechits a span {
+		color: var(--muted);
 	}
 	.caption {
 		margin: var(--s3) 0 var(--s1);
