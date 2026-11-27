@@ -488,6 +488,13 @@
 		}
 	}
 	const costOf = (p: Pos) => p.valuePc - p.unrealizedPc;
+	// the change since purchase of what is held now, as a broker shows it: unrealized / purchase cost
+	const sincePurchase = $derived.by(() => {
+		const held = (v?.positions ?? []).filter((p) => p.qty > 0 && (p.stage === 'holding' || p.stage === 'plan_sell'));
+		const cost = held.reduce((n, p) => n + costOf(p), 0);
+		const gain = held.reduce((n, p) => n + p.unrealizedPc, 0);
+		return cost > 0 ? { pct: (gain / cost) * 100, gain } : null;
+	});
 	const profitOf = (p: Pos) => p.unrealizedPc + p.realizedPc;
 	function sorted(rows: Pos[]): Pos[] {
 		if (!sortKey) return rows;
@@ -574,6 +581,10 @@
 			<span class="k">{tx('Доходность', 'Return')} <HelpIcon topicKey="portfolio.twr" label={tx('доходность TWR', 'TWR return')} /></span>
 			<b><Pct value={s.twrPct} /></b>
 			<span class="sub">{s.from ? `${tx('с', 'since')} ${d(s.from)}` : tx('пока нет сделок', 'no trades yet')}{s.fromTransfer ? tx(' · часть позиций — с даты переноса', ' · some positions — since carry-over') : ''}</span>
+			<!-- owner 27.11.2026 «прибыльность не совпадает»: the broker shows the change since purchase — the same here, beside the TWR -->
+			{#if sincePurchase}
+				<span class="sub">{tx('с покупки', 'since purchase')} <b><Pct value={sincePurchase.pct} /></b> · {money(sincePurchase.gain, s.currency, true)} <HelpIcon topicKey="portfolio.twr" label={tx('доходность и «с покупки»', 'return and «since purchase»')} /></span>
+			{/if}
 		</div>
 		{#if s.from}
 			<ul class="bench">
