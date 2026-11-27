@@ -59,7 +59,7 @@
 
 <svelte:head><title>{tx('Источники', 'Sources')} · {tx('Журнал гипотез', 'Hypothesis journal')}</title></svelte:head>
 
-<TopBar title={tx('Источники', 'Sources')} help="source.usefulness" />
+<TopBar title={tx('Источники', 'Sources')} help="source.usefulness" remind="source.stats" />
 
 <div class="bar">
 	<button class="chip" class:on={noDefault} aria-pressed={noDefault} onclick={toggle}>{tx('Без срока по умолчанию', 'Without the default term')}</button>

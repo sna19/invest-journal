@@ -108,14 +108,14 @@
 {:else}
 	<p class="sim">{tx('Пока система проверяется — сигналы ведутся в симуляции (источник «Сигналы» в «Источниках»). Решение о сделке — твоё.', 'While the system is being tested, the signals are kept in simulation (the source «Signals» in «Sources»). The decision is yours.')}</p>
 
-	<Fold key="sig-sell" title={`${tx('Продать', 'Sell')} · ${v.day.sell.length}`} open={v.day.sell.length > 0}>
+	<Fold key="sig-sell" remind="signals.screen" title={`${tx('Продать', 'Sell')} · ${v.day.sell.length}`} open={v.day.sell.length > 0}>
 		{#if !v.day.sell.length}<p class="muted small">{tx('Жёстких сигналов нет: стопы не пробиты, периоды моделей не кончились.', 'No hard signals: no stop broken, no model period over.')}</p>{/if}
 		{#each v.day.sell as s (s.key)}
 			<a class="row hot" href="/position/{s.positionId}"><b>{s.symbol}</b> {tradeText(s)} <span class="muted">· {s.portfolio} · {tx('Продал? Внеси продажу', 'Sold? Enter the sale')} →</span></a>
 		{/each}
 	</Fold>
 
-	<Fold key="sig-review" title={`${tx('Пересмотреть', 'Review')} · ${v.day.review.length + v.day.soft.length}`} open={v.day.review.length + v.day.soft.length > 0}>
+	<Fold key="sig-review" remind="signals.screen" title={`${tx('Пересмотреть', 'Review')} · ${v.day.review.length + v.day.soft.length}`} open={v.day.review.length + v.day.soft.length > 0}>
 		{#if !v.day.review.length && !v.day.soft.length}<p class="muted small">{tx('Всё спокойно.', 'All calm.')}</p>{/if}
 		{#each v.day.review as s (s.key)}
 			<a class="row" href="/security/{s.securityId}?position={s.positionId}"><b>{s.symbol}</b> {tradeText(s)} <span class="muted">· {s.portfolio} →</span></a>
@@ -133,7 +133,7 @@
 		{/each}
 	</Fold>
 
-	<Fold key="sig-protect" title={`${tx('Выставь у брокера', 'Place at the broker')} · ${v.day.protect.length}`} open={v.day.protect.length > 0}>
+	<Fold key="sig-protect" remind="trade.orders" title={`${tx('Выставь у брокера', 'Place at the broker')} · ${v.day.protect.length}`} open={v.day.protect.length > 0}>
 		{#snippet aside()}<HelpIcon topicKey="trade.orders" label={tx('виды заявок', 'order types')} />{/snippet}
 		{#if !v.day.protect.length}<p class="muted small">{tx('Все позиции со стопом, а где нужна — и с целью.', 'Every position has a stop, and a target where one is advised.')}</p>{/if}
 		{#each v.day.protect as it (it.position?.id)}
@@ -144,7 +144,7 @@
 		{/each}
 	</Fold>
 
-	<Fold key="sig-buy" title={`${tx('Купить — идеи недели', 'Buy — the week\'s ideas')} · ${v.ideas.length}`}>
+	<Fold key="sig-buy" title={`${tx('Купить — идеи недели', 'Buy — the week\'s ideas')} · ${v.ideas.length}`} remind="signals.screen">
 		{#snippet aside()}<HelpIcon topicKey="signals.screen" label={tx('как отбираются', 'how they are chosen')} />{/snippet}
 		<p class="muted small">
 			{v.run ? tx(`Отбор от ${d(v.run)}.`, `Chosen on ${d(v.run)}.`) : tx('Идей ещё не было.', 'No ideas yet.')}
@@ -181,7 +181,7 @@
 		{/each}
 	</Fold>
 
-	<Fold key="sig-settings" title={tx('Настройки сигналов', 'Signal settings')} open={false}>
+	<Fold key="sig-settings" remind="signals.screen" title={tx('Настройки сигналов', 'Signal settings')} open={false}>
 		<div class="set">
 			<label>{tx('День отбора идей', 'The ideas\' day')}<select bind:value={v.settings.weekday} onchange={saveSettings}>{#each DAYS as dn, k (k)}<option value={k}>{dn}</option>{/each}</select></label>
 			<label>{tx('Час (Израиль)', 'Hour (Israel)')}<input inputmode="numeric" bind:value={v.settings.hour} onchange={saveSettings} /></label>

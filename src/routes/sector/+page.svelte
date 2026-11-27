@@ -120,7 +120,7 @@
 	</p>
 
 	{#if v.etf}
-		<Fold key="sector-etf" title={`${tx('Фонд', 'Fund')} ${v.etf.symbol}`} summary={chart ? `${pct(chart.change)} · ${chart.benchmark?.label ?? ''} ${pct(chart.benchChange)}` : v.etf.name}>
+		<Fold key="sector-etf" remind="sector.screen" title={`${tx('Фонд', 'Fund')} ${v.etf.symbol}`} summary={chart ? `${pct(chart.change)} · ${chart.benchmark?.label ?? ''} ${pct(chart.benchChange)}` : v.etf.name}>
 			<p class="muted small"><a href="/security/{v.etf.id}">{v.etf.symbol}</a> — {v.etf.name}. {tx('Его цена — история сектора: так он двигался против рынка.', 'Its price is the sector\'s history: how it moved against the market.')}</p>
 			<div class="periods" role="radiogroup" aria-label={tx('Период', 'Period')}>
 				{#each [['3M', '3М'], ['1Y', '1Г'], ['5Y', '5Л'], ['10Y', '10Л']] as [k, l] (k)}
@@ -138,7 +138,7 @@
 		<p class="muted small">{tx('Торгуемого фонда на этот сектор или отрасль в справочнике нет — история видна по компаниям ниже.', 'No traded fund for this sector or industry in the reference — its history is in the companies below.')}</p>
 	{/if}
 
-	<Fold key="sector-seasons" title={tx('Сезонность', 'Seasonality')} summary={v.seasons.map((s) => `Q${s.quarter} ${pct(s.mean)}`).join(' · ')}>
+	<Fold key="sector-seasons" remind="sector.screen" title={tx('Сезонность', 'Seasonality')} summary={v.seasons.map((s) => `Q${s.quarter} ${pct(s.mean)}`).join(' · ')}>
 		{#snippet aside()}<HelpIcon topicKey="sector.screen" label={tx('сектор', 'sector')} />{/snippet}
 		{#each v.seasons as s (s.quarter)}
 			<div class="qrow">
@@ -152,7 +152,7 @@
 	</Fold>
 
 	{#if v.industries.length}
-		<Fold key="sector-industries" title={tx('Отрасли', 'Industries')} summary={v.industries.slice(0, 4).map((x) => x.name).join(' · ')}>
+		<Fold key="sector-industries" remind="sector.screen" title={tx('Отрасли', 'Industries')} summary={v.industries.slice(0, 4).map((x) => x.name).join(' · ')}>
 			<ul class="list">
 				{#each v.industries as x (x.name)}
 					<li>
@@ -168,14 +168,14 @@
 	{/if}
 
 	<!-- T-032 Д-08: the sector's (or industry's) diary — its companies' entries come up unless switched off -->
-	<Fold key="sector-journal" title={tx('Дневник', 'Diary')} open={false}>
+	<Fold key="sector-journal" title={tx('Дневник', 'Diary')} open={false} remind="journal.inherit">
 		{#snippet aside()}<HelpIcon topicKey="journal.inherit" label={tx('дневник сектора', 'the sector\'s diary')} />{/snippet}
 		{#key `${sector}|${industry}`}
 			<Feed scope={industry ? `industry:${industry}` : `sector:${sector}`} links={[industry ? { type: 'industry', id: industry, label: industry } : { type: 'sector', id: sector ?? '', label: sector ?? '' }]} inheritToggle />
 		{/key}
 	</Fold>
 
-	<Fold key="sector-members" title={tx('Компании', 'Companies')} summary={v.members.slice(0, 5).map((m) => m.symbol).join(' · ')}>
+	<Fold key="sector-members" remind="sector.screen" title={tx('Компании', 'Companies')} summary={v.members.slice(0, 5).map((m) => m.symbol).join(' · ')}>
 		<div class="sorts">
 			{#each [['capUsd', tx('капитализация', 'market cap')], ['m1', '1М'], ['m3', '3М'], ['y1', '1Г']] as [k, l] (k)}
 				<button class:on={sortKey === k} aria-pressed={sortKey === k} onclick={() => (sortKey = k as typeof sortKey)}>{l}</button>

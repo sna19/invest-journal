@@ -1,6 +1,10 @@
 # Security card and chart
 
-The security's closing price and its benchmark (S&P 500 for the US, TA-125 for TASE), brought to the same starting point: if the dashed line is above the security's line, the market rose more over the period.
+**What it is.** The security's closing price and its benchmark (S&P 500 for the US, TA-125 for TASE), brought to the same starting point: if the dashed line is above the security's line, the market rose more over the period.
+
+**The idea.** A chart next to the benchmark shows not only where the price went, but whether the security was stronger than the market.
+
+**How to use it.**
 
 **Marks:**
 - ● — a hypothesis entry, ■ — its exit; the colour is the source (labels under the chart);
@@ -17,3 +21,9 @@ Prices are closes on the scale of the last split; trades before a split are reco
 **Price and data.** Under the title — the price and today's change, below — the sector, industry, market cap and country from the Yahoo profile. If the security has no daily history yet, the chart is drawn from monthly closes with a note, and the daily history is queued for loading at once.
 
 **TV ↗** next to the price (and in the rows of positions, model candidates, in a hypothesis card) opens the security's chart on TradingView in a new window.
+
+**Reminder.** How did the security go next to the market?
+
+**Trap.** Looking at the chart without the benchmark and taking the market's rise for the security's strength.
+
+<!-- T-019: agent's draft — idea, remind, trap -->

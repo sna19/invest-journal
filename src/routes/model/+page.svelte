@@ -469,7 +469,7 @@
 </div>
 
 {#if params}
-	<Fold key="model-params" title={tx('Параметры', 'Parameters')} summary={`${isScored(variant) ? '' : `K ${params.k} · `}${tx(`${params.years} лет`, `${params.years} years`)} · ${tx(`${params.count} кандидатов`, `${params.count} candidates`)}${changed ? tx(' · не сохранены', ' · not saved') : ''}`}>
+	<Fold key="model-params" remind="model.guide" title={tx('Параметры', 'Parameters')} summary={`${isScored(variant) ? '' : `K ${params.k} · `}${tx(`${params.years} лет`, `${params.years} years`)} · ${tx(`${params.count} кандидатов`, `${params.count} candidates`)}${changed ? tx(' · не сохранены', ' · not saved') : ''}`}>
 		{#snippet aside()}{#if busy}<span class="muted small">{tx('считаю…', 'computing…')}</span>{/if}{/snippet}
 		{#each PARAMS.filter((f) => (!isScored(variant) || f.key !== 'k') && (pool === 'stocks' || f.key !== 'perMarket')) as f (f.key)}
 			<div class="prow">
@@ -570,7 +570,7 @@
 {/if}
 
 {#if res}
-	<Fold key="model-candidates" title={`${tx('Кандидаты', 'Candidates')} Q${res.quarter} ${res.forYear}`} summary={res.candidates.map((x) => x.symbol).join(' · ')}>
+	<Fold key="model-candidates" remind="model.quarterly" title={`${tx('Кандидаты', 'Candidates')} Q${res.quarter} ${res.forYear}`} summary={res.candidates.map((x) => x.symbol).join(' · ')}>
 		{#snippet aside()}<HelpIcon topicKey="model.quarterly" label={tx('как считается', 'how it is computed')} />{/snippet}
 		<p class="sum">
 			{tx('Выборка', 'Universe')} <b>{res.universe}</b> {tx('акций', 'shares')} · {isScored(variant) ? tx('балл ≥ 2', 'score ≥ 2') : tx('прошли фильтр', 'passed')} <b>{res.passed}</b>{#if isScored(variant)} <HelpIcon topicKey="model.score" label={tx('балл', 'score')} />{/if}
@@ -642,7 +642,7 @@
 	</Fold>
 
 	<!-- T-032 Д-08: the diary of this run (variant and quarter) — with the entries of its candidates -->
-	<Fold key="model-journal" title={tx('Дневник прогона', 'Diary of the run')} open={false}>
+	<Fold key="model-journal" title={tx('Дневник прогона', 'Diary of the run')} open={false} remind="journal.inherit">
 		{#snippet aside()}<HelpIcon topicKey="journal.inherit" label={tx('дневник прогона', 'the run\'s diary')} />{/snippet}
 		{#key `${variant}|${res.forYear}-Q${res.quarter}`}
 			<Feed scope={`model_run:${variant}|${res.forYear}-Q${res.quarter}`} links={[{ type: 'model_run', id: `${variant}|${res.forYear}-Q${res.quarter}`, label: `${tx('Модель', 'Model')} ${variant} Q${res.quarter} ${res.forYear}` }]} />
@@ -650,7 +650,7 @@
 	</Fold>
 
 	{#if res.walk.length}
-		<Fold key="model-walk" title={tx('Проверка без подглядывания', 'Check without peeking')} summary={res.walk.map((w) => `${w.year}: ${pct(w.pickedMean)}`).join(' · ')}>
+		<Fold key="model-walk" remind="model.walk" title={tx('Проверка без подглядывания', 'Check without peeking')} summary={res.walk.map((w) => `${w.year}: ${pct(w.pickedMean)}`).join(' · ')}>
 			{#snippet aside()}<HelpIcon topicKey="model.walk" label={tx('проверка', 'check')} />{/snippet}
 			<table class="walk">
 				<thead><tr><th>{tx('Год', 'Year')}</th><th>{tx('Выбрано', 'Picked')}</th><th>{tx('Они', 'They')}</th><th>{tx('Все', 'All')}</th></tr></thead>
@@ -668,7 +668,7 @@
 
 {#if costs?.costs}
 	{@const c = costs.costs}
-	<Fold key="model-costs" title={tx('Издержки и оборот', 'Costs and turnover')} summary={tx(`${pct(c.gross)} в год до издержек, ${pct(c.hold.cagr)} после`, `${pct(c.gross)} a year before costs, ${pct(c.hold.cagr)} after`)}>
+	<Fold key="model-costs" remind="model.costs" title={tx('Издержки и оборот', 'Costs and turnover')} summary={tx(`${pct(c.gross)} в год до издержек, ${pct(c.hold.cagr)} после`, `${pct(c.gross)} a year before costs, ${pct(c.hold.cagr)} after`)}>
 		{#snippet aside()}{#if costsBusy}<span class="muted small">{tx('считаю…', 'computing…')}</span>{/if}<HelpIcon topicKey="model.costs" label={tx('издержки', 'costs')} />{/snippet}
 		<p class="muted small">{tx(`Портфель варианта за последние ${c.quarters.length} кварталов: каждый квартал — его кандидаты поровну, ${usd(c.start)} на старте.`, `The variant's portfolio over the last ${c.quarters.length} quarters: each quarter its candidates in equal parts, ${usd(c.start)} at the start.`)}</p>
 		<ul class="books">
@@ -707,7 +707,7 @@
 
 {#if trend?.table.length}
 	{@const rows = trend.table}
-	<Fold key="model-trend" title={tx('Фильтр и выход по тренду', 'Trend filter and exit')} summary={tx('6 сочетаний: превышение, просадка, пустышка', '6 combinations: excess, drawdown, placebo')}>
+	<Fold key="model-trend" remind="model.trend_filter" title={tx('Фильтр и выход по тренду', 'Trend filter and exit')} summary={tx('6 сочетаний: превышение, просадка, пустышка', '6 combinations: excess, drawdown, placebo')}>
 		{#snippet aside()}{#if trendBusy}<span class="muted small">{tx('считаю…', 'computing…')}</span>{/if}<HelpIcon topicKey="model.trend_filter" label={tx('фильтр тренда', 'trend filter')} />{/snippet}
 		<div class="seg small-seg" role="radiogroup" aria-label={tx('Годы', 'Years')}>
 			<button role="radio" aria-checked={!trendWalk} class:on={!trendWalk} onclick={() => (trendWalk = false)}>{tx(`Все годы (${rows[0].all.years})`, `All years (${rows[0].all.years})`)}</button>
@@ -739,7 +739,7 @@
 
 {#if trend?.laggards}
 	{@const l = trend.laggards}
-	<Fold key="model-laggards" title={tx('Отставшие догоняют?', 'Do laggards catch up?')} summary={tx(...LAG[l.verdict])}>
+	<Fold key="model-laggards" title={tx('Отставшие догоняют?', 'Do laggards catch up?')} summary={tx(...LAG[l.verdict])} remind="model.late_entry">
 		{#snippet aside()}<HelpIcon topicKey="model.late_entry" label={tx('отставшие', 'laggards')} />{/snippet}
 		<p class="placebo {l.verdict === 'catch_up' ? 'signal' : l.verdict === 'no' ? 'chance' : 'unclear'}"><span class="badge">{tx(...LAG[l.verdict])}</span></p>
 		<p class="small">
@@ -768,7 +768,7 @@
 {/if}
 
 {#if compareV?.length}
-	<Fold key="model-variants" title={tx('Варианты рядом', 'Variants side by side')} summary={compareV.map((x) => `${x.variant}: ${tx(...VERDICT[x.placebo.verdict])}`).join(' · ')}>
+	<Fold key="model-variants" remind="model.variants" title={tx('Варианты рядом', 'Variants side by side')} summary={compareV.map((x) => `${x.variant}: ${tx(...VERDICT[x.placebo.verdict])}`).join(' · ')}>
 		{#snippet aside()}<HelpIcon topicKey="model.variants" label={tx('варианты', 'variants')} />{/snippet}
 		<div class="scroll">
 			<table class="walk trend">
@@ -791,7 +791,7 @@
 {/if}
 
 {#if data?.recorded.length}
-	<Fold key="model-recorded" title={tx('Записанные кварталы', 'Recorded quarters')} summary={String(data.recorded.length)}>
+	<Fold key="model-recorded" remind="model.placebo" title={tx('Записанные кварталы', 'Recorded quarters')} summary={String(data.recorded.length)}>
 		<ul class="plain">
 			{#each data.recorded as r (r.variant + r.quarter)}
 				<li>{r.quarter} · {r.variant === 'A' ? tx('А. Рост цены', 'A. Price rise') : r.variant === 'B' ? tx('Б. Против рынка', 'B. Against the market') : r.variant === 'C' ? tx('В. Оценка', 'C. Score') : r.variant === 'G' ? tx('Г. С причиной', 'G. With a reason') : tx('Д. Против тренда', 'D. Against its trend')} · {tx('гипотез', 'hypotheses')} {r.hypotheses}</li>

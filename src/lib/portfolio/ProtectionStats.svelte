@@ -15,7 +15,7 @@
 </script>
 
 {#if s}
-	<Fold key="stats-protection" title={tx('Защита', 'Protection')} summary={s.fullDaysPct !== null ? tx(`защищён полностью ${s.fullDaysPct}% дней`, `fully protected ${s.fullDaysPct}% of days`) : undefined}>
+	<Fold key="stats-protection" title={tx('Защита', 'Protection')} summary={s.fullDaysPct !== null ? tx(`защищён полностью ${s.fullDaysPct}% дней`, `fully protected ${s.fullDaysPct}% of days`) : undefined} remind="portfolio.protection">
 		{#snippet aside()}<HelpIcon topicKey="portfolio.protection" label={tx('защита', 'protection')} />{/snippet}
 		<table>
 			<thead><tr><th></th><th>{tx('Продаж', 'Sales')}</th><th>{tx('Средний итог', 'Average')}</th><th>{tx('Худший', 'Worst')}</th></tr></thead>

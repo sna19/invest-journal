@@ -95,7 +95,7 @@
 </script>
 
 {#if v}
-	<Fold key="sec-path" title={tx('Как набиралась прибыль', 'How the profit was made')} {summary}>
+	<Fold key="sec-path" title={tx('Как набиралась прибыль', 'How the profit was made')} {summary} remind="stock.periods">
 		{#snippet aside()}<HelpIcon topicKey="stock.periods" label={tx('периоды', 'periods')} />{/snippet}
 		<PeriodsRow periods={v.periods} market={v.market} />
 		{#if v.flags.length}

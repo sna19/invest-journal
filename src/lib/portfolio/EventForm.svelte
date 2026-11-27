@@ -92,6 +92,30 @@
 	let rules = $state<{ id: number; text: string }[]>([]);
 	// T-016: a purchase that takes the job's industry over its limit or the speculation over its budget — warned, not refused
 	let limitWarns = $state<string[]>([]);
+	// T-019 (5): rule 2 — a model's trade later than the first 5 trading days of its quarter
+	const lateModel = $derived.by(() => {
+		if (!modelVariant || kind !== 'buy' || !date) return 0;
+		const d = new Date(date + 'T12:00:00Z');
+		const start = new Date(Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / 3) * 3, 1, 12));
+		let n = 0;
+		for (let t = new Date(start); t <= d; t = new Date(t.getTime() + 86_400_000)) if (t.getUTCDay() !== 0 && t.getUTCDay() !== 6) n++;
+		return n > 5 ? n : 0;
+	});
+	// T-019 (5): selling a position in profit while others are «held without a thesis» — the disposition effect
+	let disposition = $state<string | null>(null);
+	$effect(() => {
+		if (kind !== 'sell' || !position) return void (disposition = null);
+		const pid = position.id;
+		fetch(`/api/portfolios/${portfolioId}/riskreport?only=reviews`)
+			.then((r) => (r.ok ? r.json() : null))
+			.then((j) => {
+				const rows = (j?.reviews?.rows ?? []) as { positionId: number; symbol: string; unrealizedPct: number | null; noThesis: boolean }[];
+				const me = rows.find((r) => r.positionId === pid);
+				const held = rows.filter((r) => r.noThesis && r.positionId !== pid).map((r) => r.symbol);
+				disposition = me && (me.unrealizedPct ?? 0) > 0 && held.length ? tx(`Продаёшь позицию в прибыли, а держишь без тезиса: ${held.join(', ')}. Эффект диспозиции — продавать прибыльные и держать убыточные; может, продать стоит их?`, `You sell a position in profit while holding without a thesis: ${held.join(', ')}. The disposition effect — selling winners and keeping losers; maybe those are the ones to sell?`) : null;
+			})
+			.catch(() => (disposition = null));
+	});
 	let checkTimer: ReturnType<typeof setTimeout> | undefined;
 	$effect(() => {
 		const amount = kind === 'buy' ? total : kind === 'plan_buy' ? (n(amount_) ?? (n(qty) && n(price) && sec ? n(qty)! * n(price)! * unitFactor(sec.priceUnit) : null)) : null;
@@ -102,7 +126,8 @@
 		const sid = sec.id;
 		checkTimer = setTimeout(async () => {
 			const r = await fetch(`/api/portfolios/${portfolioId}/check?security=${sid}&amount=${Math.round(amount * toPc)}&kind=${k}`).then((x) => x.json()).catch(() => null);
-			limitWarns = (r?.items ?? []).map((x: { text: string }) => x.text);
+			// T-019: each warning names the rule it comes from
+			limitWarns = (r?.items ?? []).map((x: { rule: string; text: string }) => (x.rule === 'spec' ? `${tx('Правило 3: спекуляции — только из игрового бюджета.', 'Rule 3: speculation only from the play budget.')} ${x.text}` : x.text));
 		}, 400);
 	});
 	// T-032 11б: the decision of a purchase or a sale — its basis (by default from the trade's kind or the purchase), the
@@ -275,7 +300,7 @@
 
 <div class="form">
 	{#if withPlan && rules.length}
-		<Fold key="buy-rules" title={tx('Мои правила', 'My rules')} open={false} summary={tx(`${rules.length} — пробеги глазами перед покупкой`, `${rules.length} — glance over them before buying`)}>
+		<Fold key="buy-rules" title={tx('Мои правила', 'My rules')} open={false} summary={tx(`${rules.length} — пробеги глазами перед покупкой`, `${rules.length} — glance over them before buying`)} remind="trade.rules">
 			{#snippet aside()}<HelpIcon topicKey="trade.rules" label={tx('мои правила', 'my rules')} />{/snippet}
 			<ol class="rules">
 				{#each rules as r (r.id)}<li>{r.text}</li>{/each}
@@ -370,7 +395,9 @@
 			{#if kind === 'buy'}<BasisPicker bind:basis={() => basis, (v) => (basisPicked = v)} />{/if}
 		{/if}
 
-		{#each limitWarns as w (w)}<p class="warnbox" role="status">{w}</p>{/each}
+		{#each limitWarns as w (w)}<p class="warnbox" role="status">{w}{#if w.startsWith(tx('Правило 3', 'Rule 3'))} <HelpIcon topicKey="trade.rules" label={tx('мои правила', 'my rules')} />{/if}</p>{/each}
+		{#if lateModel}<p class="warnbox" role="status">{tx(`Правило 2: вход не по модели — прошло ${lateModel} торговых дней с начала квартала, а модель входит в первые 5. Лучше записать идею гипотезой-симуляцией, чем сделкой.`, `Rule 2: an entry off the model — ${lateModel} trading days since the quarter began, the model enters in the first 5. Better record the idea as a simulated hypothesis than as a trade.`)} <HelpIcon topicKey="trade.rules" label={tx('мои правила', 'my rules')} /></p>{/if}
+		{#if disposition}<p class="warnbox" role="status">{disposition} <HelpIcon topicKey="portfolio.disposition" label={tx('эффект диспозиции', 'disposition effect')} /></p>{/if}
 		{#if withReview}
 			<div class="review">
 				<span class="lbl">{tx('Почему продаю', 'Why I sell')} <HelpIcon topicKey="decision.basis" label={tx('решение', 'decision')} /></span>

@@ -120,7 +120,7 @@
 
 	{#snippet table(title: string, parts: Part[])}
 		{#if parts.length}
-			<Fold key="source-{title}" title={title} summary={parts.map((p) => tl(p.label)).join(' · ')}>
+			<Fold key="source-{title}" remind="source.stats" title={title} summary={parts.map((p) => tl(p.label)).join(' · ')}>
 				<ul class="parts">
 					{#each parts as p (p.key)}
 						<li>
@@ -139,12 +139,12 @@
 	{@render table(tx('По режиму', 'By mode'), card.byMode)}
 
 	<!-- T-032 Д-08: the source's diary — with the entries about its hypotheses («через №12») -->
-	<Fold key="source-journal" title={tx('Дневник', 'Diary')} open={false}>
+	<Fold key="source-journal" title={tx('Дневник', 'Diary')} open={false} remind="journal.inherit">
 		{#snippet aside()}<HelpIcon topicKey="journal.inherit" label={tx('дневник источника', 'the source\'s diary')} />{/snippet}
 		<Feed scope={`source:${page.params.id}`} links={[{ type: 'source', id: String(page.params.id), label: '' }]} />
 	</Fold>
 
-	<Fold key="source-articles" title={tx('Статьи и гипотезы', 'Articles and hypotheses')} summary={tx(`статей: ${card.articles.length}`, `articles: ${card.articles.length}`)}>
+	<Fold key="source-articles" remind="source.usefulness" title={tx('Статьи и гипотезы', 'Articles and hypotheses')} summary={tx(`статей: ${card.articles.length}`, `articles: ${card.articles.length}`)}>
 		{#if !card.articles.length}
 			<p class="meta">{tx('Гипотез по этому источнику пока нет.', 'No hypotheses from this source yet.')}</p>
 		{/if}

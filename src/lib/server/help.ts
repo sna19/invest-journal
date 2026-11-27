@@ -46,6 +46,35 @@ export function loadHelp(db: AppDb, dir = helpDir) {
 	return ru.length;
 }
 
+/** T-019: the five parts of a topic (Что это / Идея / Как пользоваться / Напоминание / Ловушка), by label */
+export const PARTS = { ru: ['Что это.', 'Идея.', 'Как пользоваться.', 'Напоминание.', 'Ловушка.'], en: ['What it is.', 'The idea.', 'How to use it.', 'Reminder.', 'Trap.'] } as const;
+export function partsOf(md: string, lang: 'ru' | 'en') {
+	const labels = PARTS[lang];
+	const out: Record<string, string> = {};
+	const at = labels.map((l) => md.indexOf(`**${l}**`));
+	labels.forEach((l, i) => {
+		if (at[i] < 0) return;
+		const from = at[i] + l.length + 4;
+		const next = at.filter((x) => x > at[i]).sort((a, b) => a - b)[0] ?? md.length;
+		out[l] = md.slice(from, next).replace(/<!--[\s\S]*?-->/g, '').trim();
+	});
+	return out;
+}
+
+/** T-019: every topic's «Напоминание» line in a language (the screens show it under each block's title) */
+export function reminders(db: AppDb, lang: 'ru' | 'en' = 'ru') {
+	const out: Record<string, string> = {};
+	for (const t of db.select().from(helpTopics).all()) {
+		const en = t.key.startsWith('en:');
+		if (en !== (lang === 'en')) continue;
+		const r = partsOf(t.bodyMd, lang)[PARTS[lang][3]];
+		if (r) out[en ? t.key.slice(3) : t.key] = r.replace(/\*\*/g, '').replace(/\s+/g, ' ');
+	}
+	// an English reader without a translation gets the Russian line
+	if (lang === 'en') for (const [k, v] of Object.entries(reminders(db, 'ru'))) if (!(k in out)) out[k] = v;
+	return out;
+}
+
 /** A topic for the help window: title and the body as HTML (texts come from the repository). */
 export function helpTopic(db: AppDb, key: string, lang: 'ru' | 'en' = 'ru') {
 	const get = (k: string) => db.select().from(helpTopics).where(eq(helpTopics.key, k)).get();

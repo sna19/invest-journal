@@ -38,7 +38,7 @@
 
 {#if items?.length}
 	<div class="wrap" class:bad>
-		<Fold key="sec-protection" title={tx('Защита', 'Protection')} {summary}>
+		<Fold key="sec-protection" title={tx('Защита', 'Protection')} {summary} remind="stock.protection">
 			{#snippet aside()}<HelpIcon topicKey="stock.protection" label={tx('защита', 'protection')} />{/snippet}
 			{#each items as it, i (it.position?.id ?? 'new')}
 				{#if i}<hr />{/if}

@@ -32,7 +32,7 @@
 	];
 </script>
 
-<Fold key="settings-path" title={tx('Метки пути доходности', 'Marks of the return\'s path')} open={false}>
+<Fold key="settings-path" title={tx('Метки пути доходности', 'Marks of the return\'s path')} open={false} remind="stock.flags">
 	{#snippet aside()}<HelpIcon topicKey="stock.flags" label={tx('метки пути', 'path marks')} />{/snippet}
 	{#if p}
 		<div class="lims">

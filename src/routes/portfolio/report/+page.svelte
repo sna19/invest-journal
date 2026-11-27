@@ -98,7 +98,7 @@
 	{#if !r.from}
 		<p class="muted">{tx('В портфеле ещё нет денег и сделок — отчёту не из чего считать.', 'No money or trades in the portfolio yet — nothing to report.')}</p>
 	{:else}
-		<Fold key="report-months" title={tx('По месяцам', 'By month')} summary={r.total.pct !== null ? `${tx('портфель', 'portfolio')} ${r.total.pct > 0 ? '+' : ''}${r.total.pct}% · ${r.benchLabel} ${(r.total.benchPct ?? 0) > 0 ? '+' : ''}${r.total.benchPct ?? '—'}%` : undefined}>
+		<Fold key="report-months" remind="portfolio.report" title={tx('По месяцам', 'By month')} summary={r.total.pct !== null ? `${tx('портфель', 'portfolio')} ${r.total.pct > 0 ? '+' : ''}${r.total.pct}% · ${r.benchLabel} ${(r.total.benchPct ?? 0) > 0 ? '+' : ''}${r.total.benchPct ?? '—'}%` : undefined}>
 			<p class="muted small">
 				{tx('С', 'Since')} {d(r.from)}: {tx('портфель', 'portfolio')} <Pct value={r.total.pct} /> · {r.benchLabel} <Pct value={r.total.benchPct} plain />
 				{#if r.total.pct !== null && r.total.benchPct !== null} · <b>{pp(r.total.pct - r.total.benchPct)}</b>{/if}
@@ -150,7 +150,7 @@
 			<p class="muted small">{tx('Тап по месяцу — из чего сложился доход.', 'Tap a month to see what the gain was made of.')}</p>
 		</Fold>
 
-		<Fold key="report-trades" title={tx('Закрытые сделки', 'Closed trades')} summary={tx(`сделок: ${r.trades.length}`, `trades: ${r.trades.length}`)}>
+		<Fold key="report-trades" remind="portfolio.report" title={tx('Закрытые сделки', 'Closed trades')} summary={tx(`сделок: ${r.trades.length}`, `trades: ${r.trades.length}`)}>
 			{#if !r.trades.length}
 				<p class="muted">{tx('Продаж ещё не было.', 'No sales yet.')}</p>
 			{:else}

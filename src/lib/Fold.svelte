@@ -2,6 +2,8 @@
 	import type { Snippet } from 'svelte';
 	import { onMount } from 'svelte';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
+	import HelpIcon from './HelpIcon.svelte';
+	import { loadReminders, rem } from './reminders.svelte.js';
 
 	/**
 	 * A section that folds and unfolds (owner's request 20.11.2026: «аккордеоны для всех разделов»). The state is
@@ -16,9 +18,14 @@
 		summary?: string;
 		/** inside a card of its own (a draggable block): no background and padding */
 		bare?: boolean;
+		/** T-019: the help topic whose «Напоминание» line stands under the title (a tap opens the topic) */
+		remind?: string;
 		children: Snippet;
 	}
-	let { key, title, open: start = true, aside, summary, bare = false, children }: Props = $props();
+	let { key, title, open: start = true, aside, summary, bare = false, remind, children }: Props = $props();
+	$effect(() => {
+		if (remind) loadReminders();
+	});
 	let open = $state(true);
 	const storeKey = () => `fold:${key}`;
 	onMount(() => {
@@ -49,6 +56,7 @@
 		</button>
 		{#if aside}{@render aside()}{/if}
 	</div>
+	{#if remind && rem.show && rem.items[remind]}<div class="remind"><HelpIcon topicKey={remind} text={rem.items[remind]} /></div>{/if}
 	{#if !open && summary}<button class="sum muted small" onclick={toggle}>{summary}</button>{/if}
 	<div id={bodyId} hidden={!open}>
 		{@render children()}
@@ -97,6 +105,9 @@
 	}
 	.chev.open {
 		transform: none;
+	}
+	.remind {
+		padding: 0 0 var(--s1) calc(18px + var(--s2));
 	}
 	.sum {
 		display: block;

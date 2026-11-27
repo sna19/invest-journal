@@ -1,6 +1,10 @@
 # Sector and industry
 
-The page of a sector or an industry — opened by a tap on the sector or the industry on a security's card, or from the search on the «Tickers» screen (it finds the names of sectors and industries too).
+**What it is.** The page of a sector or an industry — opened by a tap on the sector or the industry on a security's card, or from the search on the «Tickers» screen (it finds the names of sectors and industries too).
+
+**The idea.** A security rarely moves alone: the sector shows whether it is its own strength or the whole industry's wave.
+
+**How to use it.**
 
 **The fund** — the sector's or industry's traded ETF (technology — XLK, semiconductors — SOXX, for Israel — funds on the TASE sector indices): its chart against the market is the sector's history. A tap on the fund's symbol opens its card.
 
@@ -9,3 +13,9 @@ The page of a sector or an industry — opened by a tap on the sector or the ind
 **Industries** — what the sector is made of: the number of companies, their market cap together and the median over a year; a tap opens the industry's page. **Companies** — by market cap or by the return over a month, three months and a year. The «All / US / Israel» switch narrows everything at once.
 
 Only companies with a loaded profile count (the model universe's liquid shares and the ones bought) — not the whole market but a large part of it.
+
+**Reminder.** Is this the security's move or the whole sector's?
+
+**Trap.** Buying a sector's best security at the top of the whole industry.
+
+<!-- T-019: agent's draft — idea, remind, trap -->

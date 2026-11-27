@@ -59,7 +59,7 @@
 	const usable = $derived(rows.filter((r) => !r.excluded).length);
 </script>
 
-<Fold key="model-funds" title={tx('Сырьевые фонды', 'Commodity funds')} summary={tx(`${usable} из ${rows.length} в выборке · рынок ${bench}`, `${usable} of ${rows.length} in the universe · market ${bench}`)} open={false}>
+<Fold key="model-funds" title={tx('Сырьевые фонды', 'Commodity funds')} summary={tx(`${usable} из ${rows.length} в выборке · рынок ${bench}`, `${usable} of ${rows.length} in the universe · market ${bench}`)} open={false} remind="model.commodities">
 	{#snippet aside()}<HelpIcon topicKey="model.commodities" label={tx('сырьё', 'commodities')} />{/snippet}
 	{#each Object.keys(GROUP) as g (g)}
 		{@const rs = rows.filter((r) => r.group === g)}

@@ -1,6 +1,10 @@
 # Portfolio report
 
-How the portfolio went and which decisions were right. The «Report» button on the portfolio screen.
+**What it is.** How the portfolio went and which decisions were right. The «Report» button on the portfolio screen.
+
+**The idea.** The report answers a question easy to forget: which decisions really brought the result.
+
+**How to use it.**
 
 **By month.** The bars are the portfolio's return for each month (blue, orange when negative) next to the market (grey): S&P 500 for a dollar portfolio, TA-125 for a shekel one. The return is time-weighted, as on the portfolio screen, so deposits do not change it and the months add up to the total. The table shows the month's gain in money. Tap a month to split it:
 - **realized** — profit and loss of what was sold (FIFO, at the rates of the purchase and the sale days);
@@ -17,3 +21,9 @@ How the portfolio went and which decisions were right. The «Report» button on 
 On top — the totals: how many trades were in profit and how many beat the market, the average win and loss, how many days on average you hold winners and losers. If you hold losers much longer, the app says so: profits are taken early and losses sat out. «Where from» — from a hypothesis, from the model, your own idea or a carried-over position.
 
 A carried-over position without a purchase price counts from the carry-over date.
+
+**Reminder.** Which of my decisions worked?
+
+**Trap.** Reading the report only after a good period.
+
+<!-- T-019: agent's draft — idea, remind, trap -->

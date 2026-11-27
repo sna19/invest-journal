@@ -43,7 +43,7 @@
 	];
 </script>
 
-<Fold key="settings-protection" title={tx('Защитный план', 'Protective plan')} summary={params ? tx(`риск ${params.riskPct}% · стоп под уровнем ${params.bufferAtr} ATR · трейлинг ${params.trailMin}–${params.trailMax}%`, `risk ${params.riskPct}% · stop ${params.bufferAtr} ATR under the level · trailing ${params.trailMin}–${params.trailMax}%`) : undefined} open={false}>
+<Fold key="settings-protection" title={tx('Защитный план', 'Protective plan')} summary={params ? tx(`риск ${params.riskPct}% · стоп под уровнем ${params.bufferAtr} ATR · трейлинг ${params.trailMin}–${params.trailMax}%`, `risk ${params.riskPct}% · stop ${params.bufferAtr} ATR under the level · trailing ${params.trailMin}–${params.trailMax}%`) : undefined} open={false} remind="stock.protection">
 	{#snippet aside()}<HelpIcon topicKey="stock.protection" label={tx('защитный план', 'protective plan')} />{/snippet}
 	{#if params}
 		<div class="lims">

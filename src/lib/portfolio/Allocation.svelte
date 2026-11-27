@@ -74,7 +74,7 @@
 	const hovered = $derived(rows.find((r) => r.key === hover) ?? null);
 </script>
 
-<Fold key="portfolio-allocation" title={tx('Распределение', 'Allocation')} summary={labels[metric]}>
+<Fold key="portfolio-allocation" remind="portfolio.allocation" title={tx('Распределение', 'Allocation')} summary={labels[metric]}>
 	{#snippet aside()}
 		<HelpIcon topicKey="portfolio.allocation" label={tx('распределение', 'allocation')} />
 		<div class="view" role="radiogroup" aria-label={tx('Вид графика', 'Chart view')}>

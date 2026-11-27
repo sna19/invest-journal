@@ -2,6 +2,7 @@
 	import Fold from '#lib/Fold.svelte';
 	import PushSettings from '#lib/PushSettings.svelte';
 	import ProtectionSettings from '#lib/portfolio/ProtectionSettings.svelte';
+	import { loadReminders, rem, setShowReminders } from '#lib/reminders.svelte.js';
 	import PathSettings from '#lib/path/PathSettings.svelte';
 	import HelpIcon from '#lib/HelpIcon.svelte';
 	import { loc, tl, tx } from '#lib/i18n.js';
@@ -100,6 +101,7 @@
 		poll = setInterval(load, 3000);
 	}
 	onMount(async () => {
+		loadReminders();
 		void fetch('/api/limits').then((r) => r.json()).then((j) => (limits = j)).catch(() => {});
 		await load();
 		// a load still running (the monthly prices take an hour): follow it
@@ -169,12 +171,12 @@
 
 <TopBar title={tx('Настройки', 'Settings')} back={{ href: '/more', label: tx('Ещё', 'More') }} />
 
-<Fold key="settings-push" title={tx('Уведомления', 'Notifications')} summary={tx('сигналы стопа, цели и пересмотра', 'stop, target and review signals')}>
+<Fold key="settings-push" title={tx('Уведомления', 'Notifications')} summary={tx('сигналы стопа, цели и пересмотра', 'stop, target and review signals')} remind="trade.notify">
 	{#snippet aside()}<HelpIcon topicKey="trade.notify" label={tx('уведомления', 'notifications')} />{/snippet}
 	<PushSettings />
 </Fold>
 
-<Fold key="settings-limits" title={tx('Лимиты риска', 'Risk limits')} summary={limits ? tx(`отрасль работы ${limits.industryPct}% · спекуляции ${limits.specPct}%`, `job industry ${limits.industryPct}% · speculation ${limits.specPct}%`) : undefined}>
+<Fold key="settings-limits" title={tx('Лимиты риска', 'Risk limits')} summary={limits ? tx(`отрасль работы ${limits.industryPct}% · спекуляции ${limits.specPct}%`, `job industry ${limits.industryPct}% · speculation ${limits.specPct}%`) : undefined} remind="portfolio.work_risk">
 	{#snippet aside()}<HelpIcon topicKey="portfolio.work_risk" label={tx('лимиты', 'limits')} />{/snippet}
 	{#if limits}
 		<p class="muted small">{limits.employer ? tx(`Работодатель — ${limits.employer}, отрасль — ${limits.industry ?? 'неизвестна'} (задаётся на экране «Риск»).`, `Employer — ${limits.employer}, industry — ${limits.industry ?? 'unknown'} (set on «Risk»).`) : tx('Работодатель не задан — экран «Риск», поле «Работодатель».', 'No employer set — the «Risk» screen, «Employer».')}</p>
@@ -184,6 +186,12 @@
 			<label>{tx('Допустимый убыток по спекуляциям, % портфеля', 'Allowed speculation loss, % of the portfolio')}<input inputmode="decimal" bind:value={limits.specLossPct} onchange={saveLimits} /><HelpIcon topicKey="portfolio.speculation" label={tx('спекуляции', 'speculation')} /></label>
 		</div>
 	{/if}
+</Fold>
+
+<Fold key="settings-reminders" title={tx('Напоминания', 'Reminders')} summary={rem.show ? tx('показываются под заголовками', 'shown under the titles') : tx('скрыты', 'hidden')} open={false}>
+	{#snippet aside()}<HelpIcon topicKey="app.colors" label={tx('справка', 'help')} />{/snippet}
+	<label class="remrow"><input type="checkbox" checked={rem.show} onchange={(e) => setShowReminders(e.currentTarget.checked)} />{tx('Показывать напоминания под заголовками блоков', 'Show the reminders under the blocks\' titles')}</label>
+	<p class="muted small">{tx('Короткая строка из справки блока — вопрос, который стоит задать себе перед решением. Тап по ней открывает справку.', 'A short line from the block\'s help — a question worth asking yourself before a decision. A tap opens the help.')}</p>
 </Fold>
 
 <ProtectionSettings />
@@ -328,6 +336,12 @@
 </Fold>
 
 <style>
+	.remrow {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: var(--fs-s);
+	}
 	.sched {
 		display: flex;
 		flex-direction: column;

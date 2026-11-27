@@ -48,7 +48,7 @@
 
 {#if d}
 	<section class="card">
-		<Fold bare key="stats-discipline" title={tx('Дисциплина', 'Discipline')} summary={d.buys.n ? `${tx('со стопом', 'with a stop')} ${share(d.buys.withStop, d.buys.n)}` : undefined}>
+		<Fold bare key="stats-discipline" title={tx('Дисциплина', 'Discipline')} summary={d.buys.n ? `${tx('со стопом', 'with a stop')} ${share(d.buys.withStop, d.buys.n)}` : undefined} remind="stats.discipline">
 			{#snippet aside()}<HelpIcon topicKey="stats.discipline" label={tx('дисциплина', 'discipline')} />{/snippet}
 			<div class="nums">
 				<div>

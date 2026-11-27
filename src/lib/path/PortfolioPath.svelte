@@ -31,7 +31,7 @@
 </script>
 
 {#if v && v.months.length > 1}
-	<Fold key="portfolio-path" title={tx('Как набиралась прибыль', 'How the profit was made')} open={false}>
+	<Fold key="portfolio-path" title={tx('Как набиралась прибыль', 'How the profit was made')} open={false} remind="stock.periods">
 		{#snippet aside()}<HelpIcon topicKey="stock.periods" label={tx('периоды', 'periods')} />{/snippet}
 		<PeriodsRow periods={v.periods} market={v.market} />
 		<h3>{tx('Мозаика по месяцам', 'Mosaic by month')} <HelpIcon topicKey="stock.monthly" label={tx('мозаика', 'mosaic')} /></h3>

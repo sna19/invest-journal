@@ -1,5 +1,11 @@
 # Excess over the benchmark
 
+**What it is.** How much the security beat its benchmark over the hypothesis' term — the main measure of its result.
+
+**The idea.** A security rising with the market says nothing about the source: the advice's value is how much it beats the index.
+
+**How to use it.**
+
 **Excess = the security's return − the benchmark's return** over the hypothesis horizon. The benchmark is the S&P 500 for US securities, TA-125 for TASE ones. A hypothesis **came true** if the excess is above zero.
 
 **Why not against zero.** If the whole market rose 10% and the security 6%, the «buy» advice did not help: a plain index fund would have given more. And the other way round, −3% while the market fell 8% is a good result. Comparing with the benchmark separates the quality of the idea from the general market move.
@@ -13,3 +19,9 @@
 **Example.** Entry 100, exit 112: the security +12%. S&P 500 over the same days +5%. Excess ▲ +7%, came true.
 
 While a hypothesis is open, the current excess at the last price is shown. After closing the numbers are fixed in the hypothesis and never change.
+
+**Reminder.** Did the security beat the market?
+
+**Trap.** Calling a hypothesis a success because the security rose when the market rose more.
+
+<!-- T-019: agent's draft — idea, remind, trap, what -->

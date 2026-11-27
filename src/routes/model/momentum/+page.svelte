@@ -138,7 +138,7 @@
 {:else if !v.ready}
 	<section class="card"><p class="muted">{tx('Пока нет месячных цен SPY и BIL — они грузятся сейчас.', 'No monthly prices of SPY and BIL yet — loading now.')}</p></section>
 {:else}
-	<Fold key="mom-now" title={tx('Сигнал сейчас', 'The signal now')}>
+	<Fold key="mom-now" title={tx('Сигнал сейчас', 'The signal now')} remind="model.momentum.variants">
 		{#snippet aside()}<HelpIcon topicKey="model.momentum.variants" label={tx('варианты', 'variants')} />{/snippet}
 		<p class="muted small">{tx(`По ценам на конец ${v.lastMonth}; на ${v.current?.[0]?.month}`, `By the closes of ${v.lastMonth}; for ${v.current?.[0]?.month}`)}</p>
 		{#each v.current ?? [] as c (c.variant)}
@@ -168,7 +168,7 @@
 		</details>
 	</Fold>
 
-	<Fold key="mom-table" title={tx('Результат', 'Result')}>
+	<Fold key="mom-table" title={tx('Результат', 'Result')} remind="model.momentum.bases">
 		{#snippet aside()}<HelpIcon topicKey="model.momentum.bases" label={tx('базы', 'bases')} />{/snippet}
 		<p class="muted small">{tx('А — относительный, Б — двойной; Поровну — все страны равными долями; Лидеры — 4 лучшие прошлого года.', 'A — relative, B — dual; Equal — all countries in equal parts; Leaders — last year\'s 4 best.')}</p>
 		<div class="seg" role="radiogroup" aria-label={tx('Период', 'Period')}>
@@ -191,7 +191,7 @@
 		</p>
 	</Fold>
 
-	<Fold key="mom-chart" title={tx('Кривые', 'Curves')}>
+	<Fold key="mom-chart" remind="model.momentum.bases" title={tx('Кривые', 'Curves')}>
 		{#if lines.length}<LineChart {lines} percent height={240} />{/if}
 		<div class="toggles">
 			{#each KEYS as k (k)}
@@ -200,7 +200,7 @@
 		</div>
 	</Fold>
 
-	<Fold key="mom-check" title={tx('Проверки', 'Checks')}>
+	<Fold key="mom-check" remind="model.momentum.walk" title={tx('Проверки', 'Checks')}>
 		<h3>{tx('Без подглядывания', 'Without peeking')} <HelpIcon topicKey="model.momentum.walk" label={tx('без подглядывания', 'without peeking')} /></h3>
 		{#each v.walk ?? [] as w (w.variant)}
 			<p class="small">{name(w.variant)}: {tx(`лучшие на ранних годах L ${w.lookback}, N ${w.top} → на проверочных ${pct(w.cagr, true)} в год, Sharpe ${w.sharpe ?? '—'}`, `best on the early years L ${w.lookback}, N ${w.top} → on the check years ${pct(w.cagr, true)} a year, Sharpe ${w.sharpe ?? '—'}`)}</p>
@@ -213,7 +213,7 @@
 {/if}
 
 {#if params}
-	<Fold key="mom-params" title={tx('Параметры', 'Parameters')} summary={`L ${params.lookback} · N ${params.top} · ${params.rebalance === 'month' ? tx('раз в месяц', 'monthly') : tx('раз в квартал', 'quarterly')}${changed ? tx(' · не сохранены', ' · not saved') : ''}`}>
+	<Fold key="mom-params" remind="model.momentum.guide" title={tx('Параметры', 'Parameters')} summary={`L ${params.lookback} · N ${params.top} · ${params.rebalance === 'month' ? tx('раз в месяц', 'monthly') : tx('раз в квартал', 'quarterly')}${changed ? tx(' · не сохранены', ' · not saved') : ''}`}>
 		{#snippet aside()}{#if busy}<span class="muted small">{tx('считаю…', 'computing…')}</span>{:else if v}<span class="muted small">{v.ms} ms</span>{/if}{/snippet}
 		{#each STEPS as f (f.key)}
 			<div class="prow">
@@ -251,7 +251,7 @@
 		<p class="muted small">{tx('Без сохранения — только посмотреть. Сохранённые параметры записывают гипотезы и ведут виртуальные портфели А и Б.', 'Unsaved — a look only. The saved parameters record the hypotheses and run the virtual portfolios A and B.')}</p>
 	</Fold>
 
-	<Fold key="mom-universe" title={tx('Страны', 'Countries')} open={false} summary={tx(`${params.universe.length} фондов`, `${params.universe.length} funds`)}>
+	<Fold key="mom-universe" title={tx('Страны', 'Countries')} open={false} summary={tx(`${params.universe.length} фондов`, `${params.universe.length} funds`)} remind="model.momentum.param.universe">
 		{#snippet aside()}<HelpIcon topicKey="model.momentum.param.universe" label={tx('страны', 'countries')} />{/snippet}
 		<div class="chips">
 			{#each params.universe as s (s)}

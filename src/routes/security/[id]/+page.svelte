@@ -457,7 +457,7 @@
 
 {#if c}
 	{#if model}
-		<Fold key="sec-model" title={`${tx('Квартальная модель', 'Quarterly model')} · ${tx(...VARIANT_NAME[model.variant])} · Q${model.quarter} ${model.forYear}`} summary={model.rank ? tx(`Кандидат №${model.rank}`, `Candidate №${model.rank}`) : undefined}>
+		<Fold key="sec-model" title={`${tx('Квартальная модель', 'Quarterly model')} · ${tx(...VARIANT_NAME[model.variant])} · Q${model.quarter} ${model.forYear}`} summary={model.rank ? tx(`Кандидат №${model.rank}`, `Candidate №${model.rank}`) : undefined} remind="model.quarterly">
 			{#snippet aside()}<HelpIcon topicKey="model.quarterly" label={tx('как считается', 'how it is computed')} />{/snippet}
 			<div class="model">
 			<p class="muted small">
@@ -528,21 +528,21 @@
 	{/if}
 
 	<!-- what the company or the fund does (owner 26.11.2026) -->
-	<Fold key="sec-about" title={c.security.type === 'etf' ? tx('О фонде', 'About the fund') : tx('О компании', 'About the company')}>
+	<Fold key="sec-about" title={c.security.type === 'etf' ? tx('О фонде', 'About the fund') : tx('О компании', 'About the company')} remind="security.about">
 		{#snippet aside()}<HelpIcon topicKey="security.about" label={tx('о компании', 'about the company')} />{/snippet}
 		{#key page.params.id}<About securityId={Number(page.params.id)} />{/key}
 	</Fold>
 
 	{#if c.security.type === 'etf'}
 		<!-- T-016: what the fund is made of — sectors, countries, industries, top holdings; editable -->
-		<Fold key="sec-fund" title={tx('Состав фонда', 'Fund composition')} open={false}>
+		<Fold key="sec-fund" title={tx('Состав фонда', 'Fund composition')} open={false} remind="portfolio.exposure">
 			{#snippet aside()}<HelpIcon topicKey="portfolio.exposure" label={tx('состав фонда', 'fund composition')} />{/snippet}
 			{#key page.params.id}<FundComposition securityId={Number(page.params.id)} />{/key}
 		</Fold>
 	{/if}
 	<PathBlock securityId={Number(page.params.id)} positionId={myIds[0] ?? null} onmonth={showMonth} />
 	<div id="sec-chart-anchor"></div>
-	<Fold key="sec-chart" title={tx('График', 'Chart')} summary={PERIODS.find((p) => p[0] === period)?.[1]}>
+	<Fold key="sec-chart" remind="security.chart" title={tx('График', 'Chart')} summary={PERIODS.find((p) => p[0] === period)?.[1]}>
 	<div class="periods" role="radiogroup" aria-label={tx('Период', 'Period')}>
 		{#each PERIODS as [k, ru, en] (k)}
 			<button role="radio" aria-checked={period === k} class:on={period === k} onclick={() => setPeriod(k)}>{tx(ru, en)}</button>
@@ -578,13 +578,13 @@
 	</Fold>
 
 	<!-- T-032 Д-20: the history — hypotheses, observations, decisions and conclusions on one line with the price -->
-	<Fold key="sec-history" title={tx('История', 'History')} open={false}>
+	<Fold key="sec-history" title={tx('История', 'History')} open={false} remind="decision.history">
 		{#snippet aside()}<HelpIcon topicKey="decision.history" label={tx('история', 'history')} />{/snippet}
 		{#key page.params.id}<History securityId={Number(page.params.id)} />{/key}
 	</Fold>
 
 	<!-- T-032 Д-08: the diary of the security; an ETF or an index sees its shares' entries too -->
-	<Fold key="sec-journal" title={tx('Дневник', 'Diary')}>
+	<Fold key="sec-journal" title={tx('Дневник', 'Diary')} remind="journal.inherit">
 		{#snippet aside()}<HelpIcon topicKey="journal.inherit" label={tx('дневник бумаги', 'the security\'s diary')} />{/snippet}
 		{#key page.params.id}
 			<Feed
@@ -596,7 +596,7 @@
 	</Fold>
 
 	{#if statsLoaded}
-		<Fold key="sec-stats" title={tx('Показатели', 'Ratios')} summary={stats ? [stats.pe !== null && stats.pe !== undefined ? `P/E ${Number(stats.pe).toFixed(1)}` : '', stats.ps ? `P/S ${Number(stats.ps).toFixed(1)}` : '', stats.beta !== null && stats.beta !== undefined ? `${tx('бета', 'beta')} ${Number(stats.beta).toFixed(2)}` : ''].filter(Boolean).join(' · ') : tx('нет данных', 'no data')}>
+		<Fold key="sec-stats" title={tx('Показатели', 'Ratios')} summary={stats ? [stats.pe !== null && stats.pe !== undefined ? `P/E ${Number(stats.pe).toFixed(1)}` : '', stats.ps ? `P/S ${Number(stats.ps).toFixed(1)}` : '', stats.beta !== null && stats.beta !== undefined ? `${tx('бета', 'beta')} ${Number(stats.beta).toFixed(2)}` : ''].filter(Boolean).join(' · ') : tx('нет данных', 'no data')} remind="security.stats">
 			{#snippet aside()}<HelpIcon topicKey="security.stats" label={tx('показатели', 'ratios')} />{/snippet}
 			{#if stats}
 				<StatsGrid s={stats} />
@@ -608,7 +608,7 @@
 	{#if news}
 		{@const at = news.attribution}
 		<div id="news"></div>
-		<Fold key="sec-news" title={tx('Почему двигается', 'Why it moves')} summary={at ? tx(`${pp(at.total)}: рынок ${pp(at.market)} · сектор ${pp(at.sector)} · сама ${pp(at.own)}`, `${pp(at.total)}: market ${pp(at.market)} · sector ${pp(at.sector)} · itself ${pp(at.own)}`) : undefined}>
+		<Fold key="sec-news" title={tx('Почему двигается', 'Why it moves')} summary={at ? tx(`${pp(at.total)}: рынок ${pp(at.market)} · сектор ${pp(at.sector)} · сама ${pp(at.own)}`, `${pp(at.total)}: market ${pp(at.market)} · sector ${pp(at.sector)} · itself ${pp(at.own)}`) : undefined} remind="stock.news">
 			{#snippet aside()}<HelpIcon topicKey="stock.news" label={tx('новости', 'news')} />{/snippet}
 			{#if at}
 				{@const parts = [
@@ -679,7 +679,7 @@
 	{/if}
 
 	{#if cmp && cmp.refs.length}
-		<Fold key="sec-compare" title={tx('С чем сравнить', 'Compare with')} summary={cmp.refs.map((r) => r.symbol).join(' · ')}>
+		<Fold key="sec-compare" remind="security.compare" title={tx('С чем сравнить', 'Compare with')} summary={cmp.refs.map((r) => r.symbol).join(' · ')}>
 			{#snippet aside()}<HelpIcon topicKey="security.compare" label={tx('сравнение', 'comparison')} />{/snippet}
 			<div class="cmp">
 			<div class="scroll"><table>
@@ -722,7 +722,7 @@
 		{@const ups = lev.filter((l) => l.dir === 'long')}
 		{@const downs = lev.filter((l) => l.dir === 'short')}
 		{@const list = levDir === 'long' ? ups : downs}
-		<Fold key="sec-lev" title={tx('ETF с плечом и на падение', 'Leveraged and inverse ETFs')} summary={tx(`${ups.length} на рост · ${downs.length} на падение`, `${ups.length} up · ${downs.length} down`)}>
+		<Fold key="sec-lev" title={tx('ETF с плечом и на падение', 'Leveraged and inverse ETFs')} summary={tx(`${ups.length} на рост · ${downs.length} на падение`, `${ups.length} up · ${downs.length} down`)} remind="security.leveraged">
 			{#snippet aside()}<HelpIcon topicKey="security.leveraged" label={tx('плечо', 'leverage')} />{/snippet}
 			<div class="levseg" role="radiogroup" aria-label={tx('Направление', 'Direction')}>
 				<button role="radio" aria-checked={levDir === 'long'} class:on={levDir === 'long'} onclick={() => setLevDir('long')}>▲ {tx('На рост', 'Up')} · {ups.length}</button>
@@ -769,7 +769,7 @@
 	{#if deciding}<DecisionForm securityId={c.security.id} symbol={c.security.symbol} type={deciding} onclose={() => (deciding = null)} />{/if}
 
 	{#if c.hypotheses.length}
-		<Fold key="sec-hyps" title={tx('Гипотезы', 'Hypotheses')} summary={String(c.hypotheses.length)}>
+		<Fold key="sec-hyps" remind="hypothesis.list" title={tx('Гипотезы', 'Hypotheses')} summary={String(c.hypotheses.length)}>
 		<ul class="list">
 			{#each allHyps ? [...c.hypotheses].reverse() : [...c.hypotheses].reverse().slice(0, 10) as h (h.id)}
 				<li>
@@ -786,7 +786,7 @@
 		</Fold>
 	{/if}
 	{#if pastPositions.length}
-		<Fold key="sec-positions" title={tx('Закрытые позиции', 'Closed positions')} summary={pastPositions.map((p) => p.portfolio).join(' · ')}>
+		<Fold key="sec-positions" remind="security.position" title={tx('Закрытые позиции', 'Closed positions')} summary={pastPositions.map((p) => p.portfolio).join(' · ')}>
 		<ul class="list">
 			{#each pastPositions as p (p.id)}
 				<li>

@@ -275,7 +275,7 @@
 		{/if}
 	</p>
 
-	<Fold key="risk-map" title={tx('Карта связей', 'Map of ties')} summary={tx(`${v.links.length} сильных связей`, `${v.links.length} strong ties`)}>
+	<Fold key="risk-map" title={tx('Карта связей', 'Map of ties')} summary={tx(`${v.links.length} сильных связей`, `${v.links.length} strong ties`)} remind="portfolio.risk_map">
 		{#snippet aside()}<HelpIcon topicKey="portfolio.risk_map" label={tx('карта риска', 'risk map')} />{/snippet}
 		<svg class="map" viewBox="0 0 100 100" role="img" aria-label={tx('Карта связей позиций', 'Map of the positions\' ties')}>
 			{#each v.links as [a, b, c] (a + '-' + b)}
@@ -298,7 +298,7 @@
 		{/if}
 	</Fold>
 
-	<Fold key="risk-rows" title={tx('Деньги против риска', 'Money against risk')} summary={tx('доля денег и доля риска каждой позиции', 'each position\'s share of money and of risk')}>
+	<Fold key="risk-rows" remind="portfolio.risk_map" title={tx('Деньги против риска', 'Money against risk')} summary={tx('доля денег и доля риска каждой позиции', 'each position\'s share of money and of risk')}>
 		<ul class="rows">
 			{#each v.rows as r (r.id)}
 				<li>
@@ -314,7 +314,7 @@
 		<p class="muted small"><span class="key money"></span> {tx('доля денег', 'share of money')} · <span class="key risk"></span> {tx('доля риска. Выше — позиции, где риска заметно больше, чем денег.', 'share of risk. On top — where the risk is clearly larger than the money.')}</p>
 	</Fold>
 
-	<Fold key="risk-whatif" title={tx('Что если?', 'What if?')} summary={adds.length ? adds.map((a) => a.symbol).join(' + ') : tx('выберите 1–3 бумаги', 'pick 1–3 securities')}>
+	<Fold key="risk-whatif" remind="portfolio.whatif" title={tx('Что если?', 'What if?')} summary={adds.length ? adds.map((a) => a.symbol).join(' + ') : tx('выберите 1–3 бумаги', 'pick 1–3 securities')}>
 		{#snippet aside()}<HelpIcon topicKey="portfolio.whatif" label={tx('что если', 'what if')} />{/snippet}
 		{#key adds.length}<TickerSearch noIndex label={tx('Добавить бумагу', 'Add a security')} onselect={(s: Security) => addPick({ id: s.id, symbol: s.symbol })} />{/key}
 		{#each quick as g (g.group)}
@@ -384,7 +384,7 @@
 		{/if}
 	</Fold>
 
-	<Fold key="risk-details" title={tx('Подробнее', 'More')} open={false} summary={tx('корреляции, их рост в падения, минимальный риск', 'correlations, their rise in falls, minimal risk')}>
+	<Fold key="risk-details" remind="portfolio.risk_map" title={tx('Подробнее', 'More')} open={false} summary={tx('корреляции, их рост в падения, минимальный риск', 'correlations, their rise in falls, minimal risk')}>
 		<p class="small">{tx('Корреляции позиций', 'Correlations of the positions')}:</p>
 		<div class="scroll">
 			<table class="heat">

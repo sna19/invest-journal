@@ -126,7 +126,7 @@
 			<li class="card" data-key={key}>
 				{#if key === 'calibration'}
 					{@const c = data.calibration}
-					<Fold bare key="stats-calibration" title={tx('Калибровка', 'Calibration')} summary={c.n ? tx(`закрыто с уверенностью: ${c.n}`, `closed with a confidence: ${c.n}`) : undefined}>
+					<Fold bare key="stats-calibration" remind="stats.calibration" title={tx('Калибровка', 'Calibration')} summary={c.n ? tx(`закрыто с уверенностью: ${c.n}`, `closed with a confidence: ${c.n}`) : undefined}>
 						{#snippet aside()}
 							<HelpIcon topicKey="stats.calibration" label={tx('калибровка', 'calibration')} />
 							<button class="handle" data-handle aria-label={tx('Калибровка: перетащить', 'Calibration: drag')}><GripVertical size={18} /></button>
@@ -180,7 +180,7 @@
 					</Fold>
 				{:else if key === 'own' || key === 'mode'}
 					{@const sides = key === 'own' ? data.own : data.mode}
-					<Fold bare key="stats-{key}" title={key === 'own' ? tx('Свои идеи и внешние источники', 'Own ideas and outside sources') : tx('Симуляция и реальные деньги', 'Simulation and real money')}>
+					<Fold bare key="stats-{key}" remind={key === 'own' ? 'stats.own' : 'stats.mode'} title={key === 'own' ? tx('Свои идеи и внешние источники', 'Own ideas and outside sources') : tx('Симуляция и реальные деньги', 'Simulation and real money')}>
 						{#snippet aside()}
 							<HelpIcon topicKey={key === 'own' ? 'stats.own' : 'stats.mode'} label={key === 'own' ? tx('свои идеи', 'own ideas') : tx('режимы', 'modes')} />
 							<button class="handle" data-handle aria-label={tx('Блок: перетащить', 'Block: drag')}><GripVertical size={18} /></button>
@@ -196,7 +196,7 @@
 					{/if}
 					</Fold>
 				{:else if key === 'tags'}
-					<Fold bare key="stats-tags" title={tx('По тегам', 'By tags')} summary={data.tags.shown.map((t) => t.label).join(' · ') || undefined}>
+					<Fold bare key="stats-tags" remind="stats.tags" title={tx('По тегам', 'By tags')} summary={data.tags.shown.map((t) => t.label).join(' · ') || undefined}>
 						{#snippet aside()}
 							<HelpIcon topicKey="stats.tags" label={tx('теги', 'tags')} />
 							<button class="handle" data-handle aria-label={tx('По тегам: перетащить', 'By tags: drag')}><GripVertical size={18} /></button>

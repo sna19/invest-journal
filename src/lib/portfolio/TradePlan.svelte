@@ -149,6 +149,7 @@
 
 	<label class="check"><input type="checkbox" bind:checked={plan.noStop} /> {tx('Без стопа', 'No stop')}</label>
 	{#if plan.noStop}
+		<p class="rule">{tx('Правило 1: нет условия выхода — нет сделки. Без стопа — только осознанно и с причиной.', 'Rule 1: no exit condition — no trade. No stop only on purpose and with a reason.')} <HelpIcon topicKey="trade.rules" label={tx('мои правила', 'my rules')} /></p>
 		<label>
 			<span>{tx('Почему без стопа', 'Why no stop')}</span>
 			<input bind:value={plan.noStopReason} placeholder={tx('позиция получит метку «без стопа»', 'the position gets a «no stop» mark')} />
@@ -172,6 +173,17 @@
 </div>
 
 <style>
+	.rule {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		margin: 0;
+		padding: 6px 10px;
+		border-radius: var(--r2);
+		background: var(--warn-bg);
+		color: var(--warn-text);
+		font-size: var(--fs-xs);
+	}
 	.plan {
 		display: flex;
 		flex-direction: column;

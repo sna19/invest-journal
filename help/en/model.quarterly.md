@@ -1,6 +1,10 @@
 # How candidates are computed
 
-For the chosen quarter the model takes every share of the base and looks at how its price changed **inside that quarter** in each of the last 10 years: from the close of the last month before the quarter to the close of the quarter's last month (for the third quarter — from 30 June to 30 September). Prices are monthly, adjusted for splits and dividends. The growth accumulated over 10 years plays no role; in other quarters the share may fall.
+**What it is.** For the chosen quarter the model takes every share of the base and looks at how its price changed **inside that quarter** in each of the last 10 years: from the close of the last month before the quarter to the close of the quarter's last month (for the third quarter — from 30 June to 30 September). Prices are monthly, adjusted for splits and dividends. The growth accumulated over 10 years plays no role; in other quarters the share may fall.
+
+**The idea.** The model looks at past quarters of the same security and looks for repetition, not a forecast.
+
+**How to use it.**
 
 **Universe.** Only shares (no ETFs and no funds the exchange labels as shares: exchange-traded products and closed-end funds) with a full 10-year history, an average daily turnover over the last year not below the threshold and a price not below the threshold. Otherwise penny shares and data errors clutter the candidates.
 
@@ -11,3 +15,9 @@ For the chosen quarter the model takes every share of the base and looks at how 
 The data update once a month, at night.
 
 The screen remembers on this device the variant, the quarter and the parameters you tried but did not save: after a security's card or another tab everything is in place. «Back to the saved» drops the trial.
+
+**Reminder.** Will it repeat this year?
+
+**Trap.** Taking past repetition for a guarantee.
+
+<!-- T-019: agent's draft — idea, remind, trap -->

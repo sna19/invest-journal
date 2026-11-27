@@ -620,7 +620,7 @@
 	{#each STAGES as st (st)}
 		{@const rows = by(st)}
 		{#if rows.length}
-			<Fold key="portfolio-stage-{st}" title={`${STAGE_LABEL[st]} · ${rows.length}`} open={st !== 'closed'} summary={rows.map((r) => r.symbol).join(' · ')}>
+			<Fold key="portfolio-stage-{st}" remind="portfolio.stages" title={`${STAGE_LABEL[st]} · ${rows.length}`} open={st !== 'closed'} summary={rows.map((r) => r.symbol).join(' · ')}>
 				{#snippet aside()}{#if st === 'holding'}<HelpIcon topicKey="portfolio.stages" label={tx('этапы позиции', 'position stages')} />{/if}{/snippet}
 				<ul class="list">
 					{#each rows as p (p.id)}
@@ -660,7 +660,7 @@
 	{/each}
 
 	{#if chart && chart[0]?.points.length > 1}
-		<Fold key="portfolio-chart" title={tx('Доходность', 'Return')}>
+		<Fold key="portfolio-chart" title={tx('Доходность', 'Return')} remind="portfolio.chart">
 			{#snippet aside()}<HelpIcon topicKey="portfolio.chart" label={tx('график доходности', 'return chart')} />{/snippet}
 			<LineChart {lines} percent height={220} />
 			<div class="toggles">
@@ -692,13 +692,13 @@
 	</div>
 	<!-- T-032 Д-08: the portfolio's diary, with its securities' entries («через AAPL») -->
 	{#if v && !v.portfolio.auto_source_id}<PortfolioPath portfolioId={v.portfolio.id} version={loads} />{/if}
-	<Fold key="portfolio-journal" title={tx('Дневник', 'Diary')} open={false}>
+	<Fold key="portfolio-journal" title={tx('Дневник', 'Diary')} open={false} remind="journal.inherit">
 		{#snippet aside()}<HelpIcon topicKey="journal.inherit" label={tx('дневник портфеля', 'the portfolio\'s diary')} />{/snippet}
 		{#key v.portfolio.id}<Feed scope={`portfolio:${v.portfolio.id}`} links={[{ type: 'portfolio', id: String(v.portfolio.id), label: v.portfolio.name }]} />{/key}
 	</Fold>
 
 	{#if v.cash.length}
-		<Fold key="portfolio-cash" title={`${tx('Деньги', 'Cash')} · ${v.cash.filter((c) => !c.cancelledAt && c.kind !== 'reverse').length}`} open={false}>
+		<Fold key="portfolio-cash" remind="portfolio.fx" title={`${tx('Деньги', 'Cash')} · ${v.cash.filter((c) => !c.cancelledAt && c.kind !== 'reverse').length}`} open={false}>
 			<ul class="list cash">
 				{#each v.cash as c (c.id)}
 					<li class:off={c.cancelledAt || c.reversedBy || c.kind === 'reverse'}>

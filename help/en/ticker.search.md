@@ -1,6 +1,10 @@
 # Ticker search
 
-A security is chosen only from the list — so no typos and no securities without prices get into the journal.
+**What it is.** A security is chosen only from the list — so no typos and no securities without prices get into the journal.
+
+**The idea.** Choosing only from the list rules out typos and wrong securities — the hypothesis is checked by the price you meant.
+
+**How to use it.**
 
 **How to search.** Start typing the symbol (`AMAT`) or the name — in English (`Applied`) or in Hebrew (`לאומי`). Search starts from the second character. On top — an exact symbol match, then symbols that start with it, then names.
 
@@ -13,3 +17,9 @@ A security is chosen only from the list — so no typos and no securities withou
 **Two exchanges.** Some companies trade both in the US and in Tel Aviv — for example, TEVA. These are two different rows: choose the one the article is about. The exchange decides the currency and the benchmark: S&P 500 for the US, TA-125 for TASE.
 
 **What is not in the base.** Only stocks and ETFs of NASDAQ, NYSE, NYSE American, NYSE Arca, Cboe BZX and TASE. No bonds, mutual funds, warrants or rights. A security that has just listed appears after the next list update (once a week or with the button on the «Tickers» screen).
+
+**Reminder.** Is it the right security and the right exchange?
+
+**Trap.** Choosing a security with the same ticker on another exchange.
+
+<!-- T-019: agent's draft — idea, remind, trap -->

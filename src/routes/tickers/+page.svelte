@@ -95,7 +95,7 @@
 {#if !stats}
 	<div class="skeleton tall"></div>
 {:else}
-	<Fold key="tickers-base" title={tx('База бумаг', 'Securities base')} summary={`${fmt.format(total)} ${tx('акций и ETF', 'stocks and ETFs')}`}>
+	<Fold key="tickers-base" remind="ticker.db" title={tx('База бумаг', 'Securities base')} summary={`${fmt.format(total)} ${tx('акций и ETF', 'stocks and ETFs')}`}>
 		<p class="big">{fmt.format(total)} <span>{tx('акций и ETF', 'stocks and ETFs')}</span></p>
 		<p class="muted">{tx('Обновлено', 'Updated')}: {when(stats.updatedAt)}</p>
 		{#each groups as g (g.title)}
@@ -117,7 +117,7 @@
 	</Fold>
 
 	{#if stats.runs.length}
-		<Fold key="tickers-runs" title={tx('Последняя загрузка', 'Last load')} summary={when(stats.updatedAt)}>
+		<Fold key="tickers-runs" remind="ticker.db" title={tx('Последняя загрузка', 'Last load')} summary={when(stats.updatedAt)}>
 			<div class="runs">
 			{#each stats.runs as r (r.provider)}
 				<div class="run">

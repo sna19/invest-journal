@@ -64,9 +64,9 @@
 
 {#if r}
 	{#if r.reviews?.rows.length}
-		<Fold key="portfolio-review" title={tx('Разбор позиций', 'Position review')} summary={r.reviews.lastFull ? `${tx('полный', 'full')} ${d(r.reviews.lastFull)}` : tx('ещё не проводился', 'not done yet')} open={stale}>
+		<Fold key="portfolio-review" title={tx('Разбор позиций', 'Position review')} summary={r.reviews.lastFull ? `${tx('полный', 'full')} ${d(r.reviews.lastFull)}` : tx('ещё не проводился', 'not done yet')} open={stale} remind="portfolio.review">
 			{#snippet aside()}<HelpIcon topicKey="portfolio.review" label={tx('разбор позиций', 'position review')} />{/snippet}
-			{#if stale}<p class="warn small">{tx('Пора пройти разбор: по каждой позиции — тезис, «купил бы сегодня?» и условие выхода. Раз в квартал.', 'Time for the review: for each position — the thesis, «would I buy it today?» and the exit condition. Once a quarter.')}</p>{/if}
+			{#if stale}<p class="warn small">{tx('Пора пройти разбор: по каждой позиции — тезис, «купил бы сегодня?» и условие выхода. Раз в квартал.', 'Time for the review: for each position — the thesis, «would I buy it today?» and the exit condition. Once a quarter.')} <HelpIcon topicKey="portfolio.review" label={tx('разбор позиций', 'position review')} /></p>{/if}
 			<ul class="rows">
 				{#each r.reviews.rows as x (x.positionId)}
 					<li>
@@ -104,7 +104,7 @@
 
 	{#if r.work?.industry}
 		{@const over = (r.work.sharePct ?? 0) > r.work.limitPct}
-		<Fold key="portfolio-workrisk" title={tx('Риск работы', 'Job risk')} summary={`${r.work.industry} ${r.work.sharePct}% / ${r.work.limitPct}%`} open={over}>
+		<Fold key="portfolio-workrisk" title={tx('Риск работы', 'Job risk')} summary={`${r.work.industry} ${r.work.sharePct}% / ${r.work.limitPct}%`} open={over} remind="portfolio.work_risk">
 			{#snippet aside()}<HelpIcon topicKey="portfolio.work_risk" label={tx('риск работы', 'job risk')} />{/snippet}
 			<p>{tx('Отрасль работы', 'The job\'s industry')} ({r.work.employer}): <b>{r.work.industry}</b> — <b class:down={over}>{r.work.sharePct}%</b> {tx('портфеля, лимит', 'of the portfolio, limit')} {r.work.limitPct}%</p>
 			<div class="meter"><span style:width="{Math.min(100, ((r.work.sharePct ?? 0) / Math.max(r.work.limitPct * 1.5, r.work.sharePct ?? 0)) * 100)}%" class:over></span><i style:left="{(r.work.limitPct / Math.max(r.work.limitPct * 1.5, r.work.sharePct ?? 0)) * 100}%"></i></div>
@@ -114,7 +114,7 @@
 		</Fold>
 	{/if}
 
-	<Fold key="portfolio-spec" title={tx('Спекуляции', 'Speculation')} summary={`${r.speculation.sharePct ?? 0}% / ${r.limits.specPct}%`} open={(r.speculation.sharePct ?? 0) > r.limits.specPct}>
+	<Fold key="portfolio-spec" remind="portfolio.speculation" title={tx('Спекуляции', 'Speculation')} summary={`${r.speculation.sharePct ?? 0}% / ${r.limits.specPct}%`} open={(r.speculation.sharePct ?? 0) > r.limits.specPct}>
 		{#snippet aside()}<HelpIcon topicKey="portfolio.speculation" label={tx('спекуляции', 'speculation')} />{/snippet}
 		{#if r.speculation.positions.length}
 			<p>{tx('Доля', 'Share')} <b class:down={(r.speculation.sharePct ?? 0) > r.limits.specPct}>{r.speculation.sharePct}%</b> {tx('при бюджете', 'of a budget of')} {r.limits.specPct}% · {tx('можно потерять', 'may lose')} <b class:down={(r.speculation.lossPct ?? 0) > r.limits.specLossPct}>{money(r.speculation.loss, currency)}</b> ({r.speculation.lossPct}% {tx('при допустимых', 'of the allowed')} {r.limits.specLossPct}%)</p>
@@ -126,7 +126,7 @@
 
 	{#if r.counterfactual?.rows.length}
 		{@const c = r.counterfactual}
-		<Fold key="portfolio-counter" title={tx('А если бы в индекс', 'What if into the index')} summary={c.rows.map((x) => `${x.index} ${x.diff >= 0 ? '+' : ''}${money(x.diff, currency)}`).join(' · ')} open={false}>
+		<Fold key="portfolio-counter" remind="portfolio.counterfactual" title={tx('А если бы в индекс', 'What if into the index')} summary={c.rows.map((x) => `${x.index} ${x.diff >= 0 ? '+' : ''}${money(x.diff, currency)}`).join(' · ')} open={false}>
 			{#snippet aside()}<HelpIcon topicKey="portfolio.counterfactual" label={tx('а если бы в индекс', 'what if into the index')} />{/snippet}
 			{#each c.rows as x (x.index)}
 				<p>{tx('Бумаги сейчас', 'The securities now')} <b>{money(x.held, currency)}</b> · {tx('те же деньги в', 'the same money in')} {x.index}: <b>{money(x.mirror, currency)}</b> → <b class:up={x.diff > 0} class:down={x.diff < 0}>{x.diff >= 0 ? '+' : ''}{money(x.diff, currency)}</b> ({pct(x.pp)} {tx('п.п. к сумме покупок', 'pp of the sum bought')})</p>
@@ -137,7 +137,7 @@
 
 	{#if r.disposition}
 		{@const x = r.disposition}
-		<Fold key="portfolio-disposition" title={tx('Эффект диспозиции', 'Disposition effect')} summary={x.concentration ? tx(`${x.concentration.n} поз. — ${x.concentration.pct}% убытка`, `${x.concentration.n} pos. — ${x.concentration.pct}% of the loss`) : undefined} open={false}>
+		<Fold key="portfolio-disposition" title={tx('Эффект диспозиции', 'Disposition effect')} summary={x.concentration ? tx(`${x.concentration.n} поз. — ${x.concentration.pct}% убытка`, `${x.concentration.n} pos. — ${x.concentration.pct}% of the loss`) : undefined} open={false} remind="portfolio.disposition">
 			{#snippet aside()}<HelpIcon topicKey="portfolio.disposition" label={tx('эффект диспозиции', 'disposition effect')} />{/snippet}
 			<p>{tx('Реализованная прибыль', 'Profit taken')} <b class="up">{money(x.realizedGain, currency, true)}</b> · {tx('висящий убыток', 'loss left open')} <b class="down">{money(x.openLoss, currency, true)}</b></p>
 			<p class="small">{tx('Держал', 'Held')}: {tx('прибыльные проданные', 'winners sold')} {x.soldWinnersDays ?? '—'} {tx('дн.', 'd')} · {tx('убыточные проданные', 'losers sold')} {x.soldLosersDays ?? '—'} · {tx('открытые в плюсе', 'open winners')} {x.heldWinnersDays ?? '—'} · {tx('открытые в минусе', 'open losers')} {x.heldLosersDays ?? '—'}</p>
@@ -146,7 +146,7 @@
 	{/if}
 
 	{#if year?.items.length}
-		<Fold key="portfolio-year" title={`${tx('Итог года', 'The year')} ${year.year}`} summary={year.items.map((y) => `${y.portfolio} ${money(y.net, y.currency, true)}`).join(' · ')} open={false}>
+		<Fold key="portfolio-year" remind="portfolio.year" title={`${tx('Итог года', 'The year')} ${year.year}`} summary={year.items.map((y) => `${y.portfolio} ${money(y.net, y.currency, true)}`).join(' · ')} open={false}>
 			{#snippet aside()}<HelpIcon topicKey="portfolio.year" label={tx('итог года', 'the year')} />{/snippet}
 			<table>
 				<thead><tr><th></th><th>{tx('продаж', 'sales')}</th><th>{tx('прибыль', 'gain')}</th><th>{tx('убыток', 'loss')}</th><th>{tx('итого', 'net')}</th></tr></thead>

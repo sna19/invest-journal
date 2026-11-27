@@ -63,7 +63,7 @@
 	</p>
 	{#if r.outcomes.some((o) => o.n)}<p class="muted small">{tx('Сбылось', 'Came true')}: {r.outcomes.filter((o) => o.n).map((o) => `${tx(...OUT[o.outcome])} ${o.n}`).join(' · ')}</p>{/if}
 
-	<Fold key="review-basis" title={tx('Интуиция против остальных', 'Intuition against the rest')}>
+	<Fold key="review-basis" title={tx('Интуиция против остальных', 'Intuition against the rest')} remind="decision.basis">
 		{#snippet aside()}<HelpIcon topicKey="decision.basis" label={tx('основание', 'basis')} />{/snippet}
 		{#if r.byBasis.length}
 			<table>
@@ -82,7 +82,7 @@
 	</Fold>
 
 	{#if r.byKind.length > 1}
-		<Fold key="review-kind" title={tx('По типу решения', 'By type of decision')} open={false}>
+		<Fold key="review-kind" remind="intuition.review" title={tx('По типу решения', 'By type of decision')} open={false}>
 			<table>
 				<thead><tr><th></th><th>{tx('решений', 'decisions')}</th><th>{tx('сбылось', 'came true')}</th><th>{tx('к рынку', 'vs market')}</th><th>{tx('держал, дн.', 'held, d')}</th></tr></thead>
 				<tbody>
@@ -93,7 +93,7 @@
 	{/if}
 
 	{#if r.buys.length}
-		<Fold key="review-buys" title={tx('Покупки', 'Purchases')} summary={String(r.buys.length)} open={false}>
+		<Fold key="review-buys" remind="intuition.review" title={tx('Покупки', 'Purchases')} summary={String(r.buys.length)} open={false}>
 			<ul class="rows">
 				{#each r.buys as b (b.id)}
 					<li>
@@ -105,7 +105,7 @@
 		</Fold>
 	{/if}
 
-	<Fold key="review-skips" title={tx('Отказы и отсрочки', 'Refusals and deferrals')} summary={String(r.skips.length)}>
+	<Fold key="review-skips" title={tx('Отказы и отсрочки', 'Refusals and deferrals')} summary={String(r.skips.length)} remind="decision.skip">
 		{#snippet aside()}<HelpIcon topicKey="decision.skip" label={tx('отказы', 'refusals')} />{/snippet}
 		{#if r.skips.length}
 			<ul class="rows">
@@ -124,7 +124,7 @@
 		{/if}
 	</Fold>
 
-	<Fold key="review-pause" title={tx('Пауза перед решением', 'The pause before deciding')} summary={r.pause.avgDays !== null ? tx(`в среднем ${r.pause.avgDays} дн.`, `${r.pause.avgDays} d on average`) : undefined} open={false}>
+	<Fold key="review-pause" remind="intuition.review" title={tx('Пауза перед решением', 'The pause before deciding')} summary={r.pause.avgDays !== null ? tx(`в среднем ${r.pause.avgDays} дн.`, `${r.pause.avgDays} d on average`) : undefined} open={false}>
 		{#if r.pause.n}
 			<p>{tx('От первой записи о бумаге до покупки', 'From the first entry about a security to the purchase')}: <b>{r.pause.avgDays} {tx('дн.', 'd')}</b>, {tx('цена за это время', 'the price over it')} <b>{pct(r.pause.avgPct)}</b> <span class="muted small">({r.pause.n})</span></p>
 			<p class="muted small">{tx('Плюс — пока ждал, цена росла: ожидание стоило денег. Минус — ожидание помогло купить дешевле.', 'Plus — the price rose while you waited: the wait cost money. Minus — the wait helped to buy cheaper.')}</p>
@@ -133,7 +133,7 @@
 		{/if}
 	</Fold>
 
-	<Fold key="review-weekly" title={tx('Подборка недели', 'Weekly pick')} summary={String(r.weekly.moved.length + r.weekly.snoozed.length)}>
+	<Fold key="review-weekly" title={tx('Подборка недели', 'Weekly pick')} summary={String(r.weekly.moved.length + r.weekly.snoozed.length)} remind="intuition.weekly">
 		{#snippet aside()}<HelpIcon topicKey="intuition.weekly" label={tx('подборка недели', 'weekly pick')} />{/snippet}
 		{#if r.weekly.moved.length}
 			<p class="k">{tx(`Сдвинулись больше чем на ${r.weekly.pct}% с момента записи`, `Moved more than ${r.weekly.pct}% since the entry`)}</p>

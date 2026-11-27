@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { openApp } from './db.js';
-import { helpTopic, loadHelp, readHelpFiles } from './help.js';
+import { helpTopic, loadHelp, partsOf, PARTS, readHelpFiles, reminders } from './help.js';
 
 const root = join(import.meta.dirname, '..', '..', '..');
 
@@ -110,6 +110,30 @@ describe('help (spec section 8)', () => {
 		// English (19.11.2026): every topic has its translation, and an English reader gets it
 		expect(helpTopic(db, 'ticker.search', 'en')!.title).toBe('Ticker search');
 		expect(helpTopic(db, 'ticker.search', 'ru')!.title).toBe('Поиск тикера');
+		// T-019: the reminder lines for the screens, in either language
+		expect(reminders(db, 'ru')['stock.protection']).toBe('Нет стопа — убыток не ограничен.');
+		expect(reminders(db, 'en')['stock.protection']).toBe('No stop — the loss has no limit.');
+	});
+
+	it('T-019: every topic has the five parts, each not empty, in both languages', () => {
+		for (const [dir, lang] of [[join(root, 'help'), 'ru'], [join(root, 'help', 'en'), 'en']] as const)
+			for (const f of readHelpFiles(dir)) {
+				const p = partsOf(f.bodyMd, lang);
+				for (const label of PARTS[lang]) expect((p[label] ?? '').length, `${lang} ${f.key}: «${label}»`).toBeGreaterThan(3);
+			}
+	});
+
+	it('T-019: every block of «Портфель», «Статистика», «Источники» and «Квартальная модель» has its reminder', () => {
+		const screens = ['routes/portfolio/+page.svelte', 'routes/stats/+page.svelte', 'routes/sources/[id]/+page.svelte', 'routes/model/+page.svelte', 'lib/DisciplineStats.svelte', 'lib/portfolio/ProtectionStats.svelte'];
+		const keys = new Set(files.map((f) => f.key));
+		for (const s of screens) {
+			const text = readFileSync(join(root, 'src', s), 'utf8');
+			for (const m of text.matchAll(/<Fold\b[^>]*>/g)) {
+				expect(m[0], `${s}: a block without «remind»`).toMatch(/remind=/);
+				const k = /remind="([a-z_.]+)"/.exec(m[0])?.[1];
+				if (k) expect(keys.has(k), `${s}: no topic ${k}`).toBe(true);
+			}
+		}
 	});
 
 	it('every topic has an English text with a title and a body', () => {

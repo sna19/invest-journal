@@ -1,6 +1,10 @@
 # How to use the model
 
-The model looks for shares that rose in the same quarter almost every year. It does not advise buying — it offers candidates and checks by itself whether they came true.
+**What it is.** The model looks for shares that rose in the same quarter almost every year. It does not advise buying — it offers candidates and checks by itself whether they came true.
+
+**The idea.** Seasonality is a repetition, not a promise. The model gives candidates to test; the decision stays with you and the statistics.
+
+**How to use it.**
 
 **Once a quarter, two weeks before it starts:**
 
@@ -14,3 +18,9 @@ The model looks for shares that rose in the same quarter almost every year. It d
 **At the end of the quarter** the hypotheses close by themselves. One quarter proves nothing. Look at the variant's stats in «Sources» after 4–6 quarters and compare it with the other variants and the benchmark.
 
 **Change the parameters rarely** — at most once a quarter and only before it starts. The more you tune the parameters to the past, the prettier the past and the worse the future.
+
+**Reminder.** A model's candidate is a hypothesis, not a purchase.
+
+**Trap.** Buying the whole list without looking at the placebo and the check without peeking.
+
+<!-- T-019: agent's draft — idea, remind, trap -->

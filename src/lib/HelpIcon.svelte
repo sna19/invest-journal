@@ -14,8 +14,10 @@
 		topicKey: string;
 		/** what the icon explains, for screen readers, e.g. «Поиск тикера» */
 		label?: string;
+		/** T-019: the reminder line — the button is this text instead of the icon */
+		text?: string;
 	}
-	let { topicKey, label }: Props = $props();
+	let { topicKey, label, text }: Props = $props();
 
 	const id = `help-${Math.random().toString(36).slice(2)}`;
 	const open = $derived(help.open === id);
@@ -60,11 +62,12 @@
 <button
 	bind:this={btn}
 	class="help"
+	class:remind={!!text}
 	type="button"
-	aria-label={`${tx('Справка', 'Help')}${label ? `: ${label}` : ''}`}
+	aria-label={text ? `${tx('Напоминание', 'Reminder')}: ${text}` : `${tx('Справка', 'Help')}${label ? `: ${label}` : ''}`}
 	aria-expanded={open}
 	title={tx('Справка', 'Help')}
-	onclick={toggle}><CircleHelp size={18} /></button
+	onclick={toggle}>{#if text}{text}{:else}<CircleHelp size={18} />{/if}</button
 >
 
 {#if open}
@@ -93,6 +96,20 @@
 {/snippet}
 
 <style>
+	.help.remind {
+		display: block;
+		margin: 0;
+		border-radius: 0;
+		width: auto;
+		height: auto;
+		min-height: 0;
+		padding: 0;
+		color: var(--muted);
+		font-size: var(--fs-xs);
+		font-style: italic;
+		text-align: left;
+		line-height: 1.3;
+	}
 	.help {
 		/* the icon is small, the touch target is 44 × 44 */
 		width: var(--tap);

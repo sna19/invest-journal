@@ -1,6 +1,10 @@
 # Portfolio return (TWR)
 
-The return is time-weighted: it shows how the investments worked and does not depend on when you put money in or took it out. It is computed in the portfolio currency.
+**What it is.** The return is time-weighted: it shows how the investments worked and does not depend on when you put money in or took it out. It is computed in the portfolio currency.
+
+**The idea.** A time-weighted return measures the quality of decisions, not when you put money in.
+
+**How to use it.**
 
 **How it is computed.** The period is cut on the days money came or went (a deposit, a withdrawal, a conversion in a dollar portfolio, a carry-over). Money counts as arriving at the end of the day: a piece's return = (value at the end − money that came that day) / value at the start. The pieces are multiplied.
 
@@ -9,3 +13,9 @@ The return is time-weighted: it shows how the investments worked and does not de
 **Carried-over positions** enter the return from the carry-over date. **The benchmark** — S&P 500 for a dollar portfolio, TA-125 for a shekel one, over the same period, without dividends.
 
 **Realized / unrealized** — by FIFO and at the last close; for a carried-over position without a purchase price — «since carry-over».
+
+**Reminder.** How did the investments work, leaving out the deposits?
+
+**Trap.** Mixing up an account growing from deposits with the return.
+
+<!-- T-019: agent's draft — idea, remind, trap -->

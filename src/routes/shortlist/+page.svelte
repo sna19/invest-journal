@@ -152,7 +152,7 @@
 {:else if !items.length}
 	<p class="muted">{tx('Пока ничего не отмечено. Кандидат модели, открытый из модели, отмечается сам; любую бумагу можно отметить ☆ в её карточке.', 'Nothing picked yet. A model\'s candidate opened from the model is picked by that; any security — with ☆ on its card.')}</p>
 {:else}
-	<Fold key="short-list" title={tx(`Отмеченные · ${items.length}`, `Picked · ${items.length}`)} summary={items.map((x) => x.symbol).join(' · ')}>
+	<Fold key="short-list" remind="shortlist.screen" title={tx(`Отмеченные · ${items.length}`, `Picked · ${items.length}`)} summary={items.map((x) => x.symbol).join(' · ')}>
 		{#snippet aside()}<HelpIcon topicKey="shortlist.screen" label={tx('отмеченные', 'picked')} />{/snippet}
 		<ul class="list">
 			{#each items as it (it.id)}
@@ -167,7 +167,7 @@
 		</ul>
 	</Fold>
 
-	<Fold key="short-compare" title={tx('Сравнение', 'Comparison')} summary={tx('доходность, оценка, риск, качество', 'return, valuation, risk, quality')}>
+	<Fold key="short-compare" title={tx('Сравнение', 'Comparison')} summary={tx('доходность, оценка, риск, качество', 'return, valuation, risk, quality')} remind="security.stats">
 		{#snippet aside()}<HelpIcon topicKey="security.stats" label={tx('показатели', 'ratios')} />{/snippet}
 		<div class="scroll">
 			<table class="cmp">
@@ -191,7 +191,7 @@
 	</Fold>
 
 	{#if map}
-		<Fold key="short-map" title={tx('Карта связей', 'Map of ties')} summary={tx(`${map.links.length} сильных связей`, `${map.links.length} strong ties`)}>
+		<Fold key="short-map" title={tx('Карта связей', 'Map of ties')} summary={tx(`${map.links.length} сильных связей`, `${map.links.length} strong ties`)} remind="portfolio.risk_map">
 			{#snippet aside()}<HelpIcon topicKey="portfolio.risk_map" label={tx('карта связей', 'map of ties')} />{/snippet}
 			<svg class="map" viewBox="0 0 100 100" role="img" aria-label={tx('Карта связей отмеченных', 'Map of ties of the picked')}>
 				{#each map.links as [a, b, c] (a + '-' + b)}

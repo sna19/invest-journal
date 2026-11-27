@@ -2,6 +2,7 @@
 	import type { Snippet } from 'svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import HelpIcon from './HelpIcon.svelte';
+	import { loadReminders, rem } from './reminders.svelte.js';
 
 	/** A screen's title with its «?» (spec section 8), an optional way back and actions on the right. */
 	interface Props {
@@ -10,8 +11,14 @@
 		back?: { href: string; label: string };
 		actions?: Snippet;
 		subtitle?: string;
+		/** T-019: the screen's «Напоминание» line under the title (by default the help topic's own) */
+		remind?: string | false;
 	}
-	let { title, help, back, actions, subtitle }: Props = $props();
+	let { title, help, back, actions, subtitle, remind }: Props = $props();
+	const rkey = $derived(remind === false ? null : (remind ?? help ?? null));
+	$effect(() => {
+		if (rkey) loadReminders();
+	});
 </script>
 
 <header>
@@ -23,9 +30,13 @@
 		{@render actions?.()}
 	</div>
 	{#if subtitle}<p>{subtitle}</p>{/if}
+	{#if rkey && rem.show && rem.items[rkey]}<div class="remind"><HelpIcon topicKey={rkey} text={rem.items[rkey]} /></div>{/if}
 </header>
 
 <style>
+	.remind {
+		margin-top: 2px;
+	}
 	header {
 		padding: calc(env(safe-area-inset-top) + var(--s3)) 0 var(--s3);
 	}
