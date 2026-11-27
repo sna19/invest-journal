@@ -133,8 +133,11 @@
 		exchange: string;
 		returns: Record<string, number | null>;
 		loaded: boolean;
+		/** owner 27.11.2026: the correlation of daily returns over a year, and the reference's volatility */
+		corr?: number | null;
+		vol?: number | null;
 	}
-	let cmp = $state<{ periods: string[]; security: Record<string, number | null>; refs: CmpRef[] } | null>(null);
+	let cmp = $state<{ periods: string[]; security: Record<string, number | null>; refs: CmpRef[]; vol?: { vol1y: number | null; vol3m: number | null } } | null>(null);
 	let shown = $state<number[]>([]);
 	let refLines = $state<Record<number, { date: string; value: number }[]>>({});
 	const VARIANT_NAME: Record<string, [string, string]> = {
@@ -339,7 +342,7 @@
 		loadLev();
 		loadNews();
 		void fetch('/api/shortlist').then((r) => r.json()).then((r) => (picked = (r.items ?? []).some((x: { id: number }) => x.id === Number(page.params.id)))).catch(() => {});
-		void fetch(`/api/ratios?ids=${page.params.id}`).then((r) => r.json()).then((r) => ((stats = r.items?.[String(page.params.id)]?.stats ?? null), (statsLoaded = true))).catch(() => (statsLoaded = true));
+		void fetch(`/api/ratios?ids=${page.params.id}`).then((r) => r.json()).then((r) => ((stats = r.items?.[String(page.params.id)]?.stats ?? r.items?.[String(page.params.id)]?.swings ?? null), (statsLoaded = true))).catch(() => (statsLoaded = true));
 		void fetch(`/api/risk/labels?each=1&ids=${page.params.id}`)
 			.then((r) => r.json())
 			.then((r) => (riskLabels = r?.items ?? []))
@@ -562,6 +565,17 @@
 				<HelpIcon topicKey="chart.sma" label={tx('скользящие средние', 'moving averages')} />
 			</div>
 		{/if}
+		{#if cmp?.refs.length && !c.monthly}
+			<!-- owner 27.11.2026: the sector, industry and indices on the chart, with the correlation of each -->
+			<div class="smas refs" role="group" aria-label={tx('Сравнить на графике', 'Compare on the chart')}>
+				{#each cmp.refs as r (r.id)}
+					<button class:on={shown.includes(r.id)} aria-pressed={shown.includes(r.id)} disabled={!r.loaded} onclick={() => toggleRef(r.id)} title={`${tx(...ROLE[r.role])}: ${refLabel(r)}`}>
+						{r.symbol}{#if r.corr !== null && r.corr !== undefined}<small> · {tx('связь', 'corr')} {r.corr.toFixed(2).replace('.', tx(',', '.'))}</small>{/if}
+					</button>
+				{/each}
+				<HelpIcon topicKey="security.compare" label={tx('сравнение', 'comparison')} />
+			</div>
+		{/if}
 		<ToJournal
 			links={[{ type: 'security', id: String(c.security.id), label: c.security.symbol }]}
 			snapshot={() => {
@@ -683,9 +697,9 @@
 			{#snippet aside()}<HelpIcon topicKey="security.compare" label={tx('сравнение', 'comparison')} />{/snippet}
 			<div class="cmp">
 			<div class="scroll"><table>
-				<thead><tr><th></th>{#each cmp.periods as p (p)}<th>{tx(PERIODS.find((x) => x[0] === p)?.[1] ?? p, p)}</th>{/each}</tr></thead>
+				<thead><tr><th></th>{#each cmp.periods as p (p)}<th>{tx(PERIODS.find((x) => x[0] === p)?.[1] ?? p, p)}</th>{/each}<th title={tx('корреляция дневных доходностей за год', 'the correlation of daily returns over a year')}>{tx('Связь', 'Corr')}</th><th title={tx('волатильность за год, % в год', 'volatility over a year, % a year')}>{tx('Колеб.', 'Vol')}</th></tr></thead>
 				<tbody>
-					<tr class="me"><td><b>{c.security.symbol}</b></td>{#each cmp.periods as p (p)}<td>{pctText(cmp.security[p])}</td>{/each}</tr>
+					<tr class="me"><td><b>{c.security.symbol}</b></td>{#each cmp.periods as p (p)}<td>{pctText(cmp.security[p])}</td>{/each}<td>—</td><td>{cmp.vol?.vol1y != null ? `${Math.round(cmp.vol.vol1y * 100)}%` : '—'}</td></tr>
 					{#each cmp.refs as r (r.id)}
 						<tr>
 							<td>
@@ -702,6 +716,8 @@
 									{#if me !== null && x !== null}<br /><small class:pos={me - x > 0} class:neg={me - x < 0}>{me - x > 0 ? '+' : me - x < 0 ? '−' : ''}{Math.abs(me - x).toFixed(1)}</small>{/if}
 								</td>
 							{/each}
+							<td>{r.corr != null ? r.corr.toFixed(2).replace('.', tx(',', '.')) : '—'}</td>
+							<td>{r.vol != null ? `${Math.round(r.vol * 100)}%` : '—'}</td>
 						</tr>
 					{/each}
 				</tbody>
@@ -976,6 +992,15 @@
 		background: var(--surface);
 		font-size: var(--fs-xs);
 		cursor: pointer;
+	}
+	.smas.refs {
+		flex-wrap: wrap;
+	}
+	.smas button:disabled {
+		opacity: 0.4;
+	}
+	.smas button small {
+		opacity: 0.8;
 	}
 	.smas button.on {
 		background: var(--text);

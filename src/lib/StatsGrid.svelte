@@ -55,6 +55,9 @@
 			t: tx('Риск', 'Risk'),
 			help: 'security.risk',
 			rows: [
+				[tx('Колебания за год, % в год', 'Volatility, a year, % a year'), (x) => pct(x.vol1y, 0)],
+				[tx('Колебания за 3 мес., % в год', 'Volatility, 3 months, % a year'), (x) => pct(x.vol3m, 0)],
+				[tx('Дневной размах (ATR 14)', 'Daily range (ATR 14)'), (x) => pct(x.atrPct)],
 				[tx('Бета (к рынку)', 'Beta (vs market)'), (x) => num(x.beta, 2)],
 				[tx('Бета за 3 года', '3-year beta'), (x) => num(x.beta3y, 2)],
 				[tx('Шорт, % акций', 'Short, % of float'), (x) => pct(x.shortFloat)]

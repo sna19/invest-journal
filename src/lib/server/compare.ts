@@ -127,6 +127,57 @@ const PERIOD_DAYS: [string, number][] = [
 	['5Y', 1826]
 ];
 
+/** the daily log returns of a security over about the last year, by date (closes in the current split scale) */
+function dailyReturns(market: Database.Database, id: number, days = 380): Map<string, number> {
+	const scale = splitScale(market, id);
+	const rows = (market.prepare('select date, close from market_prices_daily where security_id = ? order by date desc limit ?').all(id, Math.round((days * 252) / 365) + 1) as { date: string; close: number }[]).reverse();
+	const out = new Map<string, number>();
+	for (let i = 1; i < rows.length; i++) {
+		const a = rows[i - 1].close / scale(rows[i - 1].date);
+		const b = rows[i].close / scale(rows[i].date);
+		if (a > 0 && b > 0) out.set(rows[i].date, Math.log(b / a));
+	}
+	return out;
+}
+const sd = (xs: number[]) => {
+	if (xs.length < 2) return null;
+	const m = xs.reduce((a, b) => a + b, 0) / xs.length;
+	return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / (xs.length - 1));
+};
+
+/**
+ * Owner 27.11.2026 «как профессионалы оценивают волатильность»: the historical volatility — the standard deviation of
+ * the daily returns, a year's worth (× √252), over the last year and the last 3 months; % a year.
+ */
+export function volatility(market: Database.Database, id: number) {
+	const r = [...dailyReturns(market, id).values()];
+	const y = r.length >= 60 ? sd(r) : null;
+	const q = r.length >= 40 ? sd(r.slice(-63)) : null;
+	return { vol1y: y === null ? null : Math.round(y * Math.sqrt(252) * 1000) / 1000, vol3m: q === null ? null : Math.round(q * Math.sqrt(252) * 1000) / 1000 };
+}
+
+/** the correlation of two securities' daily returns over their common days of the last year (null — under 60 days) */
+export function correlation(a: Map<string, number>, b: Map<string, number>) {
+	const xs: number[] = [];
+	const ys: number[] = [];
+	for (const [d, x] of a) {
+		const y = b.get(d);
+		if (y !== undefined) (xs.push(x), ys.push(y));
+	}
+	if (xs.length < 60) return null;
+	const mx = xs.reduce((s, v) => s + v, 0) / xs.length;
+	const my = ys.reduce((s, v) => s + v, 0) / ys.length;
+	let cov = 0;
+	let vx = 0;
+	let vy = 0;
+	for (let i = 0; i < xs.length; i++) {
+		cov += (xs[i] - mx) * (ys[i] - my);
+		vx += (xs[i] - mx) ** 2;
+		vy += (ys[i] - my) ** 2;
+	}
+	return vx > 0 && vy > 0 ? Math.round((cov / Math.sqrt(vx * vy)) * 100) / 100 : null;
+}
+
 /** the table: the share's and each reference's return over 1M, 3M, 1Y, 5Y, by daily closes (split-adjusted) */
 export function compareTable(market: Database.Database, id: number, benchId: number | null, today = israelDate()) {
 	const refs = compareRefs(market, id);
@@ -145,9 +196,12 @@ export function compareTable(market: Database.Database, id: number, benchId: num
 		) as Record<string, number | null>;
 	};
 	const bench = benchId ? market.prepare('select id, symbol, name_en as name, exchange_code as exchange from ref_securities where id = ?').get(benchId) as Omit<Ref, 'role' | 'label'> | undefined : undefined;
+	// the correlation with each reference and its volatility (owner 27.11.2026: «сравнивать корреляцию»)
+	const mine = dailyReturns(market, id);
 	return {
 		periods: PERIOD_DAYS.map((x) => x[0]),
 		security: ret(id),
-		refs: [...refs, ...(bench ? [{ role: 'index' as const, label: bench.symbol === 'SPX' ? 'S&P 500' : 'ТА-125', ...bench }] : [])].map((r) => ({ ...r, returns: ret(r.id), loaded: !!last.get(r.id) }))
+		vol: volatility(market, id),
+		refs: [...refs, ...(bench ? [{ role: 'index' as const, label: bench.symbol === 'SPX' ? 'S&P 500' : 'ТА-125', ...bench }] : [])].map((r) => ({ ...r, returns: ret(r.id), loaded: !!last.get(r.id), corr: correlation(mine, dailyReturns(market, r.id)), vol: volatility(market, r.id).vol1y }))
 	};
 }
