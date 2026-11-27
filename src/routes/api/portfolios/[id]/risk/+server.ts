@@ -12,7 +12,8 @@ export function GET({ params, url }) {
 		.split(',')
 		.map(Number)
 		.filter((x) => Number.isInteger(x) && x > 0)
-		.slice(0, 3);
+		// the «Что если?» screen tries up to 3; a set (owner 27.11.2026) — up to 12
+		.slice(0, 12);
 	const r = riskView(getApp().sqlite, getMarket().sqlite, params.id === 'all' ? 'all' : Number(params.id), { years: Number(url.searchParams.get('years')) || 2, add });
 	if (!r) error(404, 'нет такого портфеля');
 	for (const id of r.loading) queueSecurity(id);

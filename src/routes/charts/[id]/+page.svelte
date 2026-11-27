@@ -5,6 +5,8 @@
 	import ChartWidget, { type ChartConfig } from '#lib/charts/ChartWidget.svelte';
 	import SetMap from '#lib/sets/SetMap.svelte';
 	import SetCompare from '#lib/sets/SetCompare.svelte';
+	import SetRisk from '#lib/sets/SetRisk.svelte';
+	import SetBasket from '#lib/sets/SetBasket.svelte';
 	import type { SetItem } from '#lib/sets/types.js';
 	import { showToast } from '#lib/toast.svelte.js';
 	import { tx } from '#lib/i18n.js';
@@ -26,10 +28,13 @@
 	const VIEWS = [
 		['chart', 'График', 'Chart'],
 		['map', 'Карта связей', 'Map of ties'],
-		['compare', 'Сравнение', 'Comparison']
+		['compare', 'Сравнение', 'Comparison'],
+		['risk', 'Риск', 'Risk'],
+		['basket', 'Корзина', 'Basket']
 	] as const;
-	let view = $state<'chart' | 'map' | 'compare'>((VIEWS.find((v) => v[0] === page.url.searchParams.get('view'))?.[0] ?? 'chart') as 'chart' | 'map' | 'compare');
-	function setView(v: 'chart' | 'map' | 'compare') {
+	type View = (typeof VIEWS)[number][0];
+	let view = $state<View>((VIEWS.find((v) => v[0] === page.url.searchParams.get('view'))?.[0] ?? 'chart') as View);
+	function setView(v: View) {
 		view = v;
 		replaceState(`?view=${v}`, {});
 	}
@@ -115,8 +120,12 @@
 		{/key}
 	{:else if view === 'map'}
 		<SetMap {items} storeKey={isPicked ? 'picked' : `set-${page.params.id}`} />
-	{:else}
+	{:else if view === 'compare'}
 		<SetCompare {items} />
+	{:else if view === 'risk'}
+		<SetRisk {items} />
+	{:else}
+		<SetBasket {items} />
 	{/if}
 {:else}
 	<p class="muted">{tx('Загружаю…', 'Loading…')}</p>
@@ -155,9 +164,14 @@
 		border-radius: var(--r2);
 		background: var(--surface-2);
 	}
+	.views {
+		overflow-x: auto;
+	}
 	.views button {
-		flex: 1;
+		flex: 1 0 auto;
 		min-height: 36px;
+		padding: 0 8px;
+		white-space: nowrap;
 		border: none;
 		border-radius: var(--r1);
 		background: none;

@@ -1,6 +1,6 @@
 # Sets and saved charts
 
-**What it is.** A set — securities seen together: a saved chart (the main security and the ones added to it) or «★ Picked». A set has three views — **Chart**, **Map of ties**, **Comparison** (the tabs on top).
+**What it is.** A set — securities seen together: a saved chart (the main security and the ones added to it) or «★ Picked». A set has five views (the tabs on top): **Chart**, **Map of ties**, **Comparison**, **Risk**, **Basket**.
 
 **Chart.** A security's chart with everything chosen on it: the period, the SMA lines, the references on (sector, industry, indices) and the shares added to compare — shown and hidden alike (their buttons under the chart), and the shaded quarter. «More → Saved charts» keeps them all.
 
@@ -15,6 +15,8 @@
 - **Where a security takes part.** Under the chart on a security's card — links to the saved charts where it is the main one or added to compare.
 - The lines' names above the chart link to those securities' cards.
 - The set's **Map of ties**: which move together; the portfolios' buttons join their positions, «+ share» adds a security, «×» takes one off. **Comparison** — returns, valuation, risk and quality in one table, sorted by a tap on a header.
+- **Risk** — «what if» the set is bought: pick a portfolio (or all together) and a share for each security; you see how the portfolio's swings and its number of independent bets change, and for each security — reduces the risk, neutral or duplicates what you already hold (and what).
+- **Basket** — had all the set's securities been bought equally 1, 3 or 5 years ago and held: the result against the S&P 500 (or TA-125 for an Israeli set), a year on average, the worst drawdown and each security's part. The past, not a forecast, but it shows whether the set beat a plain index and what holding it meant living through.
 
 **Reminder.** Am I comparing with the peers, not with the whole market?
 
