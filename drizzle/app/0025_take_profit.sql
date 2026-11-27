@@ -1,0 +1,1 @@
+ALTER TABLE `protection_orders` ADD `take_profit` real;

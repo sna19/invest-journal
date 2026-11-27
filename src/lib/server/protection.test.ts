@@ -31,6 +31,10 @@ describe('T-021: the protective plan', () => {
 		// trailing: 3 × ATR% (2 / 104.5 = 1.914%) = 5.74% → at least 8%
 		expect(f.trailPct).toBe(8);
 		expect(f.trailStop).toBe(96.14);
+		// T-035: the target — 2 risks up: 104.5 + 2 × (104.5 − 92.97) = 127.56; the 52 weeks' high 105.5 is under 1% above — not a resistance
+		expect(f.target).toBe(127.56);
+		expect(f.targetR).toBe(2);
+		expect(f.resistance).toBeNull();
 		// size: a 1% budget of 100 000 = 1 000; loss per share 104.5 − 92.97 = 11.53 → 86 shares (8 987 $)
 		expect(sizeOf(1000, price, f.stop, 1, false)).toEqual({ qty: 86, amount: 86 * 104.5 });
 		expect(sizeOf(1000, price, f.stop, 1, true).qty).toBe(86.73);
@@ -45,6 +49,9 @@ describe('T-021: the protective plan', () => {
 		expect(f.level).toBeNull();
 		expect(f.stop).toBe(25.97);
 		expect(f.trailPct).toBe(20);
+		// the 52 weeks' high 54 is under the 2-risk target 98.06: the target goes under it by 0.25 ATR — 52, 0.1 risk
+		expect(f.resistance).toBe(54);
+		expect(f.target).toBe(52);
 		// a TASE share in agorot: 4 520 → 4 517
 		expect(roundStop(4520, true)).toBe(4517);
 		expect(roundStop(75.2, false)).toBe(75.17);

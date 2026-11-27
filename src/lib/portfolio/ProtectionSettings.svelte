@@ -6,7 +6,7 @@
 	import { tx } from '#lib/i18n.js';
 
 	/** T-021: the coefficients of the protective plan's formula, the broker's name (kept in the database), fractions */
-	type P = Record<string, number | boolean>;
+	type P = Record<string, number | boolean | null>;
 	let params = $state<P | null>(null);
 	let defaults = $state<P | null>(null);
 	let broker = $state('');
@@ -26,6 +26,7 @@
 	}
 	const FIELDS: [string, string, string][] = [
 		['riskPct', 'Риск новой позиции, % портфеля', 'Risk of a new position, % of the portfolio'],
+		['tpR', 'Цель (тейк-профит), рисков выше цены', 'Target (take-profit), risks above the price'],
 		['atrDays', 'ATR, дней', 'ATR, days'],
 		['lowShort', 'Минимум за, дней (ближний)', 'Low over, days (near)'],
 		['lowLong', 'Минимум за, дней (дальний)', 'Low over, days (far)'],
@@ -50,6 +51,7 @@
 			{#each FIELDS as [k, ru, en] (k)}
 				<label>{tx(ru, en)}<input inputmode="decimal" bind:value={params[k]} onchange={() => save()} /><small>{tx('по умолчанию', 'default')} {defaults?.[k]}</small></label>
 			{/each}
+			<label>{tx('Брокер умеет OCO (стоп и цель одной заявкой)', 'The broker takes OCO (the stop and the target as one order)')}<select value={params.oco === true ? 'yes' : params.oco === false ? 'no' : 'unknown'} onchange={(e) => save({ oco: e.currentTarget.value === 'yes' ? true : e.currentTarget.value === 'no' ? false : null })}><option value="unknown">{tx('не знаю — показывать оба способа', 'not known — show both ways')}</option><option value="yes">{tx('да', 'yes')}</option><option value="no">{tx('нет', 'no')}</option></select></label>
 			<label class="row"><input type="checkbox" checked={params.fractional === true} onchange={(e) => save({ fractional: e.currentTarget.checked })} />{tx('Брокер покупает дробные акции (размер до 0,01)', 'The broker buys fractions of a share (size to 0.01)')}</label>
 		</div>
 	{/if}
@@ -72,6 +74,7 @@
 		align-items: center;
 		gap: 8px;
 	}
+	select,
 	input:not([type='checkbox']) {
 		min-height: 38px;
 		border: 1px solid var(--line);

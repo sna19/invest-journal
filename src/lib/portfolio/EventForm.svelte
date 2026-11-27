@@ -150,6 +150,11 @@
 		if (!it || !tplan || tplan.stop.trim() || sec?.id !== id) return;
 		tplan.stop = it.priceUnit === 'ILA' ? String(Math.round(it.f.stop)) : String(it.f.stop);
 		tplan.stopPct = false;
+		// T-035: the target too, unless the plan advises a trailing stop instead
+		if (!tplan.target.trim() && it.recommended === 'fixed' && it.f.target) {
+			tplan.target = it.priceUnit === 'ILA' ? String(Math.round(it.f.target)) : String(it.f.target);
+			tplan.targetPct = false;
+		}
 		fromProtection = true;
 	}
 
@@ -361,7 +366,7 @@
 				{fxUsd}
 				{errors}
 			/>
-			{#if fromProtection}<p class="muted small">{tx('Стоп — из защитного плана; поправь, если не согласен.', 'The stop comes from the protective plan; change it if you disagree.')}</p>{/if}
+			{#if fromProtection}<p class="muted small">{tx('Стоп и цель — из защитного плана; поправь, если не согласен.', 'The stop and the target come from the protective plan; change them if you disagree.')}</p>{/if}
 			{#if kind === 'buy'}<BasisPicker bind:basis={() => basis, (v) => (basisPicked = v)} />{/if}
 		{/if}
 

@@ -176,6 +176,20 @@
       "when": 1795714792008,
       "tag": "0024_path_flags",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1795767105467,
+      "tag": "0025_take_profit",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1795767490078,
+      "tag": "0026_signal_ideas",
+      "breakpoints": true
     }
   ]
 }

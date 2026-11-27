@@ -10,6 +10,7 @@
 	import UserRound from '@lucide/svelte/icons/user-round';
 	import CalendarRange from '@lucide/svelte/icons/calendar-range';
 	import Globe from '@lucide/svelte/icons/globe';
+	import Radar from '@lucide/svelte/icons/radar';
 	import { t, tx } from '#lib/i18n.js';
 </script>
 
@@ -17,6 +18,7 @@
 
 <TopBar title={t('tab.more')} help="app.colors" />
 <ul class="menu">
+	<li><a href="/signals"><Radar size={20} /><span>{tx('Сигналы', 'Signals')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/journal"><BookOpen size={20} /><span>{tx('Дневник', 'Diary')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/review"><Scale size={20} /><span>{tx('Честный разбор', 'Honest review')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/model"><CalendarRange size={20} /><span>{tx('Квартальная модель', 'Quarterly model')}</span><ChevronRight size={18} /></a></li>

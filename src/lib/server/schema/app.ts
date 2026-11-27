@@ -701,6 +701,8 @@ export const protectionOrders = sqliteTable(
 		stop: real(),
 		limitPrice: real(),
 		trailPct: real(),
+		/** T-035: the take-profit — a limit sale at the target (with the stop as OCO, or apart) */
+		takeProfit: real(),
 		/** the price when it was placed: the trailing level starts from it */
 		basePrice: real(),
 		qty: real(),
@@ -739,4 +741,28 @@ export const pathFlags = sqliteTable(
 		createdAt: now()
 	},
 	(t) => [index('path_flags_security').on(t.securityId, t.flag)]
+);
+
+/**
+ * T-035: the week's ideas to buy — what the funnel chose, why, with the plan (stop, trailing, target, size), and what
+ * the owner did: bought, wants to buy, skipped (with the reason — the skipped ones are measured too).
+ */
+export const signalIdeas = sqliteTable(
+	'signal_ideas',
+	{
+		id: integer().primaryKey({ autoIncrement: true }),
+		/** the run's date */
+		run: text().notNull(),
+		securityId: integer().notNull(),
+		rank: integer().notNull(),
+		score: real().notNull(),
+		/** JSON: the reasons and the plan */
+		data: text().notNull(),
+		/** new | bought | wanted | skipped */
+		status: text().notNull().default('new'),
+		reason: text(),
+		hypothesisId: integer(),
+		createdAt: now()
+	},
+	(t) => [index('signal_ideas_run').on(t.run)]
 );

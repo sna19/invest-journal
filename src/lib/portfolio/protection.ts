@@ -7,6 +7,9 @@ export interface PFormula {
 	limit: number;
 	trailPct: number;
 	trailStop: number;
+	target: number;
+	targetR: number;
+	resistance: number | null;
 }
 export interface PItem {
 	securityId: number;
@@ -22,10 +25,11 @@ export interface PItem {
 	size: { qty: number; amount: number; budget: number; portfolio: string; portfolioCurrency: string } | null;
 	position: { id: number; qty: number; portfolioId: number; portfolio: string; portfolioCurrency: string } | null;
 	maxLoss: { fixed: number; trail: number; pctFixed: number | null; pctTrail: number | null; currency: string } | null;
-	order: { id: number; type: 'fixed' | 'trail'; stop: number | null; limitPrice: number | null; trailPct: number | null; basePrice: number | null; setDate: string; level: number | null } | null;
+	order: { id: number; type: 'fixed' | 'trail'; stop: number | null; limitPrice: number | null; trailPct: number | null; takeProfit: number | null; basePrice: number | null; setDate: string; level: number | null } | null;
 	status: 'protected' | 'near' | 'unprotected' | 'declined' | null;
 	noStopReason: string | null;
 	broker: string | null;
+	oco: boolean | null;
 }
 /** a price as the broker takes it: dollars to cents, agorot whole */
 export const plain = (x: number, unit: string) => (unit === 'ILA' ? String(Math.round(x)) : x.toFixed(2));

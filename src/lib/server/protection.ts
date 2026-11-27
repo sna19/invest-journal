@@ -41,6 +41,10 @@ export interface PParams {
 	riskPct: number;
 	/** the broker takes fractions of a share (to 0.01) */
 	fractional: boolean;
+	/** T-035: the take-profit at this many risks above the price (the distance to the stop) */
+	tpR: number;
+	/** the broker takes OCO orders (the stop and the target together); null — not known, both ways are shown */
+	oco: boolean | null;
 }
 
 export const PDEFAULTS: PParams = {
@@ -58,9 +62,11 @@ export const PDEFAULTS: PParams = {
 	trailMin: 8,
 	trailMax: 20,
 	riskPct: 1,
-	fractional: false
+	fractional: false,
+	tpR: 2,
+	oco: null
 };
-const LIMITS: Record<Exclude<keyof PParams, 'fractional'>, [number, number]> = {
+const LIMITS: Record<Exclude<keyof PParams, 'fractional' | 'oco'>, [number, number]> = {
 	atrDays: [5, 50],
 	lowShort: [5, 120],
 	lowLong: [10, 250],
@@ -74,7 +80,8 @@ const LIMITS: Record<Exclude<keyof PParams, 'fractional'>, [number, number]> = {
 	trailMult: [1, 10],
 	trailMin: [1, 50],
 	trailMax: [2, 60],
-	riskPct: [0.1, 10]
+	riskPct: [0.1, 10],
+	tpR: [1, 5]
 };
 
 export function readPParams(app: Database.Database): PParams {
@@ -89,6 +96,7 @@ export function cleanPParams(input: Record<string, unknown>, base: PParams = PDE
 		if (Number.isFinite(x) && x >= lo && x <= hi) out[k] = x;
 	}
 	if (typeof input.fractional === 'boolean') out.fractional = input.fractional;
+	if (input.oco === true || input.oco === false || input.oco === null) out.oco = input.oco;
 	if (out.trailMax < out.trailMin) out.trailMax = out.trailMin;
 	return out;
 }
@@ -140,6 +148,12 @@ export interface Formula {
 	trailPct: number;
 	/** the stop of a trailing order placed now */
 	trailStop: number;
+	/** T-035: the take-profit — tpR risks above the price, or just under the 52 weeks' high when that is nearer */
+	target: number;
+	/** how many risks the target is above the price */
+	targetR: number;
+	/** the 52 weeks' high above the price, if the target was put under it */
+	resistance: number | null;
 }
 
 /** the fixed stop, its limit and the trailing % for a price from the daily bars (or from an ATR given) */
@@ -159,7 +173,17 @@ export function formula(bars: Bar[], price: number, p: PParams, agorot: boolean,
 	const limit = floorTick(stop - Math.max((stop * p.limitPct) / 100, p.limitAtr * atr), agorot);
 	const atrPct = (atr / price) * 100;
 	const trailPct = Math.round(Math.min(p.trailMax, Math.max(p.trailMin, p.trailMult * atrPct)) * 2) / 2;
-	return { atr, atrPct, level, stop, limit, trailPct, trailStop: floorTick(price * (1 - trailPct / 100), agorot) };
+	// the target: tpR risks up — but not past the 52 weeks' high, where sellers wait (a little under it)
+	const risk = price - stop;
+	const high = bars.length ? Math.max(...bars.slice(-252).map((b) => b.high ?? b.close)) : null;
+	let target = price + p.tpR * risk;
+	let resistance: number | null = null;
+	if (high !== null && high > price * 1.01 && high < target) {
+		resistance = high;
+		target = high - 0.25 * atr;
+	}
+	target = agorot ? Math.floor(target) : Math.floor(target * 100) / 100;
+	return { atr, atrPct, level, stop, limit, trailPct, trailStop: floorTick(price * (1 - trailPct / 100), agorot), target, targetR: risk > 0 ? Math.round(((target - price) / risk) * 10) / 10 : 0, resistance };
 }
 
 /** the size of a new position: the risk budget over the loss per share at the stop, down to whole shares (or 0.01) */
@@ -208,12 +232,13 @@ export interface Order {
 	stop: number | null;
 	limitPrice: number | null;
 	trailPct: number | null;
+	takeProfit: number | null;
 	basePrice: number | null;
 	qty: number | null;
 	setDate: string;
 	createdAt: string;
 }
-const ORDER = `select id, position_id as positionId, type, stop, limit_price as limitPrice, trail_pct as trailPct, base_price as basePrice, qty, set_date as setDate, created_at as createdAt from protection_orders`;
+const ORDER = `select id, position_id as positionId, type, stop, limit_price as limitPrice, trail_pct as trailPct, take_profit as takeProfit, base_price as basePrice, qty, set_date as setDate, created_at as createdAt from protection_orders`;
 export const activeOrder = (app: Database.Database, positionId: number) =>
 	(app.prepare(`${ORDER} where position_id = ? and cancelled_at is null order by id desc limit 1`).get(positionId) as Order | undefined) ?? null;
 
@@ -227,7 +252,7 @@ export function orderLevel(market: Database.Database, o: Order, securityId: numb
 }
 
 /** «Я выставил у брокера»: the order replaces the one before; a fixed stop also becomes the trade's stop (T-015) */
-export function placeOrder(app: Database.Database, input: { positionId?: unknown; type?: unknown; stop?: unknown; limit?: unknown; trailPct?: unknown; price?: unknown; qty?: unknown }, today = israelDate()) {
+export function placeOrder(app: Database.Database, input: { positionId?: unknown; type?: unknown; stop?: unknown; limit?: unknown; trailPct?: unknown; takeProfit?: unknown; price?: unknown; qty?: unknown }, today = israelDate()) {
 	const positionId = Number(input.positionId);
 	const pos = app.prepare('select id, stage from positions where id = ?').get(positionId) as { id: number; stage: string } | undefined;
 	if (!pos) throw new InputError({ position: 'Нет такой позиции' } as Errors);
@@ -239,6 +264,8 @@ export function placeOrder(app: Database.Database, input: { positionId?: unknown
 	const trail = num(input.trailPct);
 	const price = num(input.price);
 	const qty = num(input.qty);
+	const tp = num(input.takeProfit);
+	if (tp !== null && !(tp > 0 && (price === null || tp > price))) throw new InputError({ takeProfit: 'Цель выше цены' } as Errors);
 	if (type === 'fixed' && !(stop !== null && stop > 0)) throw new InputError({ stop: 'Уровень стопа' } as Errors);
 	if (type === 'fixed' && limit !== null && !(limit > 0 && limit <= stop!)) throw new InputError({ limit: 'Лимит не выше стопа' } as Errors);
 	if (type === 'trail' && !(trail !== null && trail > 0 && trail < 60)) throw new InputError({ trailPct: 'Трейлинг, % от 0 до 60' } as Errors);
@@ -248,21 +275,21 @@ export function placeOrder(app: Database.Database, input: { positionId?: unknown
 		if (before) app.prepare('update protection_orders set cancelled_at = ? where id = ?').run(new Date().toISOString(), before.id);
 		const id = Number(
 			app
-				.prepare('insert into protection_orders (position_id, type, stop, limit_price, trail_pct, base_price, qty, set_date) values (?, ?, ?, ?, ?, ?, ?, ?)')
-				.run(positionId, type, type === 'fixed' ? stop : null, type === 'fixed' ? limit : null, type === 'trail' ? trail : null, price, qty, today).lastInsertRowid
+				.prepare('insert into protection_orders (position_id, type, stop, limit_price, trail_pct, take_profit, base_price, qty, set_date) values (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+				.run(positionId, type, type === 'fixed' ? stop : null, type === 'fixed' ? limit : null, type === 'trail' ? trail : null, tp, price, qty, today).lastInsertRowid
 		);
 		// the trade's conditions (T-015) take a fixed stop: its signal, the «Дисциплина» numbers and the diary see it
 		const plan = planOf(app, positionId);
-		if (type === 'fixed' && plan && plan.stop !== stop)
+		if (plan && ((type === 'fixed' && plan.stop !== stop) || (tp !== null && plan.target !== tp)))
 			app.prepare('insert into trade_plans (position_id, event_id, kind, thesis, wrong_if, stop, target, review_date, no_stop_reason, reason) values (?, null, ?, ?, ?, ?, ?, ?, null, ?)').run(
 				positionId,
 				plan.kind,
 				plan.thesis,
 				plan.wrongIf,
-				stop,
-				plan.target,
+				type === 'fixed' ? stop : plan.stop,
+				tp ?? plan.target,
 				plan.reviewDate,
-				'Защитный план: стоп выставлен у брокера'
+				tp !== null ? 'Защитный план: стоп и цель выставлены у брокера' : 'Защитный план: стоп выставлен у брокера'
 			);
 		return id;
 	})();
@@ -299,6 +326,8 @@ export interface Protection {
 	status: Status | null;
 	noStopReason: string | null;
 	broker: string | null;
+	/** the broker takes OCO: true / false / not known */
+	oco: boolean | null;
 }
 
 type PV = NonNullable<ReturnType<typeof portfolioView>> & { id: number; name: string };
@@ -380,7 +409,8 @@ function build(app: Database.Database, market: Database.Database, securityId: nu
 		order,
 		status,
 		noStopReason: plan?.noStopReason ?? null,
-		broker
+		broker,
+		oco: p.oco
 	};
 }
 

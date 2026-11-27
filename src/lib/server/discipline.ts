@@ -238,7 +238,7 @@ export function signals(app: Database.Database, market: Database.Database, today
 		const price = mv?.now ?? last?.close ?? null;
 		const priceDate = mv?.date ?? last?.date ?? null;
 		const stop = order ? orderLevel(market, order, r.securityId, mv?.live ? mv.now : null) : (plan?.stop ?? null);
-		const base = { positionId: r.id, planId: plan?.id ?? 0, portfolioId: r.portfolioId, portfolio: r.portfolio, securityId: r.securityId, symbol: r.symbol, priceUnit: r.priceUnit, price, priceDate, stop, target: plan?.target ?? null, reviewDate: plan?.reviewDate ?? null, order: !!order };
+		const base = { positionId: r.id, planId: plan?.id ?? 0, portfolioId: r.portfolioId, portfolio: r.portfolio, securityId: r.securityId, symbol: r.symbol, priceUnit: r.priceUnit, price, priceDate, stop, target: order?.takeProfit ?? plan?.target ?? null, reviewDate: plan?.reviewDate ?? null, order: !!order };
 		if (price !== null && stop !== null && price <= stop) out.push({ kind: 'stop', ...base, planId: order ? -order.id : base.planId });
 		else if (price !== null && base.target !== null && price >= base.target) out.push({ kind: 'target', ...base });
 		if (plan?.reviewDate && today >= plan.reviewDate) out.push({ kind: plan.kind === 'model' ? 'model_end' : 'review', ...base });

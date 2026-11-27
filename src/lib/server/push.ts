@@ -15,11 +15,11 @@ import type { Errors } from '../hypothesis.js';
  */
 
 const SUBJECT = process.env.PUSH_SUBJECT ?? 'https://github.com/sna19/invest-journal';
-export type PushKind = SignalKind | 'reminder';
+export type PushKind = SignalKind | 'reminder' | 'ideas';
 /** «reminder» — the diary's reminders (T-032 Д-32: off by default) */
-export const PUSH_KINDS: PushKind[] = ['stop', 'no_stop', 'target', 'review', 'model_end', 'path', 'reminder'];
+export const PUSH_KINDS: PushKind[] = ['stop', 'no_stop', 'target', 'review', 'model_end', 'path', 'reminder', 'ideas'];
 /** owner 26.11.2026: only «стоп пробит» is on until the others are turned on in the settings */
-export const PUSH_DEFAULT: PushKind[] = ['stop', 'no_stop'];
+export const PUSH_DEFAULT: PushKind[] = ['stop', 'no_stop', 'ideas'];
 
 let keys: { publicKey: string; privateKey: string } | null = null;
 export function vapid(dir = dataDir) {

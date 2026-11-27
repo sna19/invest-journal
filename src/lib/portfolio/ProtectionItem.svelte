@@ -30,6 +30,8 @@
 	let stop = $state('');
 	let limit = $state('');
 	let trail = $state('');
+	/** T-035: the take-profit; empty — none (a growth position keeps the trailing stop instead) */
+	let tp = $state('');
 	let busy = $state(false);
 	let el: HTMLElement | undefined = $state();
 
@@ -47,6 +49,7 @@
 		stop = plain(item.f.stop, u);
 		limit = plain(item.f.limit, u);
 		trail = String(item.f.trailPct);
+		tp = item.recommended === 'trail' ? '' : plain(item.f.target, u);
 	}
 	onMount(() => {
 		reset();
@@ -109,7 +112,8 @@
 	async function placed() {
 		if (!item.position || lowered) return;
 		busy = true;
-		const body = type === 'fixed' ? { positionId: item.position.id, type, stop: num(stop), limit: num(limit), price: item.price, qty: item.position.qty } : { positionId: item.position.id, type, trailPct: num(trail), price: item.price, qty: item.position.qty };
+		const base = { positionId: item.position.id, type, price: item.price, qty: item.position.qty, takeProfit: num(tp) };
+		const body = type === 'fixed' ? { ...base, stop: num(stop), limit: num(limit) } : { ...base, trailPct: num(trail) };
 		const r = await fetch('/api/protection/orders', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 		busy = false;
 		if (!r.ok) {
@@ -128,13 +132,15 @@
 					[tx('Стоп', 'Stop'), stop, stop],
 					[tx('Лимит', 'Limit'), limit, limit],
 					[tx('Количество', 'Quantity'), qtyText(qtyNow), String(qtyNow)],
-					[tx('Срок', 'Time in force'), 'GTC', 'GTC']
+					[tx('Срок', 'Time in force'), 'GTC', 'GTC'],
+					...(num(tp) ? [[tx('Тейк-профит (Limit, продажа)', 'Take-profit (Limit, sell)'), tp, tp]] : [])
 				]
 			: [
 					[tx('Тип заявки', 'Order type'), 'Trailing Stop %', 'Trailing Stop'],
 					[tx('Трейлинг, %', 'Trail, %'), trail, trail],
 					[tx('Количество', 'Quantity'), qtyText(qtyNow), String(qtyNow)],
-					[tx('Срок', 'Time in force'), 'GTC', 'GTC']
+					[tx('Срок', 'Time in force'), 'GTC', 'GTC'],
+					...(num(tp) ? [[tx('Тейк-профит (Limit, продажа)', 'Take-profit (Limit, sell)'), tp, tp]] : [])
 				]
 	);
 </script>
@@ -150,7 +156,7 @@
 	{#if item.order}
 		<p class="small">
 			{tx(`У брокера с ${item.order.setDate.split('-').reverse().join('.')}:`, `At the broker since ${item.order.setDate}:`)}
-			{#if item.order.type === 'fixed'}{tx('стоп-лимит', 'stop-limit')} {pt(item.order.stop)}{#if item.order.limitPrice} / {pt(item.order.limitPrice)}{/if}
+			{#if item.order.takeProfit}{tx('цель', 'target')} {pt(item.order.takeProfit)} · {/if}{#if item.order.type === 'fixed'}{tx('стоп-лимит', 'stop-limit')} {pt(item.order.stop)}{#if item.order.limitPrice} / {pt(item.order.limitPrice)}{/if}
 			{:else}{tx('трейлинг', 'trailing')} {item.order.trailPct}% · {tx('уровень сейчас', 'level now')} <b>{pt(item.order.level)}</b>{/if}
 		</p>
 	{/if}
@@ -168,6 +174,14 @@
 		</div>
 	</div>
 	<p class="why small">{tx('Почему', 'Why')}: {why}. {tx('Тип', 'Kind')}: {tx(...TYPE_WHY[item.why])}.</p>
+	<p class="small tpline">
+		{#if item.recommended === 'trail'}
+			{tx('Цель', 'Target')}: <b>{tx('не ставь — держи трейлинг', 'none — keep the trailing stop')}</b> <span class="muted">({tx(`если нужна: ${pt(item.f.target)}`, `if you want one: ${pt(item.f.target)}`)})</span>
+		{:else}
+			{tx('Цель (тейк-профит)', 'Target (take-profit)')}: <b>{pt(item.f.target)}</b> · {tx(`${String(item.f.targetR).replace('.', ',')} риска`, `${item.f.targetR} risks`)}{#if item.f.resistance}<span class="muted"> — {tx(`под максимумом 52 недель ${pt(item.f.resistance)}`, `under the 52 weeks' high ${pt(item.f.resistance)}`)}{#if item.f.targetR < 1.5}; {tx('до него мало места — сделка так себе', 'little room to it — a weak trade')}{/if}</span>{/if}
+		{/if}
+		<HelpIcon topicKey="trade.orders" label={tx('виды заявок', 'order types')} />
+	</p>
 	{#if item.size}
 		<p class="small">
 			{tx('Размер', 'Size')}: <b>{qtyText(item.size.qty)}</b> {tx('шт.', 'sh.')} · {money(item.size.amount, item.currency === 'USD' ? 'USD' : 'ILS')}
@@ -193,12 +207,20 @@
 				{:else}
 					<div class="edit"><label>{tx('Трейлинг, %', 'Trail, %')} <input inputmode="decimal" bind:value={trail} /></label></div>
 				{/if}
+				<div class="edit"><label>{tx('Тейк-профит (пусто — без цели)', 'Take-profit (empty — none)')} <input inputmode="decimal" bind:value={tp} placeholder={plain(item.f.target, u)} /></label></div>
 				{#if lowered}<p class="small err">{tx(`Стоп можно только поднимать: сейчас у брокера ${pt(item.order?.level)}.`, `A stop is only raised: at the broker now ${pt(item.order?.level)}.`)}</p>{/if}
 				<ul class="rows">
 					{#each rows as [label, shown, value] (label)}
 						<li><button onclick={() => copy(value, label)}><span class="muted">{label}</span><b>{shown}</b><Copy size={14} /></button></li>
 					{/each}
 				</ul>
+				{#if num(tp)}
+					<p class="small oco">
+						{#if item.oco === true}{tx('Выставь стоп и цель одной заявкой OCO: сработает одна — вторая снимется сама.', 'Place the stop and the target as one OCO order: when one fills, the other is cancelled.')}
+						{:else if item.oco === false}{tx('Две отдельные заявки. Когда сработает одна — сразу сними вторую, иначе она продаст то, чего уже нет.', 'Two separate orders. When one fills, cancel the other at once, or it will sell what is no longer there.')}
+						{:else}{tx('Если брокер умеет OCO — выставь стоп и цель одной заявкой (сработает одна — вторая снимется). Если нет — две отдельные, и когда сработает одна, сразу сними вторую.', 'If the broker takes OCO — place the stop and the target as one order. If not — two separate ones, and when one fills, cancel the other at once.')}{/if}
+					</p>
+				{/if}
 				{#if loss !== null && item.maxLoss}<p class="small muted">{tx('Убыток до стопа', 'Loss to the stop')}: {money(loss, item.maxLoss.currency)}</p>{/if}
 				<div class="acts">
 					<button class="primary" disabled={busy || lowered} onclick={placed}>{tx(`Я выставил ${at}`, `I placed it ${at}`)}</button>
@@ -275,6 +297,16 @@
 		font-weight: 500;
 		font-size: var(--fs-xs);
 		color: var(--accent);
+	}
+	.tpline {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 4px;
+	}
+	.oco {
+		margin: 0;
+		color: var(--muted);
 	}
 	.why {
 		color: var(--muted);

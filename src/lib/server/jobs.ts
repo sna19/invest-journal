@@ -9,13 +9,14 @@ import { loadProfiles, staleProfiles, type ProfilesSummary } from './market/prof
 import { eventsDue, loadEvents, type EventsSummary } from './market/events.js';
 import { heldSecurities, loadQuotes, marketsOpen, readSchedule, type QuotesSummary } from './market/quotes.js';
 import { asUser, currentUserId, forEachUser, listUsers } from './auth.js';
-import { sendSignals } from './push.js';
+import { notifyOnce, pushKinds, sendSignals } from './push.js';
 import { syncDecisions } from './decisions.js';
 import { momentumIds, momentumSymbols, momentumView, recordMomentum } from './model/momentumService.js';
 import { monthAdd as monthAddJ } from './model/momentum.js';
 import { checkReminders, signalsBlock } from './reminders.js';
 import { backupMedia } from './snapshots.js';
 import { commoditySymbols, ensureFunds, fundIds } from './model/commodities.js';
+import { dayList, findIdeas, readSignalSettings, runIdeas } from './ideas.js';
 import { missingStats, recordScores, scoresOf, staleStats } from './score.js';
 import { statsOf } from './market/stats.js';
 import { flagEntry, flagsFor, portfolioPath, securityPath, updateFlagStates } from './path.js';
@@ -718,6 +719,30 @@ export function runPushJob() {
 	});
 }
 
+/** T-035: each user's run of the week when its weekday and hour come; the digest «N идей · M продать · K пересмотреть» */
+export function runIdeasJob(now = new Date(), force = false) {
+	return single('ideas', async () => {
+		const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', weekday: 'short', hour: '2-digit', hour12: false }).formatToParts(now);
+		const wd = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.find((p) => p.type === 'weekday')!.value);
+		const hour = Number(parts.find((p) => p.type === 'hour')!.value);
+		const out = await forEachUser(async () => {
+			const app = getApp().sqlite;
+			const m = getMarket().sqlite;
+			const st = readSignalSettings(app);
+			if (!force && (wd !== st.weekday || hour < st.hour)) return null;
+			const r = runIdeas(getApp().db, app, m, now, force);
+			if (!r.recorded) return r;
+			const d = dayList(app, m);
+			if (pushKinds(app).includes('ideas'))
+				await notifyOnce(app, `ideas|${r.run}`, { title: 'Сигналы недели', body: `${r.recorded} идей · ${d.sell.length} продать · ${d.review.length + d.soft.length} пересмотреть · ${d.protect.length} выставить у брокера`, url: '/signals' });
+			return r;
+		});
+		const done = out.filter((r) => r && r.recorded);
+		if (done.length) console.log(`ideas: ${done.map((r) => `${r!.run} ${r!.recorded} ${JSON.stringify(r!.funnel)}`).join(' | ')}`);
+		return done.length;
+	});
+}
+
 /** T-034: the ratios of the shares without them (or older than a week), 800 a night, 40 at a time */
 export function runStatsJob(limit = 800) {
 	return single('stats', async () => {
@@ -977,6 +1002,21 @@ export function startScheduler() {
 			.then(() => asUser(listUsers()[0]?.id ?? 1, () => logScores()))
 			.catch((e) => console.error(`score: ${e}`));
 	}, 120_000);
+	// T-035: the funnel of the week's ideas as it would choose now (nothing recorded), and the day's list
+	setTimeout(() => {
+		try {
+			asUser(listUsers()[0]?.id ?? 1, () => {
+				const app = getApp().sqlite;
+				const m = getMarket().sqlite;
+				const t0 = Date.now();
+				const r = findIdeas(app, m);
+				const d = dayList(app, m);
+				console.log(`ideas: preview in ${Date.now() - t0} ms — funnel ${JSON.stringify(r.funnel)} · ${r.ideas.map((i) => `${i.rank}. ${m.prepare('select symbol from ref_securities where id = ?').pluck().get(i.s.id)} ${Math.round(i.s.total! * 100)} stop ${i.plan?.f.stop} target ${i.plan?.f.target} (${i.plan?.f.targetR}R) ${i.plan?.recommended}`).join(' · ')} | day: sell ${d.sell.length}, review ${d.review.length} + soft ${d.soft.map((x) => `${x.symbol} ${x.kind}`).join(', ')}, protect ${d.protect.map((x) => x.symbol).join(', ')}`);
+			});
+		} catch (e) {
+			console.error('ideas: preview', e);
+		}
+	}, 150_000);
 	// a self-check of the portfolio screen's requests on the real data (the owner saw a 500, 26.11.2026): each one's time or its error
 	setTimeout(() => {
 		void forEachUser(() => {
@@ -1043,6 +1083,8 @@ export function startScheduler() {
 	at('50 9 * * *', 'protection', () => runProtectionJob());
 	// T-033: the marks of the return's path of the held securities
 	at('52 9 * * *', 'path', () => runPathJob());
+	// T-035: the week's ideas at the hour each user chose (Sunday 20:00 by default), and the digest to the phone
+	at('7 * * * *', 'ideas', () => runIdeasJob());
 	// T-034: the ratios of the universe's shares for the quant score, in portions at night
 	at('15 1 * * *', 'stats', () => runStatsJob());
 	at('0 9 * * 6', 'gaps', runGapsJob);
