@@ -1107,7 +1107,7 @@ export function startScheduler() {
 				const t0 = Date.now();
 				const r = findIdeas(app, m);
 				const d = dayList(app, m);
-				console.log(`ideas: preview in ${Date.now() - t0} ms — funnel ${JSON.stringify(r.funnel)} · ${r.ideas.map((i) => `${i.rank}. ${m.prepare('select symbol from ref_securities where id = ?').pluck().get(i.s.id)} ${Math.round(i.s.total! * 100)} stop ${i.plan?.f.stop} target ${i.plan?.f.target} (${i.plan?.f.targetR}R) ${i.plan?.recommended}`).join(' · ')} | day: sell ${d.sell.length}, review ${d.review.length} + soft ${d.soft.map((x) => `${x.symbol} ${x.kind}`).join(', ')}, protect ${d.protect.map((x) => x.symbol).join(', ')}`);
+				console.log(`ideas: preview in ${Date.now() - t0} ms — funnel ${JSON.stringify(r.funnel)} · TASE ${JSON.stringify(r.il)} · ${r.ideas.map((i) => `${i.rank}. ${m.prepare('select symbol from ref_securities where id = ?').pluck().get(i.s.id)} ${Math.round(i.s.total! * 100)} stop ${i.plan?.f.stop} target ${i.plan?.f.target} (${i.plan?.f.targetR}R) ${i.plan?.recommended}`).join(' · ')} | day: sell ${d.sell.length}, review ${d.review.length} + soft ${d.soft.map((x) => `${x.symbol} ${x.kind}`).join(', ')}, protect ${d.protect.map((x) => x.symbol).join(', ')}`);
 			});
 		} catch (e) {
 			console.error('ideas: preview', e);

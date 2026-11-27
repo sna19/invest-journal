@@ -121,8 +121,25 @@ export function findIdeas(app: Database.Database, market: Database.Database, tod
 		return l.turnoverUsd >= st.minTurnoverUsd && l.priceUsd >= st.minPriceUsd;
 	});
 	funnel.liquid = liquid.length;
+	// owner 27.11.2026 «почему нет израильских идей»: where the TASE shares drop out of the funnel
+	const ilIds = new Set(u.stocks.filter((s) => s.market === 'IL').map((s) => s.id));
+	const il = (ids: number[]) => ids.filter((id) => ilIds.has(id)).length;
+	const ilWhy: Record<string, number> = {
+		all: u.stocks.filter((s) => s.market === 'IL').length,
+		liquid: il(liquid.map((s) => s.id)),
+		chosenMarket: st.markets.includes('IL') ? 1 : 0,
+		turnoverOk: u.stocks.filter((s) => s.market === 'IL' && liquidity(s, u.lastMonth, u.usdIls).turnoverUsd >= st.minTurnoverUsd).length,
+		priceOk: u.stocks.filter((s) => s.market === 'IL' && liquidity(s, u.lastMonth, u.usdIls).priceUsd >= st.minPriceUsd).length
+	};
 	// 2. the quant score green (so the price is over its SMA200 too)
 	const scored = scoresOf(market, liquid.map((s) => s.id));
+	const ilScored = scored.filter((x) => ilIds.has(x.id));
+	ilWhy.scored = ilScored.filter((x) => x.total !== null).length;
+	ilWhy.green = ilScored.filter((x) => x.color === 'green').length;
+	ilWhy.noTrend = ilScored.filter((x) => x.color === 'green' && !x.trend).length;
+	ilWhy.colors = 0;
+	const colors: Record<string, number> = {};
+	for (const x of ilScored) colors[x.color] = (colors[x.color] ?? 0) + 1;
 	// …and the trend known: a share without 200 days of history is not an idea (the rule «only above SMA200»)
 	let pool = scored.filter((x) => x.color === 'green' && x.total !== null && x.trend?.above === true);
 	funnel.green = pool.length;
@@ -197,7 +214,8 @@ export function findIdeas(app: Database.Database, market: Database.Database, tod
 	funnel.room = funnel.noReport - weak;
 	funnel.limits = funnel.room - limited;
 	funnel.notDuplicate = funnel.limits - dup;
-	return { settings: st, funnel, ideas: chosen.map((c, i) => ({ rank: i + 1, ...c })) };
+	ilWhy.inPool = il(pool.map((x) => x.id));
+	return { settings: st, funnel, il: { ...ilWhy, colors }, ideas: chosen.map((c, i) => ({ rank: i + 1, ...c })) };
 }
 
 const versionOf = (app: Database.Database, sourceId: number, st: SignalSettings) => {
