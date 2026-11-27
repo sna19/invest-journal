@@ -17,7 +17,7 @@ import type { Errors } from '../hypothesis.js';
 const SUBJECT = process.env.PUSH_SUBJECT ?? 'https://github.com/sna19/invest-journal';
 export type PushKind = SignalKind | 'reminder' | 'ideas';
 /** «reminder» — the diary's reminders (T-032 Д-32: off by default) */
-export const PUSH_KINDS: PushKind[] = ['stop', 'no_stop', 'target', 'review', 'model_end', 'path', 'reminder', 'ideas'];
+export const PUSH_KINDS: PushKind[] = ['stop', 'no_stop', 'target', 'review', 'model_end', 'path', 'entry', 'reminder', 'ideas'];
 /** owner 26.11.2026: only «стоп пробит» is on until the others are turned on in the settings */
 export const PUSH_DEFAULT: PushKind[] = ['stop', 'no_stop', 'ideas'];
 
@@ -85,6 +85,16 @@ const fmt = (x: number | null) => (x === null ? '—' : x.toLocaleString('ru-RU'
 
 /** the notification of a signal: short, the symbol first; a tap opens the position */
 export function messageOf(s: Signal) {
+	if (s.kind === 'entry' || s.kind === 'entry_broken' || s.kind === 'decide') {
+		const title = s.kind === 'entry' ? `${s.symbol}: цена дошла до желаемой` : s.kind === 'entry_broken' ? `${s.symbol}: цена ниже стопа плана` : `${s.symbol}: купить или передумать?`;
+		const body =
+			s.kind === 'entry'
+				? `Цена ${fmt(s.price)} ≤ желаемой ${fmt(s.want ?? null)}. Тезис ещё жив? Купи по плану или передумай.`
+				: s.kind === 'entry_broken'
+					? `Цена ${fmt(s.price)} ≤ стоп плана ${fmt(s.stop)} ещё до покупки: идея сломана — «Передумал» или новый план.`
+					: `Дата пересмотра плана ${s.reviewDate?.split('-').reverse().join('.') ?? ''}. Реши: купить или передумать.`;
+		return { title, body: `${body} · ${s.portfolio}`, url: `/position/${s.positionId}`, tag: keyOf(s) };
+	}
 	const title =
 		s.kind === 'path'
 			? `${s.symbol}: ${FLAG_RU[s.flag ?? ''] ?? 'метка пути'}`
@@ -158,7 +168,7 @@ export async function sendSignals(app: Database.Database, market: Database.Datab
 	if (!(app.prepare('select count(*) as n from push_subscriptions').get() as { n: number }).n) return 0;
 	const kinds = new Set(pushKinds(app));
 	let n = 0;
-	for (const s of signals(app, market, today)) if (kinds.has(s.kind) && (await notifyOnce(app, keyOf(s), messageOf(s), send))) n++;
+	for (const s of signals(app, market, today)) if (kinds.has(s.kind === 'entry_broken' || s.kind === 'decide' ? 'entry' : s.kind) && (await notifyOnce(app, keyOf(s), messageOf(s), send))) n++;
 	// T-032 Д-32: the diary's reminders that fired
 	if (kinds.has('reminder'))
 		for (const r of app.prepare(`select id, title, entry_id as e, fired_at as f from reminders where state = 'fired'`).all() as { id: number; title: string; e: number; f: string }[])

@@ -4,6 +4,7 @@ import { marked } from 'marked';
 import { eq, notInArray } from 'drizzle-orm';
 import type { AppDb } from './db.js';
 import { helpTopics } from './schema/app.js';
+import { glossaryMd } from '../glossary.js';
 
 /**
  * Spec section 8 — help texts live in the repository, one file per topic: help/<key>.md, the first line is
@@ -81,5 +82,7 @@ export function helpTopic(db: AppDb, key: string, lang: 'ru' | 'en' = 'ru') {
 	// an English reader gets the English text, the Russian one if there is no translation
 	const t = (lang === 'en' && !key.startsWith('en:') ? get(`en:${key}`) : undefined) ?? get(key);
 	if (!t) return null;
-	return { key, title: t.title, html: marked.parse(t.bodyMd, { async: false }) as string };
+	// owner 27.11.2026: the glossary of every ratio and term at the bottom of «Показатели»
+	const md = key === 'security.stats' ? `${t.bodyMd}\n\n${glossaryMd(t.key.startsWith('en:') ? 'en' : 'ru')}` : t.bodyMd;
+	return { key, title: t.title, html: marked.parse(md, { async: false }) as string };
 }

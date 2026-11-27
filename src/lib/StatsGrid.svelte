@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { loc, tx } from './i18n.js';
+	import { lang, loc, tx } from './i18n.js';
 	import HelpIcon from './HelpIcon.svelte';
+	import { sortedTerms, termById } from './glossary.js';
 
 	/**
 	 * A security's ratios (owner's request 26.11.2026), grouped; an empty value is not shown. With `now` (a diary snapshot,
@@ -12,89 +13,101 @@
 		now?: S | null;
 	}
 	let { s, now = null }: Props = $props();
+	// owner 27.11.2026: a tap on a ratio's name — its short line from the glossary under it; the glossary with a search below
+	let openRow = $state<string | null>(null);
+	let q = $state('');
+	let glossaryOpen = $state(false);
+	const L = $derived(lang() === 'en' ? 1 : 0);
+	const found = $derived.by(() => {
+		const all = sortedTerms(lang() === 'en' ? 'en' : 'ru');
+		const w = q.trim().toLowerCase();
+		return w ? all.filter((t) => `${t.term[0]} ${t.term[1]} ${t.aka} ${t.group[0]} ${t.group[1]}`.toLowerCase().includes(w)) : all;
+	});
 	const num = (x: unknown, d = 1) => (typeof x === 'number' ? x.toLocaleString(loc(), { maximumFractionDigits: d, minimumFractionDigits: d }) : null);
 	const pct = (x: unknown, d = 1) => (typeof x === 'number' ? `${(x * 100).toLocaleString(loc(), { maximumFractionDigits: d, minimumFractionDigits: d })}%` : null);
 	const big = (x: unknown) => (typeof x === 'number' ? (x >= 1e9 ? `${num(x / 1e9, 0)} ${tx('млрд', 'B')}` : `${num(x / 1e6, 0)} ${tx('млн', 'M')}`) : null);
 	const REC: Record<string, [string, string]> = { strong_buy: ['активно покупать', 'strong buy'], buy: ['покупать', 'buy'], hold: ['держать', 'hold'], underperform: ['хуже рынка', 'underperform'], sell: ['продавать', 'sell'] };
 	type F = (x: S) => string | null;
-	const ROWS: { t: string; help: string; rows: [string, F][] }[] = $derived([
+	const ROWS: { t: string; help: string; rows: [string, F, string][] }[] = $derived([
 		{
 			t: tx('Качество', 'Quality'),
 			help: 'security.quality',
 			rows: [
-				[tx('Чистая маржа', 'Net margin'), (x) => pct(x.profitMargin)],
-				[tx('Операционная маржа', 'Operating margin'), (x) => pct(x.operatingMargin)],
-				[tx('Валовая маржа', 'Gross margin'), (x) => pct(x.grossMargin)],
-				['ROE', (x) => pct(x.roe)],
-				['ROA', (x) => pct(x.roa)],
-				[tx('Долг / капитал', 'Debt / equity'), (x) => (typeof x.debtToEquity === 'number' ? pct(x.debtToEquity / 100, 0) : null)],
-				[tx('Текущая ликвидность', 'Current ratio'), (x) => num(x.currentRatio, 2)]
+				[tx('Чистая маржа', 'Net margin'), (x) => pct(x.profitMargin), 'margin_net'],
+				[tx('Операционная маржа', 'Operating margin'), (x) => pct(x.operatingMargin), 'margin_op'],
+				[tx('Валовая маржа', 'Gross margin'), (x) => pct(x.grossMargin), 'margin_gross'],
+				['ROE', (x) => pct(x.roe), 'roe'],
+				['ROA', (x) => pct(x.roa), 'roa'],
+				[tx('Долг / капитал', 'Debt / equity'), (x) => (typeof x.debtToEquity === 'number' ? pct(x.debtToEquity / 100, 0) : null), 'de'],
+				[tx('Текущая ликвидность', 'Current ratio'), (x) => num(x.currentRatio, 2), 'current_ratio']
 			]
 		},
 		{
 			t: tx('Рост (год к году)', 'Growth (year on year)'),
 			help: 'security.growth',
 			rows: [
-				[tx('Выручка', 'Revenue'), (x) => pct(x.revenueGrowth)],
-				[tx('Прибыль', 'Earnings'), (x) => pct(x.earningsGrowth)]
+				[tx('Выручка', 'Revenue'), (x) => pct(x.revenueGrowth), 'growth_rev'],
+				[tx('Прибыль', 'Earnings'), (x) => pct(x.earningsGrowth), 'growth_eps']
 			]
 		},
 		{
 			t: tx('Оценка', 'Valuation'),
 			help: 'security.valuation',
 			rows: [
-				['P/E', (x) => num(x.pe)],
-				[tx('P/E прогноз', 'Forward P/E'), (x) => num(x.forwardPe)],
-				['P/S', (x) => num(x.ps)],
-				['P/B', (x) => num(x.pb)],
-				['EV/EBITDA', (x) => num(x.evEbitda)],
-				['PEG', (x) => num(x.peg, 2)]
+				['P/E', (x) => num(x.pe), 'pe'],
+				[tx('P/E прогноз', 'Forward P/E'), (x) => num(x.forwardPe), 'pe_fwd'],
+				['P/S', (x) => num(x.ps), 'ps'],
+				['P/B', (x) => num(x.pb), 'pb'],
+				['EV/EBITDA', (x) => num(x.evEbitda), 'ev_ebitda'],
+				['PEG', (x) => num(x.peg, 2), 'peg']
 			]
 		},
 		{
 			t: tx('Риск', 'Risk'),
 			help: 'security.risk',
 			rows: [
-				[tx('Колебания за год, % в год', 'Volatility, a year, % a year'), (x) => pct(x.vol1y, 0)],
-				[tx('Колебания за 3 мес., % в год', 'Volatility, 3 months, % a year'), (x) => pct(x.vol3m, 0)],
-				[tx('Дневной размах (ATR 14)', 'Daily range (ATR 14)'), (x) => pct(x.atrPct)],
-				[tx('Бета (к рынку)', 'Beta (vs market)'), (x) => num(x.beta, 2)],
-				[tx('Бета за 3 года', '3-year beta'), (x) => num(x.beta3y, 2)],
-				[tx('Шорт, % акций', 'Short, % of float'), (x) => pct(x.shortFloat)]
+				[tx('Колебания за год, % в год', 'Volatility, a year, % a year'), (x) => pct(x.vol1y, 0), 'vol'],
+				[tx('Колебания за 3 мес., % в год', 'Volatility, 3 months, % a year'), (x) => pct(x.vol3m, 0), 'vol'],
+				[tx('Дневной размах (ATR 14)', 'Daily range (ATR 14)'), (x) => pct(x.atrPct), 'atr'],
+				[tx('Ниже максимума года', 'Under the year\'s high'), (x) => pct(x.ddNow, 0), 'drawdown'],
+				[tx('Худшая просадка за год', 'Worst drawdown, a year'), (x) => pct(x.ddMax, 0), 'drawdown'],
+				[tx('Бета (к рынку)', 'Beta (vs market)'), (x) => num(x.beta, 2), 'beta'],
+				[tx('Бета за 3 года', '3-year beta'), (x) => num(x.beta3y, 2), 'beta'],
+				[tx('Шорт, % акций', 'Short, % of float'), (x) => pct(x.shortFloat), 'short']
 			]
 		},
 		{
 			t: tx('Доход и владельцы', 'Income and holders'),
 			help: 'security.income',
 			rows: [
-				[tx('Дивидендная доходность', 'Dividend yield'), (x) => pct(x.dividendYield, 2)],
-				[tx('Доля прибыли на дивиденды', 'Payout ratio'), (x) => pct(x.payoutRatio, 0)],
-				[tx('У инсайдеров', 'Insiders'), (x) => pct(x.insiders, 0)],
-				[tx('У фондов', 'Institutions'), (x) => pct(x.institutions, 0)]
+				[tx('Дивидендная доходность', 'Dividend yield'), (x) => pct(x.dividendYield, 2), 'div_yield'],
+				[tx('Доля прибыли на дивиденды', 'Payout ratio'), (x) => pct(x.payoutRatio, 0), 'payout'],
+				[tx('У инсайдеров', 'Insiders'), (x) => pct(x.insiders, 0), 'insiders'],
+				[tx('У фондов', 'Institutions'), (x) => pct(x.institutions, 0), 'institutions']
 			]
 		},
 		{
 			t: tx('Аналитики', 'Analysts'),
 			help: 'security.analysts',
 			rows: [
-				[tx('Цель, средняя', 'Mean target'), (x) => num(x.target, 2)],
-				[tx('Цель, разброс', 'Target range'), (x) => (typeof x.targetLow === 'number' && typeof x.targetHigh === 'number' ? `${num(x.targetLow, 0)}–${num(x.targetHigh, 0)}` : null)],
-				[tx('Мнение', 'Opinion'), (x) => (typeof x.recommendation === 'string' ? tx(...(REC[x.recommendation] ?? [x.recommendation, x.recommendation])) : null)],
-				[tx('Аналитиков', 'Analysts'), (x) => num(x.analysts, 0)]
+				[tx('Цель, средняя', 'Mean target'), (x) => num(x.target, 2), 'target_analysts'],
+				[tx('Цель, разброс', 'Target range'), (x) => (typeof x.targetLow === 'number' && typeof x.targetHigh === 'number' ? `${num(x.targetLow, 0)}–${num(x.targetHigh, 0)}` : null), 'target_analysts'],
+				[tx('Мнение', 'Opinion'), (x) => (typeof x.recommendation === 'string' ? tx(...(REC[x.recommendation] ?? [x.recommendation, x.recommendation])) : null), 'rating'],
+				[tx('Аналитиков', 'Analysts'), (x) => num(x.analysts, 0), 'rating']
 			]
 		},
 		{
 			t: tx('Фонд', 'Fund'),
 			help: 'security.fund',
 			rows: [
-				[tx('Активы', 'Assets'), (x) => big(x.totalAssets)],
-				[tx('С начала года', 'Year to date'), (x) => pct(x.ytd)],
-				[tx('3 года, в год', '3 years, a year'), (x) => pct(x.threeYear)]
+				[tx('Активы', 'Assets'), (x) => big(x.totalAssets), 'aum'],
+				[tx('С начала года', 'Year to date'), (x) => pct(x.ytd), 'ytd'],
+				[tx('3 года, в год', '3 years, a year'), (x) => pct(x.threeYear), 'ytd']
 			]
 		}
 	]);
 	const groups = $derived(
-		ROWS.map((g) => ({ t: g.t, help: g.help, rows: g.rows.map(([k, f]) => [k, f(s), now ? f(now) : null] as [string, string | null, string | null]).filter((r) => r[1] !== null) as [string, string, string | null][] })).filter((g) => g.rows.length)
+		ROWS.map((g) => ({ t: g.t, help: g.help, rows: g.rows.map(([k, f, id]) => [k, f(s), now ? f(now) : null, id] as [string, string | null, string | null, string]).filter((r) => r[1] !== null) as [string, string, string | null, string][] })).filter((g) => g.rows.length)
 	);
 </script>
 
@@ -103,12 +116,30 @@
 	{#each groups as g (g.t)}
 		<div class="g">
 			<div class="gt"><span>{g.t}</span> <HelpIcon topicKey={g.help} label={g.t} /></div>
-			{#each g.rows as [k, val, nowVal] (k)}
-				<div class="r"><span>{k}</span><b>{val}</b>{#if now}<b class="now" class:same={nowVal === val}>{nowVal ?? '—'}</b>{/if}</div>
+			{#each g.rows as [k, val, nowVal, id] (k)}
+				{@const t = termById(id)}
+				<button type="button" class="r" class:on={openRow === k} aria-expanded={openRow === k} onclick={() => (openRow = openRow === k ? null : k)}><span>{k}</span><b>{val}</b>{#if now}<b class="now" class:same={nowVal === val}>{nowVal ?? '—'}</b>{/if}</button>
+				{#if openRow === k && t}<p class="tip">{t.what[L]} <i>{t.how[L]}</i></p>{/if}
 			{/each}
 		</div>
 	{/each}
 </div>
+{#if !now}
+	<div class="gl">
+		<button type="button" class="glt" aria-expanded={glossaryOpen} onclick={() => (glossaryOpen = !glossaryOpen)}>{glossaryOpen ? '▾' : '▸'} {tx('Словарь показателей от А до Я', 'Glossary of ratios, A to Z')} · {found.length}</button>
+		<HelpIcon topicKey="security.stats" label={tx('показатели', 'ratios')} />
+	</div>
+	{#if glossaryOpen}
+		<input class="gq" type="search" bind:value={q} placeholder={tx('Найти: бета, ATR, P/E, просадка…', 'Find: beta, ATR, P/E, drawdown…')} />
+		<dl class="terms">
+			{#each found as t (t.id)}
+				<dt>{t.term[L]} <span class="grp">{t.group[L]}</span></dt>
+				<dd>{t.what[L]} <b>{tx('Как пользоваться', 'How to use')}:</b> {t.how[L]}{#if t.where} <span class="grp">{tx('Где', 'Where')}: {t.where[L]}</span>{/if}</dd>
+			{/each}
+			{#if !found.length}<dd class="muted">{tx('Не нашёл — попробуй другое написание.', 'Not found — try another spelling.')}</dd>{/if}
+		</dl>
+	{/if}
+{/if}
 {#if s.priceRatiosHidden}<p class="note">{tx('Для бумаг TASE Yahoo делит цену в агоротах на результаты в долларах — оценочные коэффициенты (P/E, P/S, P/B, цели) скрыты, чтобы не вводить в заблуждение.', 'For TASE securities Yahoo divides a price in agorot by results in dollars — the price ratios (P/E, P/S, P/B, targets) are hidden so as not to mislead.')}</p>{/if}
 
 <style>
@@ -135,6 +166,79 @@
 		font-size: var(--fs-xs);
 		padding: 2px 0;
 		border-bottom: 1px solid var(--line);
+	}
+	button.r {
+		width: 100%;
+		background: none;
+		border: none;
+		border-bottom: 1px solid var(--line);
+		color: var(--text);
+		font: inherit;
+		font-size: var(--fs-xs);
+		text-align: left;
+		cursor: pointer;
+	}
+	button.r span {
+		text-decoration: underline dotted var(--muted);
+		text-underline-offset: 3px;
+	}
+	button.r.on {
+		background: var(--surface-2, rgba(127, 127, 127, 0.08));
+	}
+	.tip {
+		margin: 2px 0 6px;
+		font-size: var(--fs-xs);
+		line-height: 1.4;
+		color: var(--muted);
+	}
+	.tip i {
+		color: var(--text);
+	}
+	.gl {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		margin-top: var(--s3);
+	}
+	.glt {
+		background: none;
+		border: none;
+		padding: 6px 0;
+		color: var(--link);
+		font: inherit;
+		font-size: var(--fs-s);
+		cursor: pointer;
+		text-align: left;
+	}
+	.gq {
+		width: 100%;
+		min-height: 38px;
+		border: 1px solid var(--line);
+		border-radius: var(--r2);
+		background: var(--bg);
+		color: var(--text);
+		font-size: 16px;
+		padding: 0 8px;
+		margin: 4px 0 var(--s2);
+		box-sizing: border-box;
+	}
+	.terms {
+		margin: 0;
+		font-size: var(--fs-xs);
+		line-height: 1.45;
+	}
+	.terms dt {
+		font-weight: 600;
+		margin-top: var(--s2);
+	}
+	.terms dd {
+		margin: 2px 0 0;
+		color: var(--text);
+	}
+	.grp {
+		font-weight: 400;
+		color: var(--muted);
+		font-size: var(--fs-xs);
 	}
 	.r b {
 		font-variant-numeric: tabular-nums;

@@ -25,7 +25,7 @@
 	}
 	interface Trade {
 		key: string;
-		kind: 'stop' | 'target' | 'review' | 'model_end' | 'no_stop' | 'path';
+		kind: 'stop' | 'target' | 'review' | 'model_end' | 'no_stop' | 'path' | 'entry' | 'entry_broken' | 'decide';
 		order?: boolean;
 		flag?: Flag;
 		stateId?: number;
@@ -80,6 +80,9 @@
 	}
 	function tradeText(s: Trade) {
 		if (s.kind === 'path') return tx(`метка «${FLAG_NAME[s.flag!][0]}» — характер движения изменился`, `the mark «${FLAG_NAME[s.flag!][1]}» — the movement changed`);
+		if (s.kind === 'entry') return tx('«Хочу купить»: цена дошла до желаемой', '«Want to buy»: the wanted price reached') + `: ${priceText(s.price, s.priceUnit)}`;
+		if (s.kind === 'entry_broken') return `${tx('«Хочу купить»: цена ниже стопа плана', '«Want to buy»: the price is under the plan\'s stop')}: ${priceText(s.price, s.priceUnit)} ≤ ${priceText(s.stop, s.priceUnit)}`;
+		if (s.kind === 'decide') return tx('«Хочу купить»: пора решить — купить или передумать', '«Want to buy»: time to decide — buy or drop it');
 		if (s.kind === 'no_stop') return tx('куплено без стопа — выставь стоп у брокера', 'bought without a stop — place one at the broker');
 		if (s.kind === 'stop') return `${s.order ? tx('стоп у брокера должен был сработать', 'the stop at the broker should have worked') : tx('стоп пробит', 'stop broken')}: ${priceText(s.price, s.priceUnit)} ≤ ${priceText(s.stop, s.priceUnit)}`;
 		if (s.kind === 'target') return `${tx('цель достигнута', 'target reached')}: ${priceText(s.price, s.priceUnit)} ≥ ${priceText(s.target, s.priceUnit)}`;

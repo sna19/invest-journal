@@ -16,7 +16,7 @@
 	 * the week's ideas to buy with their plans. Each idea is a hypothesis of the source «Сигналы» — «Источники» measure it.
 	 */
 	type Trade = { key: string; kind: string; positionId: number; securityId: number; symbol: string; portfolio: string; price: number | null; stop: number | null; target: number | null; priceUnit: string; reviewDate: string | null; flag?: string; order?: boolean };
-	type Soft = { kind: 'score_red' | 'below_sma' | 'overweight'; key: string; positionId: number; securityId: number; symbol: string; portfolio: string; detail: string };
+	type Soft = { kind: 'score_red' | 'below_sma' | 'overweight' | 'deep_loss'; key: string; positionId: number; securityId: number; symbol: string; portfolio: string; detail: string };
 	type Idea = {
 		id: number;
 		securityId: number;
@@ -26,8 +26,16 @@
 		hypothesisId: number | null;
 		data: { symbol: string; name: string; market: 'US' | 'IL'; reasons: string[]; total: number; plan: { price: number; priceUnit: string; recommended: 'fixed' | 'trail'; stop: number; limit: number; trailPct: number; target: number; targetR: number; qty: number | null; amount: number | null; portfolio: string | null; maxLoss: number | null; maxLossPct: number | null; currency: string | null } };
 	};
+	type Want = { positionId: number; securityId: number; symbol: string; name: string; priceUnit: string; portfolio: string; price: number | null; want: number | null; toWant: number | null; stop: number | null; target: number | null; reviewDate: string | null; thesis: string | null; note: string | null; days: number | null; status: 'buy' | 'broken' | 'decide' | 'no_plan' | 'wait' };
+	const WANT_STATUS: Record<Want['status'], [string, string]> = {
+		buy: ['Цена дошла до желаемой. Перечитай тезис: если жив — покупай по плану (стоп и цель уже в нём) и выставь стоп у брокера.', 'The wanted price came. Re-read the thesis: if it holds, buy by the plan (the stop and the target are in it) and place the stop at the broker.'],
+		broken: ['Цена ушла ниже стопа плана ещё до покупки — по твоему же плану идея неверна. «Передумал» — или новый план с новым уровнем.', 'The price went under the plan\'s stop before the purchase — by your own plan the idea is wrong. «Changed my mind» — or a new plan at a new level.'],
+		decide: ['Ждёт давно или пришла дата пересмотра. Реши: купить сейчас, передумать или новый план с новой датой. Вечный «Хочу купить» — это не решение.', 'It waits long, or its review date came. Decide: buy now, drop it, or a new plan with a new date. A forever «Want to buy» is no decision.'],
+		no_plan: ['Нет стопа в плане: открой бумагу → «Новый план», стоп и цель заполнятся из защитного плана.', 'No stop in the plan: open it → «New plan», the stop and the target fill in from the protective plan.'],
+		wait: ['Жди желаемой цены. Сигнал придёт сам (и пуш, если включён «Хочу купить» в уведомлениях).', 'Wait for the wanted price. The signal comes by itself (and a push, if «Want to buy» is on in the notifications).']
+	};
 	type Settings = { weekday: number; hour: number; maxIdeas: number; markets: ('US' | 'IL')[]; minTurnoverUsd: number; minPriceUsd: number; reportDays: number; maxWeightPct: number; horizonMonths: number; minR: number };
-	let v = $state<{ run: string | null; ideas: Idea[]; day: { sell: Trade[]; review: Trade[]; soft: Soft[]; protect: PItem[] }; settings: Settings } | null>(null);
+	let v = $state<{ run: string | null; ideas: Idea[]; day: { sell: Trade[]; review: Trade[]; soft: Soft[]; protect: PItem[]; want: Want[] }; settings: Settings } | null>(null);
 	let keepFor = $state<string | null>(null);
 	let keepWhy = $state('');
 	let skipFor = $state<number | null>(null);
@@ -60,7 +68,7 @@
 		if (s.kind === 'no_stop') return tx('куплено без стопа', 'bought without a stop');
 		return `${tx('пора пересмотреть', 'time to review')}${s.reviewDate ? ` (${d(s.reviewDate)})` : ''}`;
 	}
-	const SOFT: Record<Soft['kind'], [string, string]> = { score_red: ['квант-оценка красная', 'the quant score is red'], below_sma: ['цена ниже SMA200', 'the price is under its SMA200'], overweight: ['позиция слишком большая', 'the position is too big'] };
+	const SOFT: Record<Soft['kind'], [string, string]> = { score_red: ['квант-оценка красная', 'the quant score is red'], below_sma: ['цена ниже SMA200', 'the price is under its SMA200'], overweight: ['позиция слишком большая', 'the position is too big'], deep_loss: ['глубокая просадка', 'a deep loss'] };
 	async function keep(key: string) {
 		if (await post({ action: 'keep', key, reason: keepWhy })) {
 			keepFor = null;
@@ -144,6 +152,26 @@
 		{/each}
 	</Fold>
 
+	<Fold key="sig-want" remind="portfolio.want" title={`${tx('Хочу купить', 'Want to buy')} · ${v.day.want.length}`} open={v.day.want.some((w) => w.status !== 'wait')}>
+		{#snippet aside()}<HelpIcon topicKey="portfolio.want" label={tx('как работать с «Хочу купить»', 'how to work with «Want to buy»')} />{/snippet}
+		{#if !v.day.want.length}<p class="muted small">{tx('Запланированных покупок нет. «Хочу купить» — в карточке бумаги, у идеи недели или в портфеле.', 'No planned purchases. «Want to buy» is on a security card, an idea of the week or the portfolio.')}</p>{/if}
+		{#each v.day.want as w (w.positionId)}
+			<section class="item want" class:hot={w.status === 'buy' || w.status === 'broken'}>
+				<h3><a href="/position/{w.positionId}">{w.symbol}</a><ScoreDot id={w.securityId} /> <span class="muted name">{w.name} · {w.portfolio}{w.days !== null ? ` · ${tx(`ждёт ${w.days} дн.`, `waits ${w.days} d`)}` : ''}</span></h3>
+				<div class="plan">
+					<span>{tx('Сейчас', 'Now')} <b>{pt(w.price, w.priceUnit)}</b></span>
+					{#if w.want}<span>{tx('Желаемая', 'Wanted')} <b>{pt(w.want, w.priceUnit)}</b>{#if w.toWant !== null}&nbsp;({w.toWant > 0 ? tx(`ещё −${w.toWant.toFixed(1)}%`, `−${w.toWant.toFixed(1)}% to go`) : tx('дошла', 'reached')}){/if}</span>{/if}
+					{#if w.stop}<span>{tx('Стоп', 'Stop')} <b>{pt(w.stop, w.priceUnit)}</b></span>{/if}
+					{#if w.target}<span>{tx('Цель', 'Target')} <b>{pt(w.target, w.priceUnit)}</b></span>{/if}
+					{#if w.reviewDate}<span>{tx('Решить до', 'Decide by')} {d(w.reviewDate)}</span>{/if}
+				</div>
+				{#if w.thesis || w.note}<p class="muted small">{w.thesis ?? w.note}</p>{/if}
+				<p class="small">{tx(...WANT_STATUS[w.status])}</p>
+				<div class="btns"><a class="ghost" href="/position/{w.positionId}">{tx('Купил / Передумал / Новый план', 'Bought / Changed my mind / New plan')} →</a></div>
+			</section>
+		{/each}
+	</Fold>
+
 	<Fold key="sig-buy" title={`${tx('Купить — идеи недели', 'Buy — the week\'s ideas')} · ${v.ideas.length}`} remind="signals.screen">
 		{#snippet aside()}<HelpIcon topicKey="signals.screen" label={tx('как отбираются', 'how they are chosen')} />{/snippet}
 		<p class="muted small">
@@ -158,8 +186,8 @@
 				<ul class="why">{#each i.data.reasons as r (r)}<li>{r}</li>{/each}</ul>
 				<div class="plan">
 					<span>{tx('Цена', 'Price')} <b>{pt(p.price, p.priceUnit)}</b></span>
-					{#if p.recommended === 'trail'}<span>{tx('Трейлинг', 'Trailing')} <b>{p.trailPct}%</b></span>{:else}<span>{tx('Стоп', 'Stop')} <b>{pt(p.stop, p.priceUnit)}</b> / {pt(p.limit, p.priceUnit)}</span>{/if}
-					<span>{tx('Цель', 'Target')} <b>{pt(p.target, p.priceUnit)}</b> ({String(p.targetR).replace('.', tx(',', '.'))} {tx('риска', 'risks')})</span>
+					{#if p.recommended === 'trail'}<span>{tx('Трейлинг', 'Trailing')} <b>{p.trailPct}%</b></span>{:else}<span>{tx('Стоп', 'Stop')} <b>{pt(p.stop, p.priceUnit)}</b> / {pt(p.limit, p.priceUnit)} (−{((1 - p.stop / p.price) * 100).toFixed(1)}% = {tx('1 риск', '1 risk')})</span>{/if}
+					<span>{tx('Цель', 'Target')} <b>{pt(p.target, p.priceUnit)}</b> (+{((p.target / p.price - 1) * 100).toFixed(1)}% · {String(p.targetR).replace('.', tx(',', '.'))} {tx('риска', 'risks')}: {tx('возможная прибыль в', 'the possible gain is')} {String(p.targetR).replace('.', tx(',', '.'))} {tx('раза больше убытка до стопа', 'times the loss to the stop')}) <HelpIcon topicKey="trade.stop" label={tx('что такое риск', 'what a risk is')} /></span>
 					{#if p.qty}<span>{tx('Размер', 'Size')} <b>{p.qty}</b> {tx('шт.', 'sh.')}{#if p.amount} · {money(p.amount, p.priceUnit === 'USD' ? 'USD' : 'ILS')}{/if}</span>{/if}
 					{#if p.maxLoss !== null && p.currency}<span>{tx('Убыток до стопа', 'Loss to the stop')} {money(p.maxLoss, p.currency)}{#if p.maxLossPct !== null} ({p.maxLossPct.toFixed(1)}%){/if}</span>{/if}
 				</div>
@@ -287,6 +315,13 @@
 	.idea {
 		padding: var(--s3) 0;
 		border-top: 1px solid var(--line);
+	}
+	.want.hot {
+		border-left: 3px solid var(--accent);
+		padding-left: var(--s2);
+	}
+	.want p {
+		margin: 0 0 6px;
 	}
 	.idea.done {
 		opacity: 0.7;

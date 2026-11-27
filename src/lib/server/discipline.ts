@@ -181,7 +181,10 @@ export function insertReview(app: Database.Database, eventId: number, r: { reaso
 
 // ── signals ──────────────────────────────────────────────────────────────────────────────────────────────
 
-export type SignalKind = 'stop' | 'target' | 'review' | 'model_end' | 'no_stop' | 'path';
+/** entry, entry_broken, decide — a «Хочу купить»: the wanted price reached, the price under the plan's stop before the
+ * purchase, the review date of the plan came (buy or change your mind) */
+export type SignalKind = 'stop' | 'target' | 'review' | 'model_end' | 'no_stop' | 'path' | 'entry' | 'entry_broken' | 'decide';
+export const WANT_KINDS: SignalKind[] = ['entry', 'entry_broken', 'decide'];
 export interface Signal {
 	kind: SignalKind;
 	positionId: number;
@@ -202,6 +205,8 @@ export interface Signal {
 	/** T-033: the mark of the return's path («выдыхается», …) and its state (for «Пересмотрел») */
 	flag?: string;
 	stateId?: number;
+	/** «Хочу купить»: the wanted price */
+	want?: number | null;
 }
 
 /**
@@ -246,6 +251,26 @@ export function signals(app: Database.Database, market: Database.Database, today
 			const d = (lastBuy.get(r.id) as { d: string | null }).d;
 			if (d && d < today && daysBetween(d, today) <= 14) out.push({ kind: 'no_stop', ...base });
 		}
+	}
+	// «Хочу купить»: the wanted price, the plan's stop before the purchase, the plan's review date
+	const wants = app
+		.prepare(
+			`select s.id, s.portfolio_id as portfolioId, p.name as portfolio, s.security_id as securityId, s.symbol, s.price_unit as priceUnit,
+			        (select e.price from position_events e where e.position_id = s.id and e.kind = 'plan_buy' and e.cancelled_at is null order by e.id desc limit 1) as want
+			   from positions s join portfolios p on p.id = s.portfolio_id
+			  where s.stage = 'plan_buy' and p.auto_source_id is null and p.archived_at is null
+			  order by p.sort_order, p.id, s.symbol`
+		)
+		.all() as { id: number; portfolioId: number; portfolio: string; securityId: number; symbol: string; priceUnit: string; want: number | null }[];
+	for (const r of wants) {
+		const plan = planOf(app, r.id);
+		const mv = m.dayMove(r.securityId);
+		const last = m.last(r.securityId);
+		const price = mv?.now ?? last?.close ?? null;
+		const base = { positionId: r.id, planId: plan?.id ?? 0, portfolioId: r.portfolioId, portfolio: r.portfolio, securityId: r.securityId, symbol: r.symbol, priceUnit: r.priceUnit, price, priceDate: mv?.date ?? last?.date ?? null, stop: plan?.stop ?? null, target: plan?.target ?? null, reviewDate: plan?.reviewDate ?? null, want: r.want };
+		if (price !== null && base.stop !== null && price <= base.stop) out.push({ kind: 'entry_broken', ...base });
+		else if (price !== null && r.want !== null && price <= r.want) out.push({ kind: 'entry', ...base });
+		if (plan?.reviewDate && today >= plan.reviewDate) out.push({ kind: 'decide', ...base });
 	}
 	// T-033: a new mark of the return's path on a held security — until «Пересмотрел»
 	const marks = flagSignals(app, today);

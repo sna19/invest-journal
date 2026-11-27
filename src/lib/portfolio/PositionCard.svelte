@@ -9,6 +9,7 @@
 	import HelpIcon from '../HelpIcon.svelte';
 	import Pct from '../Pct.svelte';
 	import EventForm from './EventForm.svelte';
+	import Recovery from './Recovery.svelte';
 	import TradePlan, { newDraft, planBody, PLAN_KIND_LABEL, type PlanDraft, type PlanKind } from './TradePlan.svelte';
 	import { israelDate } from '../hypothesis.js';
 	import { journalVersion } from '../journal/screen.svelte.js';
@@ -100,7 +101,7 @@
 		portfolioValue: number;
 		plan: { id: number; kind: PlanKind; thesis: string | null; wrongIf: string | null; stop: number | null; target: number | null; reviewDate: string | null; noStopReason: string | null; reason: string | null; createdAt: string } | null;
 		reviews: Record<string, { reason: string; followed: number }>;
-		signals: { kind: 'stop' | 'target' | 'review' | 'model_end' | 'no_stop' | 'path'; order?: boolean; price: number | null; priceDate: string | null }[];
+		signals: { kind: 'stop' | 'target' | 'review' | 'model_end' | 'no_stop' | 'path' | 'entry' | 'entry_broken' | 'decide'; order?: boolean; price: number | null; priceDate: string | null }[];
 		decisions: { id: number; type: string; basis: string; noReason: number; outcome: string | null }[];
 		review: { date: string; wouldBuy: number; thesis: string | null; exitCondition: string | null } | null;
 		buyForSale: { id: number; type: string; basis: string; expectation: string | null; createdAt: string; html: string } | null;
@@ -146,6 +147,9 @@
 		path: ['Метка пути доходности — пересмотри тезис (блок «Как набиралась прибыль»)', 'A mark of the return\'s path — review the thesis (block «How the profit was made»)'],
 		no_stop: ['Куплено без стопа — выставь стоп у брокера (блок «Защита»)', 'Bought without a stop — place one at the broker (block «Protection»)'],
 		target: ['Цель достигнута', 'Target reached'],
+		entry: ['Цена дошла до желаемой — тезис жив? Купи по плану или передумай', 'The wanted price reached — is the thesis alive? Buy by the plan or drop it'],
+		entry_broken: ['Цена ниже стопа плана ещё до покупки — идея сломана: «Передумал» или новый план', 'The price is under the plan\'s stop before the purchase — the idea is broken: «Changed my mind» or a new plan'],
+		decide: ['Пора решить: купить или передумать', 'Time to decide: buy or drop it'],
 		review: ['Пора пересмотреть', 'Time to review'],
 		model_end: ['Период модели закончился — по правилу 2 продать', 'The model\'s period is over — rule 2 says sell']
 	};
@@ -292,10 +296,33 @@
 				<p><b>{tx(...SIGNAL_TEXT[s.kind])}</b>{#if (s.kind === 'stop' || s.kind === 'target') && s.price !== null} · {priceText(s.price, p.priceUnit)}{/if}</p>
 			{/each}
 			<div class="btns">
-				<button class="main" onclick={() => ((planning = false), (step = 'sell'))}>{tx('Продал', 'Sold')}</button>
-				<button class="ghost" onclick={startPlan}>{tx('Пересмотрел', 'Reviewed')}</button>
+				{#if p.stage === 'plan_buy'}
+					<button class="main" onclick={() => ((planning = false), (step = 'buy'))}>{tx('Купил', 'Bought')}</button>
+					<button class="ghost" onclick={() => ((planning = false), (step = 'drop'))}>{tx('Передумал', 'Changed my mind')}</button>
+					<button class="ghost" onclick={startPlan}>{tx('Новый план', 'New plan')}</button>
+				{:else}
+					<button class="main" onclick={() => ((planning = false), (step = 'sell'))}>{tx('Продал', 'Sold')}</button>
+					<button class="ghost" onclick={startPlan}>{tx('Пересмотрел', 'Reviewed')}</button>
+				{/if}
 			</div>
 		</div>
+	{/if}
+
+	{#if p.qty > 0 && p.avgPrice && p.lastPrice && !v.portfolio.auto_source_id && p.lastPrice / p.avgPrice - 1 <= -0.2}
+		<!-- owner 27.11.2026: a deep loss — the state of the price and the one question, instead of «фиаско» -->
+		<Recovery
+			securityId={p.securityId}
+			avg={p.avgPrice}
+			last={p.lastPrice}
+			priceUnit={p.priceUnit}
+			since={v.events.find((e) => (e.kind === 'buy' || e.kind === 'opening') && !e.cancelledAt)?.date ?? null}
+			hasStop={!!v.plan?.stop}
+			onhold={(stop) => {
+				startPlan();
+				if (stop && !draft.stop.trim()) draft.stop = String(stop);
+			}}
+			onsell={() => ((planning = false), (step = 'sell'))}
+		/>
 	{/if}
 
 	{#if v.plan}

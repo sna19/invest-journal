@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { openMarket } from './db.js';
-import { correlation, volatility } from './compare.js';
+import { correlation, drawdowns, volatility } from './compare.js';
 
 describe('owner 27.11.2026: volatility and correlation', () => {
 	it('the volatility is the yearly standard deviation of daily log returns; the correlation of the same series is 1, of the mirror −1', () => {
@@ -21,5 +21,12 @@ describe('owner 27.11.2026: volatility and correlation', () => {
 		expect(correlation(a, a)).toBe(1);
 		expect(correlation(a, b)).toBe(-1);
 		expect(correlation(new Map([['d1', 1]]), new Map([['d1', 1]]))).toBeNull();
+	});
+
+	it('drawdowns: 100 → 150 → 90 → 120: now −20% from the high, the worst −40%', () => {
+		const c = [...Array.from({ length: 30 }, (_, i) => 100 + i * (50 / 29)), ...Array.from({ length: 20 }, (_, i) => 150 - (i + 1) * 3), ...Array.from({ length: 10 }, (_, i) => 90 + (i + 1) * 3)];
+		expect(c.length).toBe(60);
+		expect(drawdowns(c)).toEqual({ now: -0.2, max: -0.4 });
+		expect(drawdowns(c.slice(0, 59))).toBeNull();
 	});
 });

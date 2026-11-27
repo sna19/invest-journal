@@ -137,7 +137,9 @@ export const WHERE = {
 	'portfolio.allocation': 'Портфель, блок «Распределение»',
 	'security.chart': 'Карточка бумаги (график), заголовок',
 	'portfolio.together': 'Экран «Всё вместе», заголовок',
-	'portfolio.transfer': 'Портфель, окно «Перенос позиций»'
+	'portfolio.transfer': 'Портфель, окно «Перенос позиций»',
+	'portfolio.want': 'Сигналы, блок «Хочу купить»',
+	'portfolio.drawdown': 'Карточка позиции с убытком от 20%, блок «Разбор просадки»'
 };
 
 export function helpDoc(dir = join(root, 'help')) {

@@ -205,3 +205,19 @@ export function compareTable(market: Database.Database, id: number, benchId: num
 		refs: [...refs, ...(bench ? [{ role: 'index' as const, label: bench.symbol === 'SPX' ? 'S&P 500' : 'ТА-125', ...bench }] : [])].map((r) => ({ ...r, returns: ret(r.id), loaded: !!last.get(r.id), corr: correlation(mine, dailyReturns(market, r.id)), vol: volatility(market, r.id).vol1y }))
 	};
 }
+
+/**
+ * The drawdowns of a series of closes (a year of them): now — the last close under the highest close so far, max — the
+ * deepest fall from a running high to a later low. Both ≤ 0, as fractions; null under 60 closes.
+ */
+export function drawdowns(closes: number[]) {
+	if (closes.length < 60) return null;
+	let peak = closes[0];
+	let max = 0;
+	for (const c of closes) {
+		if (c > peak) peak = c;
+		max = Math.min(max, c / peak - 1);
+	}
+	const r = (x: number) => Math.round(x * 10000) / 10000;
+	return { now: r(closes.at(-1)! / peak - 1), max: r(max) };
+}

@@ -13,6 +13,8 @@
 5. **Income and holders** — dividends and who holds the shares.
 6. **Analysts** — last, as a check, not as a reason.
 
+**Understanding a ratio fast.** A tap on any row's name shows a short hint under it: what it shows and how to use it. At the bottom of the block — «Glossary of ratios, A to Z» with a search (beta, ATR, P/E, drawdown, IV…); the same glossary is at the end of this help.
+
 Write the conclusion in the diary with «To the diary»: the ratios' snapshot is kept, and in half a year you will see «then → now».
 
 **What matters when.** For a mature dividend company — quality, debt, the payout ratio. For a growing tech company — revenue growth, gross margin, P/S and PEG (its P/E is often high or absent). For banks and insurers — P/B and ROE (EV/EBITDA and debt do not apply). For commodity and cyclical companies — EV/EBITDA and debt; a low P/E at the top of the cycle is a trap.

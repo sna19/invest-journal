@@ -12,7 +12,8 @@ import { barsOf, portfolioProtection, protectionOf, type Protection } from './pr
 import { checkPurchase } from './portfolioRisk.js';
 import { liveSignals } from './reminders.js';
 import { addEntry } from './diary.js';
-import { portfolioView, setAuto } from './portfolio.js';
+import { planOf } from './discipline.js';
+import { marketView, portfolioView, setAuto } from './portfolio.js';
 
 /**
  * T-035 «Сигналы» (owner, 27.11.2026: «превратить это в систему… сигналы покупки или продажи… начнём с единиц»). The
@@ -303,7 +304,7 @@ export function markIdea(app: Database.Database, market: Database.Database, id: 
 
 // ── every day: sell, review, place at the broker ─────────────────────────────────────────────────────
 
-export type SoftKind = 'score_red' | 'below_sma' | 'overweight';
+export type SoftKind = 'score_red' | 'below_sma' | 'overweight' | 'deep_loss';
 
 /**
  * The day's list: «Продать» — the hard rules (a stop or trailing level broken, a model's period over); «Пересмотреть»
@@ -350,8 +351,64 @@ export function dayList(app: Database.Database, market: Database.Database, today
 				if (until && today < until) continue;
 				soft.push({ kind: 'overweight', key, positionId: w.positionId, securityId: w.securityId, symbol: w.symbol, portfolio: port.name, detail: `${w.weight.toFixed(1)}% портфеля при пороге ${Math.round(limit)}%` });
 			}
+		// owner 27.11.2026: a loss of 20% and more — the «Разбор просадки» in its card
+		for (const w of v)
+			if (w.loss !== null && w.loss <= -0.2) {
+				const key = `deep_loss|${w.positionId}|0`;
+				const until = snoozed.get(key);
+				if (until && today < until) continue;
+				soft.push({ kind: 'deep_loss', key, positionId: w.positionId, securityId: w.securityId, symbol: w.symbol, portfolio: port.name, detail: `${Math.round(w.loss * 100)}% от цены покупки — пройди разбор: купил бы сегодня?` });
+			}
 	}
-	return { sell, review, soft, protect, settings: st };
+	return { sell, review, soft, protect, want: wantList(app, market, live, today), settings: st };
+}
+
+/**
+ * «Хочу купить» on «Сигналы»: every planned purchase of the real portfolios — the wanted price against the latest one,
+ * the plan's stop and target, how long it waits, and what to do now: buy (the price came), drop it (the price fell under
+ * the plan's stop before the purchase), decide (the plan's review date came, or it waits over 30 days), or wait.
+ */
+export function wantList(app: Database.Database, market: Database.Database, live: { kind: string; positionId: number }[], today = israelDate()) {
+	const rows = app
+		.prepare(
+			`select s.id, s.security_id as securityId, s.symbol, s.security_name as name, s.price_unit as priceUnit, p.name as portfolio,
+			        (select e.price from position_events e where e.position_id = s.id and e.kind = 'plan_buy' and e.cancelled_at is null order by e.id desc limit 1) as want,
+			        (select e.amount from position_events e where e.position_id = s.id and e.kind = 'plan_buy' and e.cancelled_at is null order by e.id desc limit 1) as amount,
+			        (select e.note from position_events e where e.position_id = s.id and e.kind = 'plan_buy' and e.cancelled_at is null order by e.id desc limit 1) as note,
+			        (select min(e.date) from position_events e where e.position_id = s.id and e.kind = 'plan_buy' and e.cancelled_at is null) as since
+			   from positions s join portfolios p on p.id = s.portfolio_id
+			  where s.stage = 'plan_buy' and p.kind = 'real' and p.auto_source_id is null and p.archived_at is null
+			  order by s.symbol`
+		)
+		.all() as { id: number; securityId: number; symbol: string; name: string; priceUnit: string; portfolio: string; want: number | null; amount: number | null; note: string | null; since: string | null }[];
+	const m = marketView(market);
+	return rows.map((r) => {
+		const plan = planOf(app, r.id);
+		const price = m.dayMove(r.securityId)?.now ?? m.last(r.securityId)?.close ?? null;
+		const sig = live.filter((x) => x.positionId === r.id).map((x) => x.kind);
+		const days = r.since ? Math.round((Date.parse(today) - Date.parse(r.since)) / 86_400_000) : null;
+		const status = sig.includes('entry_broken') ? 'broken' : sig.includes('entry') ? 'buy' : sig.includes('decide') || (days !== null && days > 30) ? 'decide' : !plan?.stop ? 'no_plan' : 'wait';
+		return {
+			positionId: r.id,
+			securityId: r.securityId,
+			symbol: r.symbol,
+			name: r.name,
+			priceUnit: r.priceUnit,
+			portfolio: r.portfolio,
+			price,
+			want: r.want,
+			/** how far the price is above the wanted one, % (negative — under it) */
+			toWant: price !== null && r.want ? (price / r.want - 1) * 100 : null,
+			stop: plan?.stop ?? null,
+			target: plan?.target ?? null,
+			reviewDate: plan?.reviewDate ?? null,
+			thesis: plan?.thesis ?? null,
+			note: r.note,
+			amount: r.amount,
+			days,
+			status
+		};
+	});
 }
 
 /** the price went under its 200-day average within the last 10 trading days (a crossing, not a long state) */
@@ -368,20 +425,20 @@ function crossedDown(market: Database.Database, id: number) {
 
 function portfolioWeights(app: Database.Database, market: Database.Database, id: number, today: string) {
 	const v = portfolioView(app, market, id, today);
-	return (v?.positions ?? []).filter((p) => p.qty > 0 && p.stage !== 'closed').map((p) => ({ positionId: p.id, securityId: p.securityId, symbol: p.symbol, weight: p.weight }));
+	return (v?.positions ?? []).filter((p) => p.qty > 0 && p.stage !== 'closed').map((p) => ({ positionId: p.id, securityId: p.securityId, symbol: p.symbol, weight: p.weight, loss: p.avgPrice && p.lastPrice ? p.lastPrice / p.avgPrice - 1 : null }));
 }
 
 /** «Держу — потому что…»: the reason into the diary, the soft signal quiet for 30 days */
 export function keepPosition(app: Database.Database, market: Database.Database, key: unknown, reason: unknown, today = israelDate()) {
 	const k = String(key ?? '');
-	const m = /^(score_red|below_sma|overweight)\|(\d+)\|0$/.exec(k);
+	const m = /^(score_red|below_sma|overweight|deep_loss)\|(\d+)\|0$/.exec(k);
 	if (!m) throw new InputError({ key: 'Нет такого сигнала' } as Errors);
 	const why = typeof reason === 'string' ? reason.trim().slice(0, 300) : '';
 	if (!why) throw new InputError({ reason: 'Почему держишь — одной строкой' } as Errors);
 	const until = new Date(Date.parse(today + 'T12:00:00Z') + 30 * 86_400_000).toISOString().slice(0, 10);
 	app.prepare(`insert into signal_snoozes (key, until, count) values (?, ?, 1) on conflict(key) do update set until = excluded.until, count = count + 1`).run(k, until);
 	const pos = app.prepare('select security_id as sid, symbol from positions where id = ?').get(Number(m[2])) as { sid: number; symbol: string } | undefined;
-	const what = { score_red: 'квант-оценка красная', below_sma: 'цена ниже SMA200', overweight: 'позиция слишком большая' }[m[1] as SoftKind];
+	const what = { score_red: 'квант-оценка красная', below_sma: 'цена ниже SMA200', overweight: 'позиция слишком большая', deep_loss: 'глубокая просадка' }[m[1] as SoftKind];
 	if (pos) addEntry(app, market, { kind: 'observation', body: `<p>Держу ${pos.symbol} (${what}): ${why.replace(/</g, '&lt;')}</p>`, format: 'html', links: [{ type: 'position', id: m[2], primary: true }, { type: 'security', id: String(pos.sid) }] }, { origin: `keep:${k}:${today}` });
 	return until;
 }

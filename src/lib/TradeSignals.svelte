@@ -9,7 +9,7 @@
 	 * «Продал» / «Пересмотрел»; the banner stays until one of them is done.
 	 */
 	interface Signal {
-		kind: 'stop' | 'target' | 'review' | 'model_end' | 'no_stop' | 'path';
+		kind: 'stop' | 'target' | 'review' | 'model_end' | 'no_stop' | 'path' | 'entry' | 'entry_broken' | 'decide';
 		flag?: string;
 		order?: boolean;
 		positionId: number;
@@ -22,6 +22,7 @@
 		stop: number | null;
 		target: number | null;
 		reviewDate: string | null;
+		want?: number | null;
 	}
 	/** only these positions (the portfolio screen shows its own) */
 	let { portfolioId = null }: { portfolioId?: number | null } = $props();
@@ -34,6 +35,9 @@
 	const d = (s: string) => new Date(s + 'T12:00:00').toLocaleDateString(loc(), { day: 'numeric', month: 'short' });
 	function text(s: Signal) {
 		if (s.kind === 'path') return tx(`метка пути «${({ fading: 'выдыхается', stuck: 'застряла', spike: 'всплеск', bounce: 'отскок' } as Record<string, string>)[s.flag ?? ''] ?? ''}» — пересмотри тезис`, `a path mark «${s.flag}» — review the thesis`);
+		if (s.kind === 'entry') return `${tx('цена дошла до желаемой', 'the wanted price reached')}: ${priceText(s.price, s.priceUnit)} ≤ ${priceText(s.want ?? null, s.priceUnit)}`;
+		if (s.kind === 'entry_broken') return `${tx('цена ниже стопа плана ещё до покупки', 'the price is under the plan\'s stop before the purchase')}: ${priceText(s.price, s.priceUnit)} ≤ ${priceText(s.stop, s.priceUnit)}`;
+		if (s.kind === 'decide') return `${tx('пора решить: купить или передумать', 'time to decide: buy or drop it')} (${s.reviewDate ? d(s.reviewDate) : ''})`;
 		if (s.kind === 'no_stop') return tx('куплено без стопа — выставь стоп у брокера', 'bought without a stop — place one at the broker');
 		if (s.kind === 'stop') return `${s.order ? tx('стоп у брокера должен был сработать', 'the stop at the broker should have worked') : tx('стоп пробит', 'stop broken')}: ${priceText(s.price, s.priceUnit)} ≤ ${priceText(s.stop, s.priceUnit)}`;
 		if (s.kind === 'target') return `${tx('цель достигнута', 'target reached')}: ${priceText(s.price, s.priceUnit)} ≥ ${priceText(s.target, s.priceUnit)}`;
@@ -46,7 +50,7 @@
 	<a class="sig" class:stop={s.kind === 'stop' || s.kind === 'model_end' || s.kind === 'no_stop'} href="/position/{s.positionId}">
 		<b>{s.symbol}</b> {text(s)}
 		{#if portfolioId === null}<span class="small">{s.portfolio}</span>{/if}
-		<span class="small">{tx('Продал или пересмотрел?', 'Sold or reviewed?')} →</span>
+		<span class="small">{s.kind === 'entry' || s.kind === 'entry_broken' || s.kind === 'decide' ? tx('Купил или передумал?', 'Bought or dropped it?') : tx('Продал или пересмотрел?', 'Sold or reviewed?')} →</span>
 	</a>
 {/each}
 

@@ -7,7 +7,7 @@
 	 * T-015, «Настройки» → «Уведомления»: this device subscribes to the signals of the trade discipline (Web Push).
 	 * On an iPhone it works in the app added to the home screen (iOS 16.4+), not in a Safari tab.
 	 */
-	type Kind = 'stop' | 'no_stop' | 'target' | 'review' | 'model_end' | 'path' | 'reminder' | 'ideas';
+	type Kind = 'stop' | 'no_stop' | 'target' | 'review' | 'model_end' | 'path' | 'entry' | 'reminder' | 'ideas';
 	const KINDS: [Kind, string, string][] = [
 		['stop', 'Стоп пробит', 'Stop broken'],
 		['no_stop', 'Куплено без стопа (через сутки)', 'Bought without a stop (a day later)'],
@@ -15,6 +15,7 @@
 		['review', 'Пора пересмотреть', 'Time to review'],
 		['model_end', 'Период модели закончился', 'The model\'s period is over'],
 		['path', 'Метки пути доходности', 'Marks of the return\'s path'],
+		['entry', '«Хочу купить»: цена дошла до желаемой, ниже стопа плана, пора решить', '«Want to buy»: the wanted price reached, under the plan\'s stop, time to decide'],
 		['reminder', 'Напоминания дневника', 'Diary reminders'],
 		['ideas', 'Сводка сигналов недели', 'The week\'s signals digest']
 	];

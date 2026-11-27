@@ -174,19 +174,57 @@
 		const it = r?.items?.[0];
 		if (!it || !tplan || tplan.stop.trim() || sec?.id !== id) return;
 		tplan.stop = it.priceUnit === 'ILA' ? String(Math.round(it.f.stop)) : String(it.f.stop);
+		autoPlan = { base: it.price, stopK: it.f.stop / it.price, targetK: null, stop: tplan.stop, target: '', agorot: it.priceUnit === 'ILA' };
 		tplan.stopPct = false;
 		// T-035: the target too, unless the plan advises a trailing stop instead
 		if (!tplan.target.trim() && it.recommended === 'fixed' && it.f.target) {
 			tplan.target = it.priceUnit === 'ILA' ? String(Math.round(it.f.target)) : String(it.f.target);
 			tplan.targetPct = false;
+			if (autoPlan) ((autoPlan.targetK = it.f.target / it.price), (autoPlan.target = tplan.target));
 		}
+		// the size by the risk budget (the block «Защита»), unless typed
+		if (it.size?.qty) {
+			if (kind === 'buy' && !qty.trim()) qty = String(it.size.qty);
+			if (kind === 'plan_buy' && !amount.trim()) amount = String(Math.round(it.size.amount));
+		}
+		// «что докажет, что я неправ» — at least the stop's close
+		if (!tplan.wrongIf.trim()) tplan.wrongIf = tx(`Закрытие ниже стопа ${tplan.stop}`, `A close under the stop ${tplan.stop}`);
 		fromProtection = true;
 	}
+
+	/** «Хочу купить» at another price: the protective plan's stop and target move with it, while not typed over */
+	let autoPlan: { base: number; stopK: number; targetK: number | null; stop: string; target: string; agorot: boolean } | null = null;
+	function rescale() {
+		const x = n(price);
+		if (!autoPlan || !x || !(x > 0)) return;
+		const r = (v: number) => (autoPlan!.agorot ? String(Math.round(v)) : String(Math.round(v * 100) / 100));
+		if (tplan.stop === autoPlan.stop) tplan.stop = autoPlan.stop = r(x * autoPlan.stopK);
+		if (autoPlan.targetK !== null && tplan.target === autoPlan.target) tplan.target = autoPlan.target = r(x * autoPlan.targetK);
+		if (tplan.wrongIf.startsWith(tx('Закрытие ниже стопа ', 'A close under the stop '))) tplan.wrongIf = tx(`Закрытие ниже стопа ${tplan.stop}`, `A close under the stop ${tplan.stop}`);
+	}
+
+	/** the quant score's reading as the thesis of a purchase that comes with none (a security card, the search) */
+	async function scoreThesis(id: number) {
+		if (!tplan || tplan.thesis.trim() || hypothesisId || modelVariant || existingPlan) return;
+		const j = await fetch(`/api/score?ids=${id}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+		const sc = j?.items?.[id] as { color: string; total: number | null; factors: Record<string, { grade: string | null }>; trend: { above: boolean } | null } | undefined;
+		if (!sc || sc.total === null || !tplan || tplan.thesis.trim() || sec?.id !== id) return;
+		const COLOR: Record<string, [string, string]> = { green: ['зелёная', 'green'], yellow: ['жёлтая', 'yellow'], red: ['красная', 'red'], grey: ['серая', 'grey'] };
+		const F: [string, string, string][] = [['quality', 'качество', 'quality'], ['growth', 'рост', 'growth'], ['valuation', 'оценка', 'valuation'], ['momentum', 'моментум', 'momentum']];
+		const grades = F.filter(([k]) => sc.factors[k]?.grade).map(([k, ru, en]) => `${tx(ru, en)} ${sc.factors[k].grade}`).join(', ');
+		const trend = sc.trend ? (sc.trend.above ? tx('цена выше SMA200', 'the price is above its SMA200') : tx('цена ниже SMA200', 'the price is under its SMA200')) : '';
+		tplan.thesis = tx(`Квант-оценка ${Math.round(sc.total * 100)} (${COLOR[sc.color]?.[0] ?? sc.color})`, `Quant score ${Math.round(sc.total * 100)} (${COLOR[sc.color]?.[1] ?? sc.color})`) + (grades ? `: ${grades}` : '') + (trend ? `; ${trend}` : '') + tx('. Почему именно она — допиши своими словами.', '. Why this one — add in your own words.');
+		fromScore = true;
+	}
+	let fromScore = $state(false);
 
 	function use(s: { id: number; symbol: string; name: string; currency: string; priceUnit: string }) {
 		sec = s;
 		void loadRisk(s.id);
-		if (kind === 'buy' && !edit) void protectionStop(s.id);
+		if ((kind === 'buy' || kind === 'plan_buy') && !edit) {
+			void protectionStop(s.id);
+			void scoreThesis(s.id);
+		}
 		if (trade && fee === '') fee = lastFee[s.currency] !== undefined ? String(lastFee[s.currency]) : '';
 		quote();
 	}
@@ -337,7 +375,7 @@
 			<div class="row">
 				<label>
 					<span>{plan ? tx('Желаемая цена', 'Desired price') : tx('Цена', 'Price')}, {unitLabel}</span>
-					<input inputmode="decimal" bind:value={price} oninput={() => (priceTouched = true)} placeholder={plan ? tx('необязательно', 'optional') : ''} />
+					<input inputmode="decimal" bind:value={price} oninput={() => ((priceTouched = true), rescale())} placeholder={plan ? tx('необязательно', 'optional') : ''} />
 					{#if quoteDate && !plan}<em class="hint">{tx('закрытие', 'close')} {quoteDate.split('-').reverse().join('.')}</em>{/if}
 					{#if errors.price}<em class="err">{errors.price}</em>{/if}
 				</label>
@@ -391,7 +429,7 @@
 				{fxUsd}
 				{errors}
 			/>
-			{#if fromProtection}<p class="muted small">{tx('Стоп и цель — из защитного плана; поправь, если не согласен.', 'The stop and the target come from the protective plan; change them if you disagree.')}</p>{/if}
+			{#if fromProtection || fromScore}<p class="muted small">{fromProtection ? tx('Стоп, цель и размер — из защитного плана (по ATR и бюджету риска)', 'The stop, the target and the size come from the protective plan (by ATR and the risk budget)') : ''}{fromProtection && fromScore ? '; ' : fromProtection ? '. ' : ''}{fromScore ? tx('тезис — из квант-оценки. ', 'the thesis — from the quant score. ') : ''}{tx('Поправь, если не согласен.', 'Change them if you disagree.')} <HelpIcon topicKey="trade.stop" label={tx("стоп, цель и риск", "stop, target and risk")} /></p>{/if}
 			{#if kind === 'buy'}<BasisPicker bind:basis={() => basis, (v) => (basisPicked = v)} />{/if}
 		{/if}
 
