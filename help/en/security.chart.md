@@ -4,7 +4,7 @@
 
 **The idea.** A chart next to the benchmark shows not only where the price went, but whether the security was stronger than the market.
 
-**How to use it.**
+**How to use it.** The lines' names above the chart (the index, sector, industry, added shares) are links: a tap opens that security's card, «Back» returns to the chart with the same lines. On a computer Ctrl / ⌘ + click opens the card in a new tab, to compare side by side. (The app on the Home screen has no tabs — «Back» is handier there.)
 
 **Marks:**
 - ● — a hypothesis entry, ■ — its exit; the colour is the source (labels under the chart);

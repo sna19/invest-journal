@@ -322,6 +322,12 @@
 	const corrText = (x: number | null | undefined) => (x === null || x === undefined ? '' : x.toFixed(2).replace('.', tx(',', '.')));
 	function toggleRef(id: number) {
 		shown = shown.includes(id) ? shown.filter((x) => x !== id) : [...shown, id];
+		// the lines stay when coming back from a compared share's card
+		try {
+			localStorage.setItem(`chart-shown:${page.params.id}`, JSON.stringify(shown));
+		} catch {
+			/* ignore */
+		}
 		if (shown.includes(id)) void loadRefLine(id);
 	}
 	const ROLE: Record<CmpRef['role'], [string, string]> = { sector: ['Сектор', 'Sector'], industry: ['Отрасль', 'Industry'], index: ['Индекс', 'Index'] };
@@ -384,6 +390,15 @@
 			/* ignore */
 		}
 		loadPeers();
+		try {
+			const v = JSON.parse(localStorage.getItem(`chart-shown:${page.params.id}`) ?? '[]');
+			if (Array.isArray(v)) {
+				shown = v.filter((x) => Number.isInteger(x) && x > 0).slice(0, 12);
+				for (const id of shown) void loadRefLine(id);
+			}
+		} catch {
+			/* ignore */
+		}
 		loadLev();
 		loadNews();
 		void fetch('/api/shortlist').then((r) => r.json()).then((r) => (picked = (r.items ?? []).some((x: { id: number }) => x.id === Number(page.params.id)))).catch(() => {});
@@ -428,16 +443,16 @@
 		c
 			? [
 					{ key: 'sec', label: c.security.symbol, points: c.points, main: true },
-					...(c.benchmark && c.bench.length ? [{ key: 'bench', label: tl(c.benchmark.label), points: c.bench, color: css('--muted'), dashed: true }] : []),
+					...(c.benchmark && c.bench.length ? [{ key: 'bench', label: tl(c.benchmark.label), points: c.bench, color: css('--muted'), dashed: true, href: `/security/${c.benchmark.id}` }] : []),
 					...(['20', '50', '200'] as const)
 						.filter((n) => smaOn.includes(n) && c!.sma?.[n]?.length)
 						.map((n, i) => ({ key: `sma${n}`, label: `SMA${n}`, points: c!.sma![n], color: css(`--series-${i + 5}`) || css('--accent') })),
 					...(cmp?.refs ?? [])
 						.filter((r) => shown.includes(r.id) && refLines[r.id]?.length && !c!.monthly)
-						.map((r, i) => ({ key: `ref${r.id}`, label: r.symbol, points: scaled(refLines[r.id]), color: css(`--series-${(i % 6) + 2}`), dashed: true })),
+						.map((r, i) => ({ key: `ref${r.id}`, label: r.symbol, points: scaled(refLines[r.id]), color: css(`--series-${(i % 6) + 2}`), dashed: true, href: `/security/${r.id}` })),
 					...mine
 						.filter((id) => shown.includes(id) && refLines[id]?.length && !c!.monthly)
-						.map((id, i) => ({ key: `peer${id}`, label: peerOf(id)?.symbol ?? String(id), points: scaled(refLines[id]), color: css(`--series-${((i + (cmp?.refs.length ?? 0)) % 6) + 2}`) }))
+						.map((id, i) => ({ key: `peer${id}`, label: peerOf(id)?.symbol ?? String(id), points: scaled(refLines[id]), color: css(`--series-${((i + (cmp?.refs.length ?? 0)) % 6) + 2}`), href: `/security/${id}` }))
 				]
 			: []
 	);

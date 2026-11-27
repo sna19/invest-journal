@@ -22,6 +22,8 @@
 		/** the main line carries the marks and the price scale label */
 		main?: boolean;
 		dashed?: boolean;
+		/** owner 27.11.2026: the legend's name is a link to the security's card (to open and compare at once) */
+		href?: string;
 	}
 	export interface Mark {
 		id: string;
@@ -52,7 +54,7 @@
 	let lib: typeof import('lightweight-charts') | null = null;
 	let series: ISeriesApi<'Line'>[] = [];
 	let markersApi: ISeriesMarkersPluginApi<Time> | null = null;
-	let legend = $state<{ date: string; values: { label: string; color: string; value: string }[] } | null>(null);
+	let legend = $state<{ date: string; values: { label: string; color: string; value: string; href?: string }[] } | null>(null);
 	let media: MediaQueryList | null = null;
 
 	const css = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -131,9 +133,9 @@
 			values: series
 				.map((s, i) => {
 					const d = p.seriesData.get(s) as { value?: number } | undefined;
-					return d?.value === undefined ? null : { label: lines[i].label, color: lines[i].color ?? css('--accent'), value: fmt(d.value) };
+					return d?.value === undefined ? null : { label: lines[i].label, color: lines[i].color ?? css('--accent'), value: fmt(d.value), href: lines[i].href };
 				})
-				.filter((x): x is { label: string; color: string; value: string } => !!x)
+				.filter((x): x is { label: string; color: string; value: string; href: string | undefined } => !!x)
 		};
 	}
 
@@ -181,9 +183,9 @@
 	<div class="legend" aria-live="polite">
 		{#if legend}
 			<span class="d">{legend.date}</span>
-			{#each legend.values as v (v.label)}<span><i style:background={v.color}></i>{v.label} <b>{v.value}</b></span>{/each}
+			{#each legend.values as v (v.label)}<span><i style:background={v.color}></i>{#if v.href}<a href={v.href}>{v.label}</a>{:else}{v.label}{/if} <b>{v.value}</b></span>{/each}
 		{:else}
-			{#each lines as l (l.key)}<span><i style:background={l.color ?? 'var(--accent)'} class:dash={l.dashed}></i>{l.label}</span>{/each}
+			{#each lines as l (l.key)}<span><i style:background={l.color ?? 'var(--accent)'} class:dash={l.dashed}></i>{#if l.href}<a href={l.href}>{l.label}</a>{:else}{l.label}{/if}</span>{/each}
 		{/if}
 	</div>
 	<div class="chart" bind:this={el} style:height="{height}px" role="img" aria-label="{tx('График', 'Chart')}: {lines.map((l) => l.label).join(', ')}"></div>
@@ -210,6 +212,11 @@
 	.legend b {
 		color: var(--text);
 		font-variant-numeric: tabular-nums;
+	}
+	.legend a {
+		color: var(--link);
+		text-decoration: none;
+		padding: 4px 0;
 	}
 	.legend .d {
 		color: var(--text);
