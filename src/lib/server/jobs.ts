@@ -1135,6 +1135,19 @@ export function startScheduler() {
 				tryIt('path', () => portfolioPath(app, m, port.id));
 				tryIt('flags', () => flagsFor(app, m, (app.prepare('select security_id as id from positions where portfolio_id = ?').all(port.id) as { id: number }[]).map((x) => x.id)));
 				console.log(`selfcheck: user ${currentUserId()} portfolio ${port.id}: ${out.join(' · ')}`);
+				// owner 27.11.2026 «почему стоимость только 150к»: what the value is made of (the log stays on the NAS)
+				try {
+					const v = portfolioView(app, m, port.id);
+					if (v && v.positions.length > 3) {
+						const held = v.positions.filter((x) => x.qty > 1e-9 && x.stage !== 'closed');
+						console.log(
+							`selfcheck: value p${port.id} ${v.portfolio.currency}: value ${Math.round(v.summary.value)} = positions ${Math.round(held.reduce((n, x) => n + x.valuePc, 0))} + cash ${Math.round(v.summary.cash)} · ${held.length} held · ` +
+								held.map((x) => `${x.symbol} ${x.stage} ${+x.qty.toFixed(4)}×${x.lastPrice ?? '—'}${x.priceUnit === 'ILA' ? 'ag' : x.priceUnit}=${Math.round(x.valuePc)}`).join(', ')
+						);
+					}
+				} catch (e) {
+					console.error(`selfcheck: value: ${e}`);
+				}
 			}
 			const t0 = Date.now();
 			try {
