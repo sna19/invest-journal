@@ -26,7 +26,7 @@
 		hypothesisId: number | null;
 		data: { symbol: string; name: string; market: 'US' | 'IL'; reasons: string[]; total: number; plan: { price: number; priceUnit: string; recommended: 'fixed' | 'trail'; stop: number; limit: number; trailPct: number; target: number; targetR: number; qty: number | null; amount: number | null; portfolio: string | null; maxLoss: number | null; maxLossPct: number | null; currency: string | null } };
 	};
-	type Settings = { weekday: number; hour: number; maxIdeas: number; markets: ('US' | 'IL')[]; minTurnoverUsd: number; minPriceUsd: number; reportDays: number; maxWeightPct: number; horizonMonths: number };
+	type Settings = { weekday: number; hour: number; maxIdeas: number; markets: ('US' | 'IL')[]; minTurnoverUsd: number; minPriceUsd: number; reportDays: number; maxWeightPct: number; horizonMonths: number; minR: number };
 	let v = $state<{ run: string | null; ideas: Idea[]; day: { sell: Trade[]; review: Trade[]; soft: Soft[]; protect: PItem[] }; settings: Settings } | null>(null);
 	let keepFor = $state<string | null>(null);
 	let keepWhy = $state('');
@@ -97,7 +97,7 @@
 		funnel = r?.funnel ?? null;
 	}
 	const DAYS = $derived(Array.from({ length: 7 }, (_, i) => new Date(2026, 10, 1 + i).toLocaleDateString(loc(), { weekday: 'long' })));
-	const FUNNEL: Record<string, [string, string]> = { liquid: ['ликвидных акций', 'liquid shares'], green: ['зелёная квант-оценка', 'green quant score'], noMarks: ['без «выдыхается / застряла»', 'no «fading / stuck»'], noReport: ['без отчёта в ближайшие дни', 'no report soon'], limits: ['в пределах лимитов', 'within the limits'], notDuplicate: ['не дублируют портфель', 'not duplicating the portfolio'] };
+	const FUNNEL: Record<string, [string, string]> = { liquid: ['ликвидных акций', 'liquid shares'], green: ['зелёная квант-оценка', 'green quant score'], noMarks: ['без «выдыхается / застряла»', 'no «fading / stuck»'], noReport: ['без отчёта в ближайшие дни', 'no report soon'], room: ['цель не ближе 1,5 риска', 'the target at least 1.5 risks'], limits: ['в пределах лимитов', 'within the limits'], notDuplicate: ['не дублируют портфель', 'not duplicating the portfolio'] };
 </script>
 
 <svelte:head><title>{tx('Сигналы', 'Signals')}</title></svelte:head>
@@ -196,6 +196,7 @@
 			<label>{tx('Цена не ниже, $', 'Price at least, $')}<input inputmode="decimal" bind:value={v.settings.minPriceUsd} onchange={saveSettings} /></label>
 			<label>{tx('Без отчёта в ближайшие, дней', 'No report within, days')}<input inputmode="numeric" bind:value={v.settings.reportDays} onchange={saveSettings} /></label>
 			<label>{tx('Позиция больше, % портфеля — пересмотреть', 'A position over, % of the portfolio — review')}<input inputmode="numeric" bind:value={v.settings.maxWeightPct} onchange={saveSettings} /></label>
+			<label>{tx('Цель не ближе, рисков', 'The target at least, risks')}<input inputmode="decimal" bind:value={v.settings.minR} onchange={saveSettings} /></label>
 			<label>{tx('Срок идеи, месяцев', 'An idea\'s term, months')}<input inputmode="numeric" bind:value={v.settings.horizonMonths} onchange={saveSettings} /></label>
 		</div>
 		<p class="muted small">{tx('Стоп, трейлинг, цель (сколько рисков) и OCO — в «Настройки → Защитный план».', 'The stop, trailing, target (how many risks) and OCO — in «Settings → Protective plan».')}</p>

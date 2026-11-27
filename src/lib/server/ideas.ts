@@ -8,7 +8,7 @@ import { liquidity, nextQuarter, runModel, universe } from './model/quarterly.js
 import { readParams } from './model/service.js';
 import { scoresOf, type Score } from './score.js';
 import { flagsFor } from './path.js';
-import { portfolioProtection, protectionOf, type Protection } from './protection.js';
+import { barsOf, portfolioProtection, protectionOf, type Protection } from './protection.js';
 import { checkPurchase } from './portfolioRisk.js';
 import { liveSignals } from './reminders.js';
 import { addEntry } from './diary.js';
@@ -36,8 +36,10 @@ export interface SignalSettings {
 	maxWeightPct: number;
 	/** the months an idea is given (its hypothesis' horizon) */
 	horizonMonths: number;
+	/** an idea's target at least this many risks above the price (a resistance near — a weak trade) */
+	minR: number;
 }
-export const SDEFAULTS: SignalSettings = { weekday: 0, hour: 20, maxIdeas: 5, markets: ['US', 'IL'], minTurnoverUsd: 1_000_000, minPriceUsd: 5, reportDays: 7, maxWeightPct: 15, horizonMonths: 3 };
+export const SDEFAULTS: SignalSettings = { weekday: 0, hour: 20, maxIdeas: 5, markets: ['US', 'IL'], minTurnoverUsd: 1_000_000, minPriceUsd: 5, reportDays: 7, maxWeightPct: 15, horizonMonths: 3, minR: 1.5 };
 const LIM: Record<Exclude<keyof SignalSettings, 'markets'>, [number, number]> = {
 	weekday: [0, 6],
 	hour: [0, 23],
@@ -46,7 +48,8 @@ const LIM: Record<Exclude<keyof SignalSettings, 'markets'>, [number, number]> = 
 	minPriceUsd: [0, 1000],
 	reportDays: [0, 30],
 	maxWeightPct: [3, 100],
-	horizonMonths: [1, 12]
+	horizonMonths: [1, 12],
+	minR: [0, 5]
 };
 export function readSignalSettings(app: Database.Database): SignalSettings {
 	const raw = getSetting(app, 'signals');
@@ -57,7 +60,7 @@ export function cleanSignalSettings(input: Record<string, unknown>, base: Signal
 	for (const [k, [lo, hi]] of Object.entries(LIM) as [keyof typeof LIM, [number, number]][]) {
 		if (input[k] === undefined || input[k] === '') continue;
 		const x = Number(input[k]);
-		if (Number.isFinite(x) && x >= lo && x <= hi) out[k] = k === 'minTurnoverUsd' || k === 'minPriceUsd' ? x : Math.round(x);
+		if (Number.isFinite(x) && x >= lo && x <= hi) out[k] = k === 'minTurnoverUsd' || k === 'minPriceUsd' || k === 'minR' ? x : Math.round(x);
 	}
 	if (Array.isArray(input.markets)) {
 		const m = (input.markets as unknown[]).filter((x): x is 'US' | 'IL' => x === 'US' || x === 'IL');
@@ -156,11 +159,17 @@ export function findIdeas(app: Database.Database, market: Database.Database, tod
 	const chosen: { s: Score; plan: Protection | null; reasons: string[] }[] = [];
 	let limited = 0;
 	let dup = 0;
+	let weak = 0;
 	for (const x of head) {
 		if (chosen.length >= st.maxIdeas) break;
 		const sec = u.stocks.find((s) => s.id === x.id)!;
 		const port = ports.find((p) => p.currency === (sec.market === 'IL' ? 'ILS' : 'USD')) ?? main;
 		const plan = protectionOf(app, market, x.id, port ? { portfolioId: port.id } : {}).items[0] ?? null;
+		// the target too near (a resistance just above): little to win for the risk
+		if (plan && plan.f.targetR < st.minR) {
+			weak++;
+			continue;
+		}
 		if (port && plan?.size) {
 			const warns = checkPurchase(app, market, port.id, x.id, plan.size.amount * (plan.size.portfolioCurrency === (sec.market === 'IL' ? 'ILS' : 'USD') ? 1 : sec.market === 'IL' ? 1 / u.usdIls : u.usdIls), 'own');
 			if (warns.length) {
@@ -184,7 +193,8 @@ export function findIdeas(app: Database.Database, market: Database.Database, tod
 		];
 		chosen.push({ s: x, plan, reasons });
 	}
-	funnel.limits = funnel.noReport - limited;
+	funnel.room = funnel.noReport - weak;
+	funnel.limits = funnel.room - limited;
 	funnel.notDuplicate = funnel.limits - dup;
 	return { settings: st, funnel, ideas: chosen.map((c, i) => ({ rank: i + 1, ...c })) };
 }
@@ -324,22 +334,36 @@ export function dayList(app: Database.Database, market: Database.Database, today
 				soft.push({ kind, key, positionId: it.position!.id, securityId: it.securityId, symbol: it.symbol, portfolio: port.name, detail });
 			};
 			if (sc?.market && sc.color === 'red') add('score_red', `квант-оценка ${Math.round((sc.total ?? 0) * 100)}`);
-			if (sc?.trend && !sc.trend.above) add('below_sma', `цена ${sc.trend.price.toFixed(2)} ниже SMA200 ${sc.trend.sma200}`);
+			if (sc?.trend && !sc.trend.above && crossedDown(market, it.securityId)) add('below_sma', `цена ${sc.trend.price.toFixed(2)} ушла ниже SMA200 ${sc.trend.sma200} за последние 10 дней`);
 			if (it.status === 'unprotected' || (it.order && it.order.type === 'fixed' && !it.order.takeProfit && it.recommended === 'fixed')) protect.push(it);
 		}
 	}
 	// the weight: from the portfolio views (value of a position over the portfolio's value)
 	for (const port of realPortfolios(app)) {
 		const v = portfolioWeights(app, market, port.id, today);
+		// over the set share and over two equal parts (8 positions — 25%): a portfolio of few positions is not «too big» everywhere
+		const limit = Math.max(st.maxWeightPct, v.length ? 200 / v.length : 0);
 		for (const w of v)
-			if (w.weight > st.maxWeightPct) {
+			if (w.weight > limit) {
 				const key = `overweight|${w.positionId}|0`;
 				const until = snoozed.get(key);
 				if (until && today < until) continue;
-				soft.push({ kind: 'overweight', key, positionId: w.positionId, securityId: w.securityId, symbol: w.symbol, portfolio: port.name, detail: `${w.weight.toFixed(1)}% портфеля при пороге ${st.maxWeightPct}%` });
+				soft.push({ kind: 'overweight', key, positionId: w.positionId, securityId: w.securityId, symbol: w.symbol, portfolio: port.name, detail: `${w.weight.toFixed(1)}% портфеля при пороге ${Math.round(limit)}%` });
 			}
 	}
 	return { sell, review, soft, protect, settings: st };
+}
+
+/** the price went under its 200-day average within the last 10 trading days (a crossing, not a long state) */
+function crossedDown(market: Database.Database, id: number) {
+	const b = barsOf(market, id, 212);
+	if (b.length < 211) return false;
+	const sma = (end: number) => b.slice(end - 200, end).reduce((a, x) => a + x.close, 0) / 200;
+	for (let k = 1; k <= 10; k++) {
+		const end = b.length - k;
+		if (b[end - 1].close >= sma(end)) return true;
+	}
+	return false;
 }
 
 function portfolioWeights(app: Database.Database, market: Database.Database, id: number, today: string) {
