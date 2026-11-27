@@ -1,4 +1,10 @@
 <script lang="ts">
+	import SortHead from '#lib/SortHead.svelte';
+	import { TableSort } from '#lib/tablesort.svelte.js';
+	const walkSort = new TableSort<'year' | 'picked' | 'pickedMean' | 'allMean'>();
+	const qSort = new TableSort<'label' | 'picked' | 'gross' | 'hold' | 'noHold'>();
+	const trendSort = new TableSort<'excess' | 'median' | 'worst' | 'maxDrawdown' | 'avgCount' | 'under5' | 'placebo'>();
+	const varSort = new TableSort<'passed' | 'placebo' | 'walkVsAll' | 'afterCosts'>();
 	import Fold from '#lib/Fold.svelte';
 	import FlagChips from '#lib/path/FlagChips.svelte';
 	import ScoreDot from '#lib/ScoreDot.svelte';
@@ -653,9 +659,9 @@
 		<Fold key="model-walk" remind="model.walk" title={tx('Проверка без подглядывания', 'Check without peeking')} summary={res.walk.map((w) => `${w.year}: ${pct(w.pickedMean)}`).join(' · ')}>
 			{#snippet aside()}<HelpIcon topicKey="model.walk" label={tx('проверка', 'check')} />{/snippet}
 			<table class="walk">
-				<thead><tr><th>{tx('Год', 'Year')}</th><th>{tx('Выбрано', 'Picked')}</th><th>{tx('Они', 'They')}</th><th>{tx('Все', 'All')}</th></tr></thead>
+				<thead><tr><th><SortHead s={walkSort} k="year">{tx('Год', 'Year')}</SortHead></th><th><SortHead s={walkSort} k="picked">{tx('Выбрано', 'Picked')}</SortHead></th><th><SortHead s={walkSort} k="pickedMean">{tx('Они', 'They')}</SortHead></th><th><SortHead s={walkSort} k="allMean">{tx('Все', 'All')}</SortHead></th></tr></thead>
 				<tbody>
-					{#each res.walk as w (w.year)}
+					{#each walkSort.rows(res.walk, (w, k) => w[k]) as w (w.year)}
 						<tr><td>{w.year}</td><td>{w.picked} ({w.pickedUp}▲)</td><td class:up={(w.pickedMean ?? 0) > (w.allMean ?? 0)}>{pct(w.pickedMean)}</td><td>{pct(w.allMean)}</td></tr>
 					{/each}
 				</tbody>
@@ -689,9 +695,9 @@
 		{#if quartersOpen}
 			<div class="scroll">
 				<table class="walk costs">
-					<thead><tr><th>{tx('Квартал', 'Quarter')}</th><th>{tx('Бумаг', 'Shares')}</th><th>{tx('До', 'Before')}</th><th>{tx('Держать', 'Hold')}</th><th>{tx('Без', 'Without')}</th></tr></thead>
+					<thead><tr><th><SortHead s={qSort} k="label">{tx('Квартал', 'Quarter')}</SortHead></th><th><SortHead s={qSort} k="picked">{tx('Бумаг', 'Shares')}</SortHead></th><th><SortHead s={qSort} k="gross">{tx('До', 'Before')}</SortHead></th><th><SortHead s={qSort} k="hold">{tx('Держать', 'Hold')}</SortHead></th><th><SortHead s={qSort} k="noHold">{tx('Без', 'Without')}</SortHead></th></tr></thead>
 					<tbody>
-						{#each c.quarters as x (x.label)}
+						{#each qSort.rows(c.quarters, (x, k) => x[k]) as x (x.label)}
 							<tr><td>{x.label}</td><td>{x.picked}{#if x.kept}{' '}({x.kept}↻){/if}</td><td>{pct(x.gross)}</td><td>{pct(x.hold)}</td><td>{pct(x.noHold)}</td></tr>
 						{/each}
 					</tbody>
@@ -715,9 +721,9 @@
 		</div>
 		<div class="scroll">
 			<table class="walk trend">
-				<thead><tr><th>{tx('Фильтр · выход', 'Filter · exit')}</th><th>{tx('Сверх рынка', 'Over market')}</th><th>{tx('Мед.', 'Med.')}</th><th>{tx('Худший', 'Worst')}</th><th>{tx('Просадка', 'Drawdown')}</th><th>{tx('Канд.', 'Cand.')}</th><th>&lt;5</th><th>{tx('Пустышка', 'Placebo')}</th></tr></thead>
+				<thead><tr><th>{tx('Фильтр · выход', 'Filter · exit')}</th><th><SortHead s={trendSort} k="excess">{tx('Сверх рынка', 'Over market')}</SortHead></th><th><SortHead s={trendSort} k="median">{tx('Мед.', 'Med.')}</SortHead></th><th><SortHead s={trendSort} k="worst">{tx('Худший', 'Worst')}</SortHead></th><th><SortHead s={trendSort} k="maxDrawdown">{tx('Просадка', 'Drawdown')}<br /><small>MDD</small></SortHead></th><th><SortHead s={trendSort} k="avgCount">{tx('Канд.', 'Cand.')}</SortHead></th><th><SortHead s={trendSort} k="under5" desc={false}>&lt;5</SortHead></th><th><SortHead s={trendSort} k="placebo">{tx('Пустышка', 'Placebo')}</SortHead></th></tr></thead>
 				<tbody>
-					{#each rows as r (r.filter + r.exit)}
+					{#each trendSort.rows(rows, (r, k) => (k === 'placebo' ? r.placebo.share : (trendWalk ? r.walk : r.all)[k])) as r (r.filter + r.exit)}
 						{@const st = trendWalk ? r.walk : r.all}
 						<tr class:cur={params?.trendFilter === r.filter && params?.trendExit === r.exit}>
 							<td>{tx(...FNAME[r.filter])}<br /><span class="muted small">{r.exit === 'none' ? tx('без выхода', 'no exit') : tx('выход SMA3', 'exit SMA3')}</span></td>
@@ -772,9 +778,9 @@
 		{#snippet aside()}<HelpIcon topicKey="model.variants" label={tx('варианты', 'variants')} />{/snippet}
 		<div class="scroll">
 			<table class="walk trend">
-				<thead><tr><th>{tx('Вариант', 'Variant')}</th><th>{tx('Прошли', 'Passed')}</th><th>{tx('Пустышка', 'Placebo')}</th><th>{tx('Без подгл. к всем', 'No-peek vs all')}</th><th>{tx('В год до / после издержек', 'A year before / after costs')}</th></tr></thead>
+				<thead><tr><th>{tx('Вариант', 'Variant')}</th><th><SortHead s={varSort} k="passed">{tx('Прошли', 'Passed')}</SortHead></th><th><SortHead s={varSort} k="placebo">{tx('Пустышка', 'Placebo')}</SortHead></th><th><SortHead s={varSort} k="walkVsAll">{tx('Без подгл. к всем', 'No-peek vs all')}</SortHead></th><th><SortHead s={varSort} k="afterCosts">{tx('В год до / после издержек', 'A year before / after costs')}</SortHead></th></tr></thead>
 				<tbody>
-					{#each compareV as x (x.variant)}
+					{#each varSort.rows(compareV, (x, k) => (k === 'placebo' ? x.placebo.real - x.placebo.mean : x[k])) as x (x.variant)}
 						<tr class:cur={x.variant === variant}>
 							<td>{tx(...VNAME[x.variant])}</td>
 							<td>{x.passed}</td>

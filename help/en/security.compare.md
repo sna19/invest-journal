@@ -12,7 +12,7 @@
 
 **Corr** — the correlation of the daily returns of the security and the reference over a year: 1 — they move alike, 0 — independently, under 0 — in opposite ways. Over 0.7 — the security largely repeats the reference and its «own» move is small; under 0.3 — the security goes its own way. **Vol** — the volatility over a year, % a year: a security swinging harder than its sector carries more risk than its industry's average.
 
-**On the chart.** Under the chart, next to the SMAs, are buttons for all the security's references with their correlation: a tap adds the reference's line brought to the same starting point (as the tick in the table does). So you see where the security went with its sector and where it broke away.
+**On the chart.** Under the chart, next to the SMAs, are buttons for all the security's references with their correlation: a tap adds the reference's line brought to the same starting point. A tap on a column header of the table sorts the references. So you see where the security went with its sector and where it broke away.
 
 The references are always in the daily price load. A reference without history yet is loaded when the card is first opened.
 

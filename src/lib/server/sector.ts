@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { find, IL_INDUSTRY, IL_SECTOR, US_INDUSTRY, US_SECTOR } from './compare.js';
+import { splitScale } from './market/splits.js';
 import { quarterReturn, universe, windowYears, type Series } from './model/quarterly.js';
 
 /**
@@ -130,3 +131,63 @@ export function searchSectors(market: Database.Database, q: string, names: Recor
 	return { sectors, industries };
 }
 void US;
+
+/** the return of a security over about a year by its daily closes (split-scaled), % */
+function yearOf(market: Database.Database, id: number): number | null {
+	const rows = market.prepare('select date, close from market_prices_daily where security_id = ? and date >= ? order by date').all(id, new Date(Date.now() - 366 * 86_400_000).toISOString().slice(0, 10)) as { date: string; close: number }[];
+	if (rows.length < 200) return null;
+	const scale = splitScale(market, id);
+	const x = rows.at(-1)!.close / scale(rows.at(-1)!.date) / (rows[0].close / scale(rows[0].date)) - 1;
+	return Number.isFinite(x) ? Math.round(x * 1000) / 10 : null;
+}
+
+/** the indices the app follows (owner 27.11.2026: «список всех индексов»), each by the ETF that tracks it */
+const INDICES: { market: 'US' | 'IL'; label: string; symbol: string }[] = [
+	{ market: 'US', label: 'S&P 500', symbol: 'SPY' },
+	{ market: 'US', label: 'Nasdaq 100', symbol: 'QQQ' },
+	{ market: 'US', label: 'Dow Jones 30', symbol: 'DIA' },
+	{ market: 'US', label: 'Russell 2000', symbol: 'IWM' },
+	{ market: 'IL', label: 'ТА-35', symbol: 'KSM.F59' },
+	{ market: 'IL', label: 'ТА-90', symbol: 'KSM.F72' },
+	{ market: 'IL', label: 'ТА-125', symbol: 'KSM.F55' }
+];
+
+/**
+ * Owner 27.11.2026: every sector, industry and index in one place («Тикеры»): a sector — its companies in the base, its
+ * ETF and the ETF's year; an industry — its companies and its sector; an index — its ETF and the year.
+ */
+export function catalog(market: Database.Database) {
+	const rows = market
+		.prepare(
+			`select e.country as market, p.sector, p.industry, count(*) as n
+			   from ref_securities s join ref_exchanges e on e.code = s.exchange_code join ref_security_profiles p on p.security_id = s.id
+			  where s.active = 1 and s.type = 'stock' and p.sector is not null and e.country in ('US', 'IL')
+			  group by e.country, p.sector, p.industry`
+		)
+		.all() as { market: 'US' | 'IL'; sector: string; industry: string | null; n: number }[];
+	const etf = (symbol: string | undefined) => {
+		const r = symbol ? find(market, symbol) : undefined;
+		return r ? { id: r.id, symbol: r.symbol, y1: yearOf(market, r.id) } : null;
+	};
+	const sectors = new Map<string, { market: 'US' | 'IL'; key: string; count: number; industries: number; etf: ReturnType<typeof etf> }>();
+	const industries = new Map<string, { market: 'US' | 'IL'; name: string; sector: string; count: number }>();
+	for (const r of rows) {
+		const k = `${r.market}|${r.sector}`;
+		const s = sectors.get(k) ?? { market: r.market, key: r.sector, count: 0, industries: 0, etf: null };
+		s.count += r.n;
+		if (r.industry) {
+			s.industries++;
+			const ik = `${r.market}|${r.industry}`;
+			const i = industries.get(ik) ?? { market: r.market, name: r.industry, sector: r.sector, count: 0 };
+			i.count += r.n;
+			industries.set(ik, i);
+		}
+		sectors.set(k, s);
+	}
+	for (const s of sectors.values()) s.etf = etf((s.market === 'IL' ? IL_SECTOR : US_SECTOR)[s.key]);
+	return {
+		sectors: [...sectors.values()].sort((a, b) => b.count - a.count),
+		industries: [...industries.values()].sort((a, b) => b.count - a.count),
+		indices: INDICES.map((x) => ({ ...x, etf: etf(x.symbol) })).filter((x) => x.etf)
+	};
+}

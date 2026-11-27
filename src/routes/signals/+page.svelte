@@ -24,6 +24,8 @@
 		status: 'new' | 'bought' | 'wanted' | 'skipped';
 		reason: string | null;
 		hypothesisId: number | null;
+		/** «Хочу купить» / «Купил» pressed, the form not saved */
+		unsaved?: boolean;
 		data: { symbol: string; name: string; market: 'US' | 'IL'; reasons: string[]; total: number; plan: { price: number; priceUnit: string; recommended: 'fixed' | 'trail'; stop: number; limit: number; trailPct: number; target: number; targetR: number; qty: number | null; amount: number | null; portfolio: string | null; maxLoss: number | null; maxLossPct: number | null; currency: string | null } };
 	};
 	type Want = { positionId: number; securityId: number; symbol: string; name: string; priceUnit: string; portfolio: string; price: number | null; want: number | null; toWant: number | null; stop: number | null; target: number | null; reviewDate: string | null; thesis: string | null; note: string | null; days: number | null; status: 'buy' | 'broken' | 'decide' | 'no_plan' | 'wait' };
@@ -192,6 +194,7 @@
 					{#if p.maxLoss !== null && p.currency}<span>{tx('Убыток до стопа', 'Loss to the stop')} {money(p.maxLoss, p.currency)}{#if p.maxLossPct !== null} ({p.maxLossPct.toFixed(1)}%){/if}</span>{/if}
 				</div>
 				{#if i.status === 'new'}
+					{#if i.unsaved}<p class="small warnline">{tx('«Хочу купить» или «Купил» было нажато, но форма не сохранилась — позиции нет. Нажми ещё раз и сохрани форму кнопкой внизу (если она не сохраняется, под ней написано почему).', '«Want to buy» or «Bought» was pressed but the form was not saved — there is no position. Press it again and save the form with the button at the bottom (if it does not save, the reason is written under it).')}</p>{/if}
 					{#if skipFor === i.id}
 						<input bind:value={skipWhy} placeholder={tx('Пропускаю, потому что…', 'I skip it because…')} />
 						<div class="btns"><button class="ghost" onclick={() => mark(i, 'skipped')}>{tx('Пропустить', 'Skip')}</button><button class="ghost" onclick={() => (skipFor = null)}>{tx('Отмена', 'Cancel')}</button></div>
@@ -321,6 +324,10 @@
 		padding-left: var(--s2);
 	}
 	.want p {
+		margin: 0 0 6px;
+	}
+	.warnline {
+		color: var(--down);
 		margin: 0 0 6px;
 	}
 	.idea.done {

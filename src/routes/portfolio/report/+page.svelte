@@ -1,4 +1,8 @@
 <script lang="ts">
+	import SortHead from '#lib/SortHead.svelte';
+	import { TableSort } from '#lib/tablesort.svelte.js';
+	const monthSort = new TableSort<'month' | 'pct' | 'benchPct' | 'gain'>();
+	const kindSort = new TableSort<'n' | 'beat' | 'profitPc'>();
 	import Fold from '#lib/Fold.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
@@ -121,9 +125,9 @@
 			<p class="legend small"><i class="lp"></i>{tx('портфель', 'portfolio')} <i class="lk"></i>{r.benchLabel}</p>
 
 			<table class="months">
-				<thead><tr><th>{tx('Месяц', 'Month')}</th><th>{tx('Портфель', 'Portfolio')}</th><th>{tx('Рынок', 'Market')}</th><th>{tx('Доход', 'Gain')}</th></tr></thead>
+				<thead><tr><th><SortHead s={monthSort} k="month">{tx('Месяц', 'Month')}</SortHead></th><th><SortHead s={monthSort} k="pct">{tx('Портфель', 'Portfolio')}</SortHead></th><th><SortHead s={monthSort} k="benchPct">{tx('Рынок', 'Market')}</SortHead></th><th><SortHead s={monthSort} k="gain">{tx('Доход', 'Gain')}</SortHead></th></tr></thead>
 				<tbody>
-					{#each [...r.months].reverse() as m (m.month)}
+					{#each monthSort.rows([...r.months].reverse(), (m, k) => m[k]) as m (m.month)}
 						<tr class="mrow" class:open={openMonth === m.month} onclick={() => (openMonth = openMonth === m.month ? null : m.month)}>
 							<td>{monthName(m.month)}</td>
 							<td><Pct value={m.pct} /></td>
@@ -168,9 +172,9 @@
 				{/if}
 				{#if s.kinds.length > 1}
 					<table class="kinds">
-						<thead><tr><th>{tx('Откуда сделка', 'Where from')}</th><th>{tx('Сделок', 'Trades')}</th><th>{tx('Лучше рынка', 'Beat')}</th><th>{tx('Прибыль', 'Profit')}</th></tr></thead>
+						<thead><tr><th>{tx('Откуда сделка', 'Where from')}</th><th><SortHead s={kindSort} k="n">{tx('Сделок', 'Trades')}</SortHead></th><th><SortHead s={kindSort} k="beat">{tx('Лучше рынка', 'Beat')}</SortHead></th><th><SortHead s={kindSort} k="profitPc">{tx('Прибыль', 'Profit')}</SortHead></th></tr></thead>
 						<tbody>
-							{#each s.kinds as k (k.kind)}
+							{#each kindSort.rows(s.kinds, (x, k) => x[k]) as k (k.kind)}
 								<tr><td>{kindName(k.kind)}</td><td>{k.n}</td><td>{k.beat}</td><td>{money(k.profitPc, cur, true)}</td></tr>
 							{/each}
 						</tbody>

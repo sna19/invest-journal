@@ -1,4 +1,7 @@
 <script lang="ts">
+	import SortHead from '#lib/SortHead.svelte';
+	import { TableSort } from '#lib/tablesort.svelte.js';
+	const exSort = new TableSort<'name' | 'stocks' | 'etfs'>();
 	import Fold from '#lib/Fold.svelte';
 	import TvLink from '#lib/TvLink.svelte';
 	import { loc, tl, tx } from '#lib/i18n.js';
@@ -8,6 +11,7 @@
 	import Sheet from '#lib/Sheet.svelte';
 	import TickerSearch, { type Security } from '#lib/TickerSearch.svelte';
 	import RecentCards from '#lib/RecentCards.svelte';
+	import Catalog from '#lib/Catalog.svelte';
 	import ScreenSwitch from '#lib/ScreenSwitch.svelte';
 	import { keepScroll } from '#lib/scroll.js';
 
@@ -91,6 +95,9 @@
 	<TickerSearch includeInactive filters label={tx('Найти бумагу', 'Find a security')} onselect={(s) => (picked = s)} />
 </section>
 
+<!-- owner 27.11.2026: every sector, industry and index -->
+<Catalog />
+
 
 {#if !stats}
 	<div class="skeleton tall"></div>
@@ -101,9 +108,9 @@
 		{#each groups as g (g.title)}
 			<table>
 				<caption>{g.title}</caption>
-				<thead><tr><th>{tx('Биржа', 'Exchange')}</th><th>{tx('Акции', 'Stocks')}</th><th>ETF</th><th title={tx('Исчезли из списков биржи: хранятся для старых гипотез, но не предлагаются', 'Gone from the exchange lists: kept for old hypotheses but not offered')}>{tx('Выбыли', 'Delisted')}</th></tr></thead>
+				<thead><tr><th><SortHead s={exSort} k="name" desc={false}>{tx('Биржа', 'Exchange')}</SortHead></th><th><SortHead s={exSort} k="stocks">{tx('Акции', 'Stocks')}</SortHead></th><th><SortHead s={exSort} k="etfs">ETF</SortHead></th><th title={tx('Исчезли из списков биржи: хранятся для старых гипотез, но не предлагаются', 'Gone from the exchange lists: kept for old hypotheses but not offered')}>{tx('Выбыли', 'Delisted')}</th></tr></thead>
 				<tbody>
-					{#each g.rows as e (e.code)}
+					{#each exSort.rows(g.rows, (e, k) => e[k]) as e (e.code)}
 						<tr>
 							<td>{e.name}</td>
 							<td>{fmt.format(e.stocks)}</td>

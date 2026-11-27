@@ -1,4 +1,7 @@
 <script lang="ts">
+	import SortHead from '../SortHead.svelte';
+	import { TableSort } from '../tablesort.svelte.js';
+	const yearSort = new TableSort<'portfolio' | 'sales' | 'gain' | 'loss' | 'net'>();
 	import { onMount } from 'svelte';
 	import Fold from '../Fold.svelte';
 	import HelpIcon from '../HelpIcon.svelte';
@@ -149,9 +152,9 @@
 		<Fold key="portfolio-year" remind="portfolio.year" title={`${tx('Итог года', 'The year')} ${year.year}`} summary={year.items.map((y) => `${y.portfolio} ${money(y.net, y.currency, true)}`).join(' · ')} open={false}>
 			{#snippet aside()}<HelpIcon topicKey="portfolio.year" label={tx('итог года', 'the year')} />{/snippet}
 			<table>
-				<thead><tr><th></th><th>{tx('продаж', 'sales')}</th><th>{tx('прибыль', 'gain')}</th><th>{tx('убыток', 'loss')}</th><th>{tx('итого', 'net')}</th></tr></thead>
+				<thead><tr><th><SortHead s={yearSort} k="portfolio" desc={false}>{tx('Портфель', 'Portfolio')}</SortHead></th><th><SortHead s={yearSort} k="sales">{tx('продаж', 'sales')}</SortHead></th><th><SortHead s={yearSort} k="gain">{tx('прибыль', 'gain')}</SortHead></th><th><SortHead s={yearSort} k="loss">{tx('убыток', 'loss')}</SortHead></th><th><SortHead s={yearSort} k="net">{tx('итого', 'net')}</SortHead></th></tr></thead>
 				<tbody>
-					{#each year.items as y (y.portfolio)}
+					{#each yearSort.rows(year.items, (y, k) => y[k]) as y (y.portfolio)}
 						<tr><td>{y.portfolio}</td><td>{y.sales}</td><td>{money(y.gain, y.currency, true)}</td><td>{money(y.loss, y.currency, true)}</td><td><b>{money(y.net, y.currency, true)}</b></td></tr>
 					{/each}
 				</tbody>

@@ -1,4 +1,7 @@
 <script lang="ts">
+	import SortHead from './SortHead.svelte';
+	import { TableSort } from './tablesort.svelte.js';
+	const kindSort = new TableSort<'n' | 'avgPct' | 'avgExcess' | 'wins'>();
 	import { onMount } from 'svelte';
 	import Fold from './Fold.svelte';
 	import HelpIcon from './HelpIcon.svelte';
@@ -85,9 +88,9 @@
 			{#if d.kinds.length}
 				<p class="k">{tx('По виду сделки', 'By kind of trade')}</p>
 				<table>
-					<thead><tr><th></th><th>{tx('продаж', 'sales')}</th><th>{tx('средний итог', 'average')}</th><th>{tx('к рынку', 'vs market')}</th><th>{tx('в плюс', 'won')}</th></tr></thead>
+					<thead><tr><th></th><th><SortHead s={kindSort} k="n">{tx('продаж', 'sales')}</SortHead></th><th><SortHead s={kindSort} k="avgPct">{tx('средний итог', 'average')}</SortHead></th><th><SortHead s={kindSort} k="avgExcess">{tx('к рынку', 'vs market')}</SortHead></th><th><SortHead s={kindSort} k="wins">{tx('в плюс', 'won')}</SortHead></th></tr></thead>
 					<tbody>
-						{#each d.kinds as k (k.kind)}
+						{#each kindSort.rows(d.kinds, (x, k) => x[k]) as k (k.kind)}
 							<tr><td>{tx(...KIND[k.kind])}</td><td>{k.n}</td><td>{pp(k.avgPct)}</td><td>{pp(k.avgExcess)}</td><td>{k.wins}</td></tr>
 						{/each}
 					</tbody>

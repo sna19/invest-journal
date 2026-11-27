@@ -1,4 +1,10 @@
 <script lang="ts">
+	import SortHead from '#lib/SortHead.svelte';
+	import { TableSort } from '#lib/tablesort.svelte.js';
+	type GK = 'n' | 'true' | 'avgExcess' | 'avgHeld';
+	const basisSort = new TableSort<GK>();
+	const typeSort = new TableSort<GK>();
+	const sortVal = (g: { n: number; judged: number; cameTrue: number; avgExcess: number | null; avgHeld: number | null }, k: GK) => (k === 'true' ? (g.judged ? g.cameTrue / g.judged : null) : g[k]);
 	import { onMount } from 'svelte';
 	import TopBar from '#lib/TopBar.svelte';
 	import Fold from '#lib/Fold.svelte';
@@ -67,9 +73,9 @@
 		{#snippet aside()}<HelpIcon topicKey="decision.basis" label={tx('основание', 'basis')} />{/snippet}
 		{#if r.byBasis.length}
 			<table>
-				<thead><tr><th>{tx('Основание', 'Basis')}</th><th>{tx('покупок', 'buys')}</th><th>{tx('сбылось', 'came true')}</th><th>{tx('к рынку', 'vs market')}</th><th>{tx('держал, дн.', 'held, d')}</th></tr></thead>
+				<thead><tr><th>{tx('Основание', 'Basis')}</th><th><SortHead s={basisSort} k="n">{tx('покупок', 'buys')}</SortHead></th><th><SortHead s={basisSort} k="true">{tx('сбылось', 'came true')}</SortHead></th><th><SortHead s={basisSort} k="avgExcess">{tx('к рынку', 'vs market')}</SortHead></th><th><SortHead s={basisSort} k="avgHeld">{tx('держал, дн.', 'held, d')}</SortHead></th></tr></thead>
 				<tbody>
-					{#each r.byBasis as g (g.key)}
+					{#each basisSort.rows(r.byBasis, sortVal) as g (g.key)}
 						<tr class:me={g.key === 'intuition'}><td>{tx(...(BASIS[g.key] ?? [g.key, g.key]))}</td><td>{g.n}</td><td>{g.judged ? `${g.cameTrue}/${g.judged}` : '—'}</td><td class:up={(g.avgExcess ?? 0) > 0} class:down={(g.avgExcess ?? 0) < 0}>{pct(g.avgExcess)}</td><td>{g.avgHeld ?? '—'}</td></tr>
 					{/each}
 				</tbody>
@@ -84,9 +90,9 @@
 	{#if r.byKind.length > 1}
 		<Fold key="review-kind" remind="intuition.review" title={tx('По типу решения', 'By type of decision')} open={false}>
 			<table>
-				<thead><tr><th></th><th>{tx('решений', 'decisions')}</th><th>{tx('сбылось', 'came true')}</th><th>{tx('к рынку', 'vs market')}</th><th>{tx('держал, дн.', 'held, d')}</th></tr></thead>
+				<thead><tr><th></th><th><SortHead s={typeSort} k="n">{tx('решений', 'decisions')}</SortHead></th><th><SortHead s={typeSort} k="true">{tx('сбылось', 'came true')}</SortHead></th><th><SortHead s={typeSort} k="avgExcess">{tx('к рынку', 'vs market')}</SortHead></th><th><SortHead s={typeSort} k="avgHeld">{tx('держал, дн.', 'held, d')}</SortHead></th></tr></thead>
 				<tbody>
-					{#each r.byKind as g (g.key)}<tr><td>{tx(...(TYPE[g.key] ?? [g.key, g.key]))}</td><td>{g.n}</td><td>{g.judged ? `${g.cameTrue}/${g.judged}` : '—'}</td><td>{pct(g.avgExcess)}</td><td>{g.avgHeld ?? '—'}</td></tr>{/each}
+					{#each typeSort.rows(r.byKind, sortVal) as g (g.key)}<tr><td>{tx(...(TYPE[g.key] ?? [g.key, g.key]))}</td><td>{g.n}</td><td>{g.judged ? `${g.cameTrue}/${g.judged}` : '—'}</td><td>{pct(g.avgExcess)}</td><td>{g.avgHeld ?? '—'}</td></tr>{/each}
 				</tbody>
 			</table>
 		</Fold>

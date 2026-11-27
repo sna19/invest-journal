@@ -178,10 +178,6 @@
 		text-align: left;
 		cursor: pointer;
 	}
-	button.r span {
-		text-decoration: underline dotted var(--muted);
-		text-underline-offset: 3px;
-	}
 	button.r.on {
 		background: var(--surface-2, rgba(127, 127, 127, 0.08));
 	}

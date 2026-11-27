@@ -1,5 +1,7 @@
 <script lang="ts">
 	import ScoreDot from '#lib/ScoreDot.svelte';
+	import SortHead from '#lib/SortHead.svelte';
+	import { TableSort } from '#lib/tablesort.svelte.js';
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -59,7 +61,7 @@
 	let v = $state<View | null>(null);
 	let chart = $state<Chart | null>(null);
 	let period = $state('1Y');
-	let sortKey = $state<'capUsd' | 'm1' | 'm3' | 'y1'>('capUsd');
+	const sorter = new TableSort<'symbol' | 'capUsd' | 'm1' | 'm3' | 'y1'>('capUsd');
 	let limit = $state(30);
 	const scroll = keepScroll(() => `sector:${page.url.search}`);
 
@@ -97,7 +99,7 @@
 				]
 			: []
 	);
-	const members = $derived(v ? [...v.members].sort((a, b) => ((b[sortKey] ?? -Infinity) as number) - ((a[sortKey] ?? -Infinity) as number)) : []);
+	const members = $derived(v ? sorter.rows(v.members, (m, k) => m[k]) : []);
 	const maxSeason = $derived(Math.max(1, ...(v?.seasons ?? []).map((s) => Math.abs(s.mean ?? 0))));
 </script>
 
@@ -176,14 +178,9 @@
 	</Fold>
 
 	<Fold key="sector-members" remind="sector.screen" title={tx('Компании', 'Companies')} summary={v.members.slice(0, 5).map((m) => m.symbol).join(' · ')}>
-		<div class="sorts">
-			{#each [['capUsd', tx('капитализация', 'market cap')], ['m1', '1М'], ['m3', '3М'], ['y1', '1Г']] as [k, l] (k)}
-				<button class:on={sortKey === k} aria-pressed={sortKey === k} onclick={() => (sortKey = k as typeof sortKey)}>{l}</button>
-			{/each}
-		</div>
 		<div class="scroll">
 			<table>
-				<thead><tr><th></th><th>{tx('Кап.', 'Cap')}</th><th>1М</th><th>3М</th><th>1Г</th></tr></thead>
+				<thead><tr><th><SortHead s={sorter} k="symbol" desc={false}>{tx('Компания', 'Company')}</SortHead></th><th><SortHead s={sorter} k="capUsd" title={tx('капитализация', 'market cap')}>{tx('Кап.', 'Cap')}</SortHead></th><th><SortHead s={sorter} k="m1">1М</SortHead></th><th><SortHead s={sorter} k="m3">3М</SortHead></th><th><SortHead s={sorter} k="y1">1Г</SortHead></th></tr></thead>
 				<tbody>
 					{#each members.slice(0, limit) as m (m.id)}
 						<tr>
@@ -204,16 +201,14 @@
 
 <style>
 	.mk,
-	.periods,
-	.sorts {
+	.periods {
 		display: flex;
 		gap: 6px;
 		margin: 0 0 var(--s3);
 		flex-wrap: wrap;
 	}
 	.mk button,
-	.periods button,
-	.sorts button {
+	.periods button {
 		min-height: 32px;
 		padding: 0 var(--s3);
 		border: 1px solid var(--line);
@@ -223,8 +218,7 @@
 		cursor: pointer;
 	}
 	.mk button.on,
-	.periods button.on,
-	.sorts button.on {
+	.periods button.on {
 		background: var(--text);
 		color: var(--bg);
 		border-color: var(--text);
@@ -315,7 +309,8 @@
 		text-align: right;
 		white-space: nowrap;
 	}
-	tbody th {
+	tbody th,
+	thead th:first-child {
 		text-align: left;
 		max-width: 11em;
 		overflow: hidden;

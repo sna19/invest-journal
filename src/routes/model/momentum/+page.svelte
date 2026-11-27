@@ -1,4 +1,7 @@
 <script lang="ts">
+	import SortHead from '#lib/SortHead.svelte';
+	import { TableSort } from '#lib/tablesort.svelte.js';
+	const momSort = new TableSort<'cagr' | 'maxDrawdown' | 'vol' | 'sharpe'>();
 	import { onMount } from 'svelte';
 	import TopBar from '#lib/TopBar.svelte';
 	import Fold from '#lib/Fold.svelte';
@@ -177,9 +180,9 @@
 		</div>
 		<div class="scroll">
 			<table>
-				<thead><tr><th></th><th>{tx('В год', 'Yearly')}</th><th>{tx('Падение', 'Fall')}</th><th>{tx('Колеб.', 'Swings')}</th><th>Sharpe</th></tr></thead>
+				<thead><tr><th></th><th><SortHead s={momSort} k="cagr">{tx('В год', 'Yearly')}<br /><small>CAGR</small></SortHead></th><th><SortHead s={momSort} k="maxDrawdown">{tx('Падение', 'Fall')}<br /><small>MDD</small></SortHead></th><th><SortHead s={momSort} k="vol" desc={false}>{tx('Колеб.', 'Swings')}<br /><small>HV</small></SortHead></th><th><SortHead s={momSort} k="sharpe">Sharpe</SortHead></th></tr></thead>
 				<tbody>
-					{#each v.table ?? [] as r (r.name)}
+					{#each momSort.rows(v.table ?? [], (r, k) => r[period][k]) as r (r.name)}
 						{@const m = r[period]}
 						<tr class:model={r.name === 'A' || r.name === 'B'}><td>{tx(...SHORT[r.name])}</td><td class="num">{pct(m.cagr, true)}</td><td class="num">{pct(m.maxDrawdown)}</td><td class="num">{pct(m.vol)}</td><td class="num">{m.sharpe ?? '—'}</td></tr>
 					{/each}

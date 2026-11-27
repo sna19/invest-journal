@@ -8,6 +8,8 @@
 	import Fold from '#lib/Fold.svelte';
 	import RecentCards, { rememberCard } from '#lib/RecentCards.svelte';
 	import StatsGrid from '#lib/StatsGrid.svelte';
+	import SortHead from '#lib/SortHead.svelte';
+	import { TableSort } from '#lib/tablesort.svelte.js';
 	import { keepScroll } from '#lib/scroll.js';
 	import RiskLabel from '#lib/RiskLabel.svelte';
 	import Pct from '#lib/Pct.svelte';
@@ -137,6 +139,8 @@
 		corr?: number | null;
 		vol?: number | null;
 	}
+	// owner 27.11.2026: a tap on a column's header sorts the references
+	const refSort = new TableSort<string>();
 	let cmp = $state<{ periods: string[]; security: Record<string, number | null>; refs: CmpRef[]; vol?: { vol1y: number | null; vol3m: number | null } } | null>(null);
 	let shown = $state<number[]>([]);
 	let refLines = $state<Record<number, { date: string; value: number }[]>>({});
@@ -697,16 +701,13 @@
 			{#snippet aside()}<HelpIcon topicKey="security.compare" label={tx('сравнение', 'comparison')} />{/snippet}
 			<div class="cmp">
 			<div class="scroll"><table>
-				<thead><tr><th></th>{#each cmp.periods as p (p)}<th>{tx(PERIODS.find((x) => x[0] === p)?.[1] ?? p, p)}</th>{/each}<th title={tx('корреляция дневных доходностей за год', 'the correlation of daily returns over a year')}>{tx('Связь', 'Link')}<br /><small>Corr</small></th><th title={tx('волатильность за год, % в год', 'volatility over a year, % a year')}>{tx('Колеб.', 'Swings')}<br /><small>HV</small></th></tr></thead>
+				<thead><tr><th><SortHead s={refSort} k="name" desc={false}>{tx('Эталон', 'Reference')}</SortHead></th>{#each cmp.periods as p (p)}<th><SortHead s={refSort} k={p}>{tx(PERIODS.find((x) => x[0] === p)?.[1] ?? p, p)}</SortHead></th>{/each}<th><SortHead s={refSort} k="corr" title={tx('корреляция дневных доходностей за год', 'the correlation of daily returns over a year')}>{tx('Связь', 'Link')}<br /><small>Corr</small></SortHead></th><th><SortHead s={refSort} k="vol" title={tx('волатильность за год, % в год', 'volatility over a year, % a year')}>{tx('Колеб.', 'Swings')}<br /><small>HV</small></SortHead></th></tr></thead>
 				<tbody>
 					<tr class="me"><td><b>{c.security.symbol}</b></td>{#each cmp.periods as p (p)}<td>{pctText(cmp.security[p])}</td>{/each}<td>—</td><td>{cmp.vol?.vol1y != null ? `${Math.round(cmp.vol.vol1y * 100)}%` : '—'}</td></tr>
-					{#each cmp.refs as r (r.id)}
+					{#each refSort.rows(cmp.refs, (r, k) => (k === 'name' ? r.symbol : k === 'corr' ? r.corr : k === 'vol' ? r.vol : r.returns[k])) as r (r.id)}
 						<tr>
 							<td>
-								<label class="refname">
-									<input type="checkbox" checked={shown.includes(r.id)} disabled={!r.loaded || c.monthly} onchange={() => toggleRef(r.id)} aria-label={tx('на график', 'on the chart')} />
-									<span><span class="muted small">{tx(...ROLE[r.role])}</span><br />{refLabel(r)} · <a href="/security/{r.id}">{r.symbol}</a></span>
-								</label>
+								<span class="refname"><span><span class="muted small">{tx(...ROLE[r.role])}</span><br />{refLabel(r)} · <a href="/security/{r.id}">{r.symbol}</a></span></span>
 							</td>
 							{#each cmp.periods as p (p)}
 								{@const me = cmp.security[p]}
@@ -727,7 +728,7 @@
 				snapshot={() => ({ type: 'compare', params: { securityId: c!.security.id, symbol: c!.security.symbol }, data: { periods: cmp!.periods, rows: [{ label: c!.security.symbol, returns: cmp!.security }, ...cmp!.refs.map((r) => ({ label: `${r.symbol} · ${refLabel(r)}`, returns: r.returns }))] } })}
 			/>
 			<p class="muted small">
-				{tx(`Под доходностью ориентира — на сколько п.п. ${c.security.symbol} была лучше (+) или хуже (−). Галочка — линия на графике.`, `Under a reference's return — by how many pp ${c.security.symbol} did better (+) or worse (−). The tick puts its line on the chart.`)}
+				{tx(`Под доходностью ориентира — на сколько п.п. ${c.security.symbol} была лучше (+) или хуже (−). Тап по заголовку — сортировка; линия эталона на графике — кнопкой под ним.`, `Under a reference's return — by how many pp ${c.security.symbol} did better (+) or worse (−). Tap a header to sort; a reference's line goes on the chart by its button under it.`)}
 				{#if cmp.refs.some((r) => !r.loaded)}{tx(' Часть ориентиров ещё загружается — откройте карточку позже.', ' Some references are still loading — open the card later.')}{/if}
 			</p>
 			</div>
@@ -1106,9 +1107,6 @@
 		display: flex;
 		gap: 6px;
 		align-items: flex-start;
-	}
-	.refname input {
-		margin-top: 2px;
 	}
 	.cmp small.pos {
 		color: var(--up);

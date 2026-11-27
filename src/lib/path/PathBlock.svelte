@@ -1,4 +1,7 @@
 <script lang="ts">
+	import SortHead from '../SortHead.svelte';
+	import { TableSort } from '../tablesort.svelte.js';
+	const ddSort = new TableSort<'depth' | 'peak' | 'fall' | 'recovery'>();
 	import Fold from '#lib/Fold.svelte';
 	import HelpIcon from '#lib/HelpIcon.svelte';
 	import LineChart, { type Line } from '#lib/charts/LineChart.svelte';
@@ -128,9 +131,9 @@
 				</p>
 				<LineChart lines={water} percent height={140} />
 				<table class="dd">
-					<thead><tr><th>{tx('Глубина', 'Depth')}</th><th>{tx('С максимума', 'From the high')}</th><th>{tx('Падение', 'Fall')}</th><th>{tx('Восстановление', 'Recovery')}</th></tr></thead>
+					<thead><tr><th><SortHead s={ddSort} k="depth" desc={false}>{tx('Глубина', 'Depth')}</SortHead></th><th><SortHead s={ddSort} k="peak">{tx('С максимума', 'From the high')}</SortHead></th><th><SortHead s={ddSort} k="fall">{tx('Падение', 'Fall')}</SortHead></th><th><SortHead s={ddSort} k="recovery">{tx('Восстановление', 'Recovery')}</SortHead></th></tr></thead>
 					<tbody>
-						{#each v.drawdown.top as x (x.peak)}
+						{#each ddSort.rows(v.drawdown.top, (x, k) => x[k]) as x (x.peak)}
 							<tr><td>{pct(x.depth)}</td><td>{d(x.peak)}</td><td>{tx(`${x.fall} дн.`, `${x.fall} d`)}</td><td>{x.recovery === null ? tx('ещё нет', 'not yet') : tx(`${x.recovery} дн.`, `${x.recovery} d`)}</td></tr>
 						{/each}
 					</tbody>

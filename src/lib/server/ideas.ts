@@ -285,7 +285,15 @@ export function lastIdeas(app: Database.Database) {
 	const run = (app.prepare('select max(run) as r from signal_ideas').get() as { r: string | null }).r;
 	if (!run) return { run: null, ideas: [] };
 	const rows = app.prepare('select id, security_id as securityId, rank, score, data, status, reason, hypothesis_id as hypothesisId from signal_ideas where run = ? order by rank').all(run) as { id: number; securityId: number; rank: number; score: number; data: string; status: string; reason: string | null; hypothesisId: number | null }[];
-	return { run, ideas: rows.map((r) => ({ ...r, data: JSON.parse(r.data) as IdeaData })) };
+	// owner 27.11.2026: «Хочу купить» / «Купил» pressed but the form closed without saving — the idea is not done
+	const held = app.prepare(`select 1 from positions s join portfolios p on p.id = s.portfolio_id where s.security_id = ? and p.auto_source_id is null and s.stage in ('plan_buy', 'holding', 'plan_sell') limit 1`);
+	return {
+		run,
+		ideas: rows.map((r) => {
+			const unsaved = (r.status === 'wanted' || r.status === 'bought') && !held.get(r.securityId);
+			return { ...r, status: unsaved ? 'new' : r.status, unsaved, data: JSON.parse(r.data) as IdeaData };
+		})
+	};
 }
 
 /** «Хочу купить» / «Пропустить — почему» (the skipped ones are measured too: their hypotheses stay) */
@@ -377,7 +385,7 @@ export function wantList(app: Database.Database, market: Database.Database, live
 			        (select e.note from position_events e where e.position_id = s.id and e.kind = 'plan_buy' and e.cancelled_at is null order by e.id desc limit 1) as note,
 			        (select min(e.date) from position_events e where e.position_id = s.id and e.kind = 'plan_buy' and e.cancelled_at is null) as since
 			   from positions s join portfolios p on p.id = s.portfolio_id
-			  where s.stage = 'plan_buy' and p.kind = 'real' and p.auto_source_id is null and p.archived_at is null
+			  where s.stage = 'plan_buy' and p.auto_source_id is null and p.archived_at is null
 			  order by s.symbol`
 		)
 		.all() as { id: number; securityId: number; symbol: string; name: string; priceUnit: string; portfolio: string; want: number | null; amount: number | null; note: string | null; since: string | null }[];
