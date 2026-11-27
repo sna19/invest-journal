@@ -8,6 +8,8 @@
 	import Fold from '#lib/Fold.svelte';
 	import RecentCards, { rememberCard } from '#lib/RecentCards.svelte';
 	import StatsGrid from '#lib/StatsGrid.svelte';
+	import Sheet from '#lib/Sheet.svelte';
+	import TickerSearch, { type Security } from '#lib/TickerSearch.svelte';
 	import SortHead from '#lib/SortHead.svelte';
 	import { TableSort } from '#lib/tablesort.svelte.js';
 	import { keepScroll } from '#lib/scroll.js';
@@ -286,6 +288,38 @@
 		const j = await r.json();
 		refLines = { ...refLines, [id]: j.points };
 	}
+	// owner 27.11.2026 «сравнивать огурцы с огурцами»: any share on the chart — by default the biggest of the same
+	// industry (then sector), or any ticker found by the quick search; the chosen ones are remembered per security here
+	type Peer = { id: number; symbol: string; name: string; exchange: string; industry: string | null; same: 'industry' | 'sector' | 'asked'; corr: number | null; loaded: boolean };
+	let peers = $state<{ industry: string | null; sector: string | null; peers: Peer[] } | null>(null);
+	let mine = $state<number[]>([]);
+	let picking = $state(false);
+	const peerKey = () => `cmp-peers:${page.params.id}`;
+	async function loadPeers() {
+		const r = await fetch(`/api/securities/${page.params.id}/peers${mine.length ? `?with=${mine.join(',')}` : ''}`).catch(() => null);
+		if (r?.ok) peers = await r.json();
+	}
+	function saveMine() {
+		try {
+			localStorage.setItem(peerKey(), JSON.stringify(mine));
+		} catch {
+			/* ignore */
+		}
+	}
+	function addPeer(id: number) {
+		if (id === Number(page.params.id)) return;
+		if (!mine.includes(id)) mine = [...mine, id];
+		saveMine();
+		if (!shown.includes(id)) toggleRef(id);
+		void loadPeers();
+	}
+	function removePeer(id: number) {
+		mine = mine.filter((x) => x !== id);
+		shown = shown.filter((x) => x !== id);
+		saveMine();
+	}
+	const peerOf = (id: number) => peers?.peers.find((p) => p.id === id) ?? null;
+	const corrText = (x: number | null | undefined) => (x === null || x === undefined ? '' : x.toFixed(2).replace('.', tx(',', '.')));
 	function toggleRef(id: number) {
 		shown = shown.includes(id) ? shown.filter((x) => x !== id) : [...shown, id];
 		if (shown.includes(id)) void loadRefLine(id);
@@ -343,6 +377,13 @@
 		load();
 		loadModel();
 		loadCompare();
+		try {
+			const v = JSON.parse(localStorage.getItem(peerKey()) ?? '[]');
+			if (Array.isArray(v)) mine = v.filter((x) => Number.isInteger(x) && x > 0).slice(0, 10);
+		} catch {
+			/* ignore */
+		}
+		loadPeers();
 		loadLev();
 		loadNews();
 		void fetch('/api/shortlist').then((r) => r.json()).then((r) => (picked = (r.items ?? []).some((x: { id: number }) => x.id === Number(page.params.id)))).catch(() => {});
@@ -393,7 +434,10 @@
 						.map((n, i) => ({ key: `sma${n}`, label: `SMA${n}`, points: c!.sma![n], color: css(`--series-${i + 5}`) || css('--accent') })),
 					...(cmp?.refs ?? [])
 						.filter((r) => shown.includes(r.id) && refLines[r.id]?.length && !c!.monthly)
-						.map((r, i) => ({ key: `ref${r.id}`, label: r.symbol, points: scaled(refLines[r.id]), color: css(`--series-${(i % 6) + 2}`), dashed: true }))
+						.map((r, i) => ({ key: `ref${r.id}`, label: r.symbol, points: scaled(refLines[r.id]), color: css(`--series-${(i % 6) + 2}`), dashed: true })),
+					...mine
+						.filter((id) => shown.includes(id) && refLines[id]?.length && !c!.monthly)
+						.map((id, i) => ({ key: `peer${id}`, label: peerOf(id)?.symbol ?? String(id), points: scaled(refLines[id]), color: css(`--series-${((i + (cmp?.refs.length ?? 0)) % 6) + 2}`) }))
 				]
 			: []
 	);
@@ -578,6 +622,21 @@
 					</button>
 				{/each}
 				<HelpIcon topicKey="security.compare" label={tx('сравнение', 'comparison')} />
+			</div>
+		{/if}
+		{#if !c.monthly}
+			<!-- owner 27.11.2026: other shares on the chart — the same industry by default, any ticker by the search -->
+			<div class="smas refs" role="group" aria-label={tx('Сравнить с акциями', 'Compare with shares')}>
+				{#each mine as id (id)}
+					{@const p = peerOf(id)}
+					<span class="peer">
+						<button class:on={shown.includes(id)} aria-pressed={shown.includes(id)} onclick={() => toggleRef(id)} title={p?.name ?? ''}>
+							{p?.symbol ?? '…'}{#if p?.corr !== null && p?.corr !== undefined}<small> · Corr {corrText(p.corr)}</small>{:else if p && !p.loaded}<small> · {tx('грузится', 'loading')}</small>{/if}
+						</button>
+						<button class="rm" aria-label={tx(`Убрать ${p?.symbol ?? ''}`, `Remove ${p?.symbol ?? ''}`)} onclick={() => removePeer(id)}>×</button>
+					</span>
+				{/each}
+				<button class="add" onclick={() => ((picking = true), void loadPeers())}>+ {tx('Сравнить с акцией', 'Compare with a share')}</button>
 			</div>
 		{/if}
 		<ToJournal
@@ -818,6 +877,35 @@
 	<div class="skeleton"></div>
 {/if}
 
+{#if picking && c}
+	<Sheet title={tx(`Сравнить ${c.security.symbol} с акцией`, `Compare ${c.security.symbol} with a share`)} onclose={() => (picking = false)}>
+		<div class="pick">
+			<TickerSearch noIndex label={tx('Найти тикер', 'Find a ticker')} onselect={(s: Security) => (addPeer(s.id), (picking = false))} />
+			{#each [['industry', peers?.industry ? tx(`Та же отрасль «${peers.industry}»`, `The same industry «${peers.industry}»`) : ''], ['sector', peers?.sector ? tx(`Тот же сектор «${sectorName(peers.sector, tx)}»`, `The same sector «${sectorName(peers.sector, tx)}»`) : '']] as [grp, title] (grp)}
+				{@const list = (peers?.peers ?? []).filter((p) => p.same === grp)}
+				{#if list.length}
+					<p class="pick-h">{title} <span class="muted small">— {tx('крупнейшие; Corr — связь с', 'the biggest; Corr — the link with')} {c.security.symbol}</span> <HelpIcon topicKey="security.compare" label={tx('связь', 'correlation')} /></p>
+					<ul class="pick-list">
+						{#each list as p (p.id)}
+							<li>
+								<button class:on={mine.includes(p.id)} aria-pressed={mine.includes(p.id)} onclick={() => (mine.includes(p.id) ? removePeer(p.id) : addPeer(p.id))}>
+									<span class="ck" aria-hidden="true">{mine.includes(p.id) ? '✓' : '+'}</span>
+									<b>{p.symbol}</b>
+									<span class="muted nm">{p.name}{grp === 'sector' && p.industry ? ` · ${p.industry}` : ''}</span>
+									<span class="cr">{p.corr !== null ? `Corr ${corrText(p.corr)}` : p.loaded ? '' : grp === 'sector' && !mine.includes(p.id) ? tx('цены — при выборе', 'prices on choosing') : tx('грузится', 'loading')}</span>
+								</button>
+							</li>
+						{/each}
+					</ul>
+				{:else if grp === 'industry' && peers?.industry}
+					<p class="muted small">{tx(`Других компаний отрасли «${peers.industry}» на этой бирже в базе нет — ниже сектор.`, `No other companies of «${peers.industry}» on this market in the base — the sector below.`)}</p>
+				{/if}
+			{/each}
+			<button class="primary" onclick={() => (picking = false)}>{tx('Готово', 'Done')}</button>
+		</div>
+	</Sheet>
+{/if}
+
 <style>
 	.mypos {
 		margin: 0 0 var(--s3);
@@ -996,6 +1084,80 @@
 	}
 	.smas.refs {
 		flex-wrap: wrap;
+	}
+	.peer {
+		display: inline-flex;
+		align-items: center;
+	}
+	.peer .rm {
+		min-height: 32px;
+		padding: 0 6px;
+		margin-left: -2px;
+		border: none;
+		background: none;
+		color: var(--muted);
+	}
+	.smas .add {
+		border-style: dashed;
+		color: var(--link);
+	}
+	.pick {
+		display: flex;
+		flex-direction: column;
+		gap: var(--s3);
+	}
+	.pick-h {
+		margin: 0;
+		font-weight: 600;
+	}
+	.pick-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.pick-list button {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		width: 100%;
+		min-height: 44px;
+		padding: 0 4px;
+		border: none;
+		border-bottom: 1px solid var(--line);
+		background: none;
+		color: var(--text);
+		font: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+	.pick-list .ck {
+		width: 1.2em;
+		color: var(--link);
+		font-weight: 700;
+	}
+	.pick-list button.on .ck {
+		color: var(--up);
+	}
+	.pick-list .nm {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		font-size: var(--fs-xs);
+	}
+	.pick-list .cr {
+		font-size: var(--fs-xs);
+		font-variant-numeric: tabular-nums;
+		color: var(--muted);
+	}
+	.pick .primary {
+		min-height: 44px;
+		border: none;
+		border-radius: var(--r2);
+		background: var(--accent);
+		color: var(--accent-text);
+		font-weight: 600;
 	}
 	.smas button:disabled {
 		opacity: 0.4;

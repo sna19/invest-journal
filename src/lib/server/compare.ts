@@ -128,7 +128,7 @@ const PERIOD_DAYS: [string, number][] = [
 ];
 
 /** the daily log returns of a security over about the last year, by date (closes in the current split scale) */
-function dailyReturns(market: Database.Database, id: number, days = 380): Map<string, number> {
+export function dailyReturns(market: Database.Database, id: number, days = 380): Map<string, number> {
 	const scale = splitScale(market, id);
 	const rows = (market.prepare('select date, close from market_prices_daily where security_id = ? order by date desc limit ?').all(id, Math.round((days * 252) / 365) + 1) as { date: string; close: number }[]).reverse();
 	const out = new Map<string, number>();
@@ -237,4 +237,56 @@ export function fundLinks(market: Database.Database, id: number, c: { sectors: R
 	const sector = bySymbol ?? top(c.sectors, 0.6);
 	const industry = sector && !bySymbol ? top(c.industries, 0.5) : null;
 	return { holdings, sectorPage: sector ? { sector, industry, country: il ? 'IL' : 'US' } : null };
+}
+
+/**
+ * Owner 27.11.2026 («сравнивать огурцы с огурцами»): the shares to put on a security's chart beside it — by default the
+ * biggest of its own industry on its own market, filled up from its sector; and any security asked for (`extra`).
+ * Each with its correlation of daily returns over a year (null while its daily history is not there yet).
+ */
+export function peersOf(market: Database.Database, id: number, extra: number[] = [], limit = 12) {
+	const me = market
+		.prepare(
+			`select e.country, p.sector, p.industry from ref_securities s join ref_exchanges e on e.code = s.exchange_code
+			   left join ref_security_profiles p on p.security_id = s.id where s.id = ?`
+		)
+		.get(id) as { country: string; sector: string | null; industry: string | null } | undefined;
+	const q = (where: string, arg: string, n: number, not: number[]) =>
+		market
+			.prepare(
+				`select s.id, s.symbol, s.name_en as name, s.exchange_code as exchange, p.industry, p.market_cap as cap, p.cap_currency as cur
+				   from ref_securities s join ref_exchanges e on e.code = s.exchange_code join ref_security_profiles p on p.security_id = s.id
+				  where s.active = 1 and s.type = 'stock' and e.country = ? and ${where} = ? and s.id not in (${[id, ...not].map(() => '?').join(',')})
+				  order by p.market_cap is null, p.market_cap desc limit ?`
+			)
+			.all(me!.country, arg, id, ...not, n) as { id: number; symbol: string; name: string; exchange: string; industry: string | null; cap: number | null; cur: string | null }[];
+	let rows: (ReturnType<typeof q>[number] & { same: 'industry' | 'sector' | 'asked' })[] = [];
+	if (me?.industry) rows = q('p.industry', me.industry, limit, []).map((r) => ({ ...r, same: 'industry' as const }));
+	if (me?.sector && rows.length < limit) rows.push(...q('p.sector', me.sector, limit - rows.length, rows.map((r) => r.id)).map((r) => ({ ...r, same: 'sector' as const })));
+	const asked = extra.filter((x) => x !== id && !rows.some((r) => r.id === x));
+	if (asked.length)
+		rows.push(
+			...(market
+				.prepare(
+					`select s.id, s.symbol, s.name_en as name, s.exchange_code as exchange, p.industry, p.market_cap as cap, p.cap_currency as cur
+					   from ref_securities s left join ref_security_profiles p on p.security_id = s.id where s.id in (${asked.map(() => '?').join(',')})`
+				)
+				.all(...asked) as ReturnType<typeof q>).map((r) => ({ ...r, same: 'asked' as const }))
+		);
+	const mine = dailyReturns(market, id);
+	const hasDaily = market.prepare('select count(*) as n from market_prices_daily where security_id = ?');
+	return {
+		industry: me?.industry ?? null,
+		sector: me?.sector ?? null,
+		peers: rows.map((r) => ({
+			id: r.id,
+			symbol: r.symbol,
+			name: r.name,
+			exchange: r.exchange,
+			industry: r.industry,
+			same: r.same,
+			corr: correlation(mine, dailyReturns(market, r.id)),
+			loaded: (hasDaily.get(r.id) as { n: number }).n >= 60
+		}))
+	};
 }
