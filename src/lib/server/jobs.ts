@@ -827,6 +827,7 @@ export function runIdeasJob(now = new Date(), force = false) {
 			const st = readSignalSettings(app);
 			if (!force && (wd !== st.weekday || hour < st.hour)) return null;
 			const r = runIdeas(getApp().db, app, m, now, force);
+			if ('needHistory' in r && r.needHistory?.length) queueSecurities(r.needHistory);
 			if (!r.recorded) return r;
 			const d = dayList(app, m);
 			if (pushKinds(app).includes('ideas'))
@@ -1106,6 +1107,7 @@ export function startScheduler() {
 				const m = getMarket().sqlite;
 				const t0 = Date.now();
 				const r = findIdeas(app, m);
+				if (r.needHistory.length) queueSecurities(r.needHistory);
 				const d = dayList(app, m);
 				console.log(`ideas: preview in ${Date.now() - t0} ms — funnel ${JSON.stringify(r.funnel)} · TASE ${JSON.stringify(r.il)} · ${r.ideas.map((i) => `${i.rank}. ${m.prepare('select symbol from ref_securities where id = ?').pluck().get(i.s.id)} ${Math.round(i.s.total! * 100)} stop ${i.plan?.f.stop} target ${i.plan?.f.target} (${i.plan?.f.targetR}R) ${i.plan?.recommended}`).join(' · ')} | day: sell ${d.sell.length}, review ${d.review.length} + soft ${d.soft.map((x) => `${x.symbol} ${x.kind}`).join(', ')}, protect ${d.protect.map((x) => x.symbol).join(', ')}`);
 			});

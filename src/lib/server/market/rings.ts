@@ -34,6 +34,8 @@ export function ringSecurities(market: Database.Database, app: Database.Database
 	const hasPositions = app.prepare(`select 1 from sqlite_master where type = 'table' and name = 'positions'`).get();
 	if (hasPositions)
 		for (const p of app.prepare(`select distinct security_id as id from positions where stage <> 'closed'`).all() as { id: number }[]) ids.add(p.id);
+	// owner 27.11.2026: the green shares of the ideas' funnel need their daily closes (the SMA200 rule) — US and TASE
+	for (const id of getSetting(market, 'idea_candidates', '').split(',').map(Number).filter((x) => x > 0)) ids.add(id);
 	if (r >= 2) {
 		for (const s of market
 			.prepare(`select id from ref_securities where active = 1 and exchange_code = 'TASE' and type = 'stock' and coalesce(price_status, '') <> 'none'`)

@@ -12,6 +12,7 @@ import { barsOf, portfolioProtection, protectionOf, type Protection } from './pr
 import { checkPurchase } from './portfolioRisk.js';
 import { liveSignals } from './reminders.js';
 import { addEntry } from './diary.js';
+import { setSetting as setMarketSetting } from './market/rings.js';
 import { planOf } from './discipline.js';
 import { marketView, portfolioView, setAuto } from './portfolio.js';
 
@@ -134,6 +135,14 @@ export function findIdeas(app: Database.Database, market: Database.Database, tod
 	// 2. the quant score green (so the price is over its SMA200 too)
 	const scored = scoresOf(market, liquid.map((s) => s.id));
 	const ilScored = scored.filter((x) => ilIds.has(x.id));
+	// the green ones join the daily price ring: without 200 daily closes the trend is unknown and the share cannot pass
+	const greenIds = scored.filter((x) => x.color === 'green' && x.total !== null).map((x) => x.id);
+	try {
+		setMarketSetting(market, 'idea_candidates', greenIds.join(','));
+	} catch {
+		/* a market without the settings table (tests) */
+	}
+	const needHistory = scored.filter((x) => x.color === 'green' && x.total !== null && !x.trend).map((x) => x.id);
 	ilWhy.scored = ilScored.filter((x) => x.total !== null).length;
 	ilWhy.green = ilScored.filter((x) => x.color === 'green').length;
 	ilWhy.noTrend = ilScored.filter((x) => x.color === 'green' && !x.trend).length;
@@ -215,7 +224,7 @@ export function findIdeas(app: Database.Database, market: Database.Database, tod
 	funnel.limits = funnel.room - limited;
 	funnel.notDuplicate = funnel.limits - dup;
 	ilWhy.inPool = il(pool.map((x) => x.id));
-	return { settings: st, funnel, il: { ...ilWhy, colors }, ideas: chosen.map((c, i) => ({ rank: i + 1, ...c })) };
+	return { settings: st, funnel, il: { ...ilWhy, colors }, needHistory, ideas: chosen.map((c, i) => ({ rank: i + 1, ...c })) };
 }
 
 const versionOf = (app: Database.Database, sourceId: number, st: SignalSettings) => {
@@ -233,7 +242,7 @@ export function runIdeas(db: AppDb, app: Database.Database, market: Database.Dat
 	const last = (app.prepare('select max(run) as r from signal_ideas').get() as { r: string | null }).r;
 	if (!force && last && Date.parse(today) - Date.parse(last) < 6 * 86_400_000) return { run: today, recorded: 0, skipped: 'already this week' };
 	const r = findIdeas(app, market, today);
-	if (!r.ideas.length) return { run: today, recorded: 0, skipped: 'no idea passed', funnel: r.funnel };
+	if (!r.ideas.length) return { run: today, recorded: 0, skipped: 'no idea passed', funnel: r.funnel, needHistory: r.needHistory };
 	const sourceId =
 		(app.prepare('select id from sources where name = ?').get(IDEAS_SOURCE) as { id: number } | undefined)?.id ??
 		Number(app.prepare(`insert into sources (name, kind, market, notes) values (?, 'model', 'any', 'T-035: идеи недели — воронка квант-оценки, тренда, меток, календаря и лимитов')`).run(IDEAS_SOURCE).lastInsertRowid);
@@ -295,7 +304,7 @@ export function runIdeas(db: AppDb, app: Database.Database, market: Database.Dat
 		app.prepare(`insert or ignore into model_quarters (variant, quarter, version_id, hypotheses) values ('S', ?, ?, ?)`).run(today, versionId, r.ideas.length);
 	})();
 	setAuto(app, market, sourceId, true, now);
-	return { run: today, recorded: r.ideas.length, skipped: null, funnel: r.funnel };
+	return { run: today, recorded: r.ideas.length, skipped: null, funnel: r.funnel, needHistory: r.needHistory };
 }
 
 /** the latest run's ideas with what the owner did */
