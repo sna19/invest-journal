@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getApp, getMarket } from '#lib/server/db.js';
-import { queueSecurity } from '#lib/server/jobs.js';
+import { queueSecurities } from '#lib/server/jobs.js';
 import { makeFetcher } from '#lib/server/market/http.js';
 import { applyTransfer, previewTransfer } from '#lib/server/transfer.js';
 import { body, fail } from '#lib/server/respond.js';
@@ -19,11 +19,11 @@ export async function POST({ params, request }) {
 		const market = getMarket().sqlite;
 		if (b.apply) {
 			const r = await applyTransfer(app, market, id, text, { get });
-			for (const s of r.securities) queueSecurity(s);
+			queueSecurities(r.securities);
 			return json(r);
 		}
 		const p = await previewTransfer(app, market, id, text, { get });
-		for (const s of p.securities) queueSecurity(s);
+		queueSecurities(p.securities);
 		return json(p);
 	} catch (e) {
 		if (e instanceof Error && e.message === 'Портфеля нет') return json({ message: e.message }, { status: 404 });

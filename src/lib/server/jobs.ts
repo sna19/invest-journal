@@ -160,8 +160,34 @@ export function queueProfiles(ids: number[]) {
 }
 
 export function queueSecurity(securityId: number) {
+	queueSecurities([securityId]);
+}
+
+/**
+ * Securities without history: queued, loaded in the background, then ONE hypotheses step. Owner 27.11.2026 «всё
+ * зависло»: the carry-over queued 23 securities one by one, and each call hung its own hypotheses step on the same
+ * history run — 23 heavy steps back to back blocked the server for minutes. Now the calls made while a load is under
+ * way share one step; securities queued during the load get a next round.
+ */
+let followUp: Promise<void> | null = null;
+export function queueSecurities(ids: number[]) {
 	const m = getMarket().sqlite;
-	if (enqueueMissingHistory(m, [securityId], israelDate())) void runHistoryJob().then(() => runHypothesesStep());
+	if (!ids.length || !enqueueMissingHistory(m, ids, israelDate())) return;
+	if (followUp) return;
+	followUp = (async () => {
+		try {
+			for (let round = 0; round < 5; round++) {
+				await runHistoryJob();
+				const left = (m.prepare(`select count(*) as n from ops_ingest_tasks where job = 'history' and status = 'queued'`).get() as { n: number }).n;
+				if (!left) break;
+			}
+			runHypothesesStep();
+		} catch (e) {
+			console.error(`history: ${e}`);
+		} finally {
+			followUp = null;
+		}
+	})();
 }
 
 // ── daily prices ───────────────────────────────────────────────────────────────
