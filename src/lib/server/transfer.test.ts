@@ -83,4 +83,30 @@ describe('transfer of existing positions (section 18)', () => {
 		// a hand-made security without a price yet: the opening's price counts
 		expect(v.summary.value).toBeCloseTo(12048 + 3600 + 536, 6);
 	});
+
+	it('owner 27.11.2026: the broker list against what the portfolio holds — the same is not added, another quantity is reported, the missing one added; the total checked', async () => {
+		const s = setup();
+		const p = createPortfolio(s.app, { name: 'R', currency: 'ILS' });
+		await applyTransfer(s.app, s.market, p.id, 'date 2026-11-17\nTTT 10 avg=1000', { today: '2026-11-17' });
+		const sec = s.market.prepare(`insert into ref_securities (exchange_code, type, symbol, name_en, currency, price_unit, search) values ('TASE', 'stock', 'UUU', 'Upsilon', 'ILS', 'ILA', 'uuu') returning id`).get() as { id: number };
+		s.market.prepare(`insert into market_prices_daily (security_id, date, low, high, close, provider_code) values (?, '2026-11-17', 500, 500, 500, 'test')`).run(sec.id);
+		// TTT 10 at 12 ₪ = 120, UUU 4 at 5 ₪ = 20: the broker's total 140
+		const text = 'date 2026-11-17\nTTT 10 avg=1100\nUUU 4 avg=400\ntotal 140';
+		const pv = await previewTransfer(s.app, s.market, p.id, text, { today: '2026-11-17' });
+		const [ttt, uuu] = pv.rows.filter((r) => r.kind === 'position');
+		expect(ttt.match).toBe('same');
+		expect(ttt.warnings.join()).toMatch(/Средняя цена в портфеле 1000, у брокера 1100/);
+		expect(uuu.match).toBe('add');
+		expect(pv.total.now).toBeCloseTo(140, 6);
+		expect(pv.total.broker).toBe(140);
+		const other = await previewTransfer(s.app, s.market, p.id, 'date 2026-11-17\nTTT 12\nUUU 4', { today: '2026-11-17' });
+		expect(other.rows[0].match).toBe('differs');
+		const none = await previewTransfer(s.app, s.market, p.id, 'date 2026-11-17\nUUU 4', { today: '2026-11-17' });
+		expect(none.match.notListed).toEqual([{ symbol: 'TTT', qty: 10 }]);
+		const done = await applyTransfer(s.app, s.market, p.id, text, { today: '2026-11-17' });
+		expect(done.added).toBe(1);
+		expect(done.skipped.map((x) => x.why)).toEqual(['уже есть']);
+		const v = portfolioView(s.app, s.market, p.id, '2026-11-17')!;
+		expect(v.positions.filter((x) => x.qty > 0).map((x) => [x.symbol, x.qty])).toEqual(expect.arrayContaining([['TTT', 10], ['UUU', 4]]));
+	});
 });

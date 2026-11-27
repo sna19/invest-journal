@@ -4,7 +4,7 @@ import { unitFactor } from '../portfolio.js';
 import { searchText } from './market/pipeline.js';
 import { chartUrl } from './market/yahoo.js';
 import type { Fetcher } from './market/types.js';
-import { addCash, addEvent, marketView, moneyOf, security, updatePortfolio } from './portfolio.js';
+import { addCash, addEvent, marketView, moneyOf, portfolioView, security, updatePortfolio } from './portfolio.js';
 
 /**
  * Spec section 18 «Перенос существующих позиций» — positions bought before the portfolio was kept, entered as a list
@@ -18,12 +18,19 @@ import { addCash, addEvent, marketView, moneyOf, security, updatePortfolio } fro
  *
  * Optional on a position line: avg=<average price> or cost=<whole purchase cost>, price=<price>. First a preview
  * (matches, quantities, roundings over 1%, prices off the base by more than 5%), then «Перенести» writes it all.
+ *
+ * Owner 27.11.2026 («сверь, что уже есть, недостающее добавь, сверь контрольные суммы»): the whole broker list can be
+ * pasted into a portfolio that already holds some of it. Each line is matched with the portfolio's holding of the
+ * security: the same quantity — «уже есть», nothing is added (an average price off by more than 1% is reported);
+ * another quantity — reported, nothing is added (a trade fixes it); none — added. Holdings missing from the list are
+ * reported too. `total 150000` — the broker's value of the positions today: the sum of the lines at today's prices
+ * is checked against it.
  */
 
 export interface Line {
 	n: number;
 	text: string;
-	kind: 'position' | 'cash' | 'tax' | 'date' | 'skip' | 'error';
+	kind: 'position' | 'cash' | 'tax' | 'total' | 'date' | 'skip' | 'error';
 	symbol?: string;
 	yahoo?: string;
 	qty?: number;
@@ -59,6 +66,10 @@ export function parseTransfer(text: string): Line[] {
 				const cur = (parts[1] ?? '').toUpperCase();
 				if ((cur !== 'USD' && cur !== 'ILS') || !NUM.test(parts[2] ?? '')) return { n, text: raw, kind: 'error' as const, error: 'cash USD|ILS сумма' };
 				return { n, text: raw, kind: 'cash' as const, currency: cur, amount: toNum(parts[2]) };
+			}
+			if (head === 'total') {
+				if (!NUM.test(parts[1] ?? '')) return { n, text: raw, kind: 'error' as const, error: 'total сумма' };
+				return { n, text: raw, kind: 'total' as const, amount: toNum(parts[1]) };
 			}
 			if (head === 'tax') {
 				if (!NUM.test(parts[1] ?? '')) return { n, text: raw, kind: 'error' as const, error: 'tax сумма' };
@@ -105,6 +116,11 @@ export interface Row extends Line {
 	priceDiffPct?: number;
 	/** the position's value in the portfolio's currency on the day */
 	valuePc?: number;
+	/** today's value in the portfolio's currency, by the latest price (for the check against the broker's total) */
+	valueNow?: number;
+	/** against the portfolio's holding: add — not there; same — the same quantity; differs — another quantity */
+	match?: 'add' | 'same' | 'differs';
+	existing?: { qty: number; avgPrice: number | null };
 	warnings: string[];
 	ok: boolean;
 }
@@ -152,6 +168,8 @@ export async function previewTransfer(
 	const lines = parseTransfer(text);
 	const date = lines.find((l) => l.kind === 'date')?.date ?? today;
 	const m = marketView(market);
+	// what the portfolio holds now, by security
+	const held = new Map((portfolioView(app, market, portfolioId, today)?.positions ?? []).filter((x) => x.qty > 1e-9 && x.stage !== 'closed').map((x) => [x.securityId, { qty: x.qty, avgPrice: x.avgPrice, symbol: x.symbol }]));
 	const rows: Row[] = [];
 	for (const l of lines) {
 		if (l.kind === 'skip' || l.kind === 'date') continue;
@@ -236,7 +254,30 @@ export async function previewTransfer(
 			if (Math.abs(r.priceDiffPct) > 5) r.warnings.push(`Цена ${l.price} отличается от закрытия ${r.close.price} (${r.close.date}) на ${r.priceDiffPct.toFixed(1)}% — вопрос в канал`);
 		}
 		r.valuePc = (r.qty ?? 0) * price * f * rate;
+		if (r.securityId) {
+			const now = m.live(r.securityId)?.price ?? m.last(r.securityId)?.close ?? null;
+			if (now !== null) r.valueNow = (r.qty ?? 0) * now * f * m.conv(moneyOf(unit), pc, today);
+			const h = held.get(r.securityId);
+			if (!h) r.match = 'add';
+			else {
+				r.existing = { qty: h.qty, avgPrice: h.avgPrice };
+				if (Math.abs(h.qty - (r.qty ?? 0)) < 1e-6) {
+					r.match = 'same';
+					r.warnings.push(`Уже есть в портфеле: ${h.qty} — совпадает, не добавляется`);
+					const avg = l.avg ?? (l.cost !== undefined && r.qty ? l.cost / (r.qty * f * rate) : undefined);
+					if (avg !== undefined && h.avgPrice && Math.abs(avg / h.avgPrice - 1) > 0.01) r.warnings.push(`Средняя цена в портфеле ${+h.avgPrice.toFixed(4)}, у брокера ${+avg.toFixed(4)} — поправь «Цену покупки» в карточке`);
+				} else {
+					r.match = 'differs';
+					r.warnings.push(`В портфеле ${h.qty}, у брокера ${r.qty} — не добавляется: внеси разницу сделкой «Купил» / «Продал»`);
+				}
+			}
+		}
 	}
+	// held here but not in the broker's list
+	const listed = new Set(rows.map((r) => r.securityId).filter((x): x is number => !!x));
+	const notListed = [...held.entries()].filter(([id]) => !listed.has(id)).map(([, h]) => ({ symbol: h.symbol, qty: h.qty }));
+	const brokerTotal = rows.find((r) => r.kind === 'total')?.amount ?? null;
+	const totalNow = rows.filter((r) => r.kind === 'position').reduce((n, r) => n + (r.valueNow ?? 0), 0);
 	const positions = rows.filter((r) => r.kind === 'position');
 	const cash = rows.filter((r) => r.kind === 'cash');
 	return {
@@ -246,8 +287,12 @@ export async function previewTransfer(
 		total: {
 			positions: positions.reduce((n, r) => n + (r.valuePc ?? 0), 0),
 			cash: cash.reduce((n, r) => n + (r.amount ?? 0) * m.conv(r.currency!, pc, date), 0),
-			cost: positions.reduce((n, r) => n + (r.cost ?? 0), 0)
+			cost: positions.reduce((n, r) => n + (r.cost ?? 0), 0),
+			/** the lines at today's prices, and the broker's own total to check it against */
+			now: totalNow,
+			broker: brokerTotal
 		},
+		match: { add: positions.filter((r) => r.match === 'add').length, same: positions.filter((r) => r.match === 'same').length, differs: positions.filter((r) => r.match === 'differs').length, notListed },
 		ok: rows.every((r) => r.ok),
 		/** securities to queue for prices now, so that a repeated preview finds them */
 		securities: positions.map((r) => r.securityId).filter((x): x is number => !!x)
@@ -292,6 +337,11 @@ export async function applyTransfer(
 				skipped.push({ n: r.n, text: r.text, why: r.warnings.join('; ') || r.error || 'ошибка' });
 				continue;
 			}
+			if (r.kind === 'position' && r.match && r.match !== 'add') {
+				skipped.push({ n: r.n, text: r.text, why: r.match === 'same' ? 'уже есть' : (r.warnings.at(-1) ?? 'другое количество') });
+				continue;
+			}
+			if (r.kind === 'total') continue;
 			if (r.kind === 'cash') addCash(app, market, portfolioId, { kind: 'deposit', date: p.date, amount: r.amount, currency: r.currency, note: 'перенос' }, opts.now);
 			else if (r.kind === 'tax') updatePortfolio(app, portfolioId, { taxAccrued: r.amount });
 			else if (r.kind === 'position') {

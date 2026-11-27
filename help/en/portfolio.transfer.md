@@ -15,6 +15,8 @@ A line can get `avg=` (average price) or `cost=` (the whole purchase cost): then
 
 First «Check»: the app finds the securities and shows quantities, roundings over 1% and prices more than 5% off the base. Then «Carry over». The portfolio data stay in the app only.
 
+**Reconciling with the broker.** The broker's whole list can be pasted into a portfolio that already holds some of it: each line is matched with the portfolio. The same quantity — «already there», not added (an average price more than 1% off is marked). Another quantity — marked and not added: the difference goes in as a «Bought» / «Sold» trade. Not in the portfolio — added. The portfolio's positions missing from the list are listed separately. The line `total 150000` is the broker's total of the securities: the app compares it with the sum of the lines at today's prices and shows the difference.
+
 **Reminder.** Does the journal know what I paid?
 
 **Trap.** Carrying over positions without the purchase price and forgetting to add it.

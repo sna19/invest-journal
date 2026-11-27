@@ -128,8 +128,9 @@
 		date: string;
 		currency: string;
 		ok: boolean;
-		rows: { n: number; text: string; kind: string; ok: boolean; warnings: string[]; error?: string; qty?: number; price?: number; valuePc?: number; found?: { symbol: string; name: string; exchange: string; priceUnit: string; isNew?: boolean }; amount?: number; currency?: string }[];
-		total: { positions: number; cash: number; cost: number };
+		rows: { n: number; text: string; kind: string; ok: boolean; warnings: string[]; error?: string; qty?: number; price?: number; valuePc?: number; valueNow?: number; match?: 'add' | 'same' | 'differs'; found?: { symbol: string; name: string; exchange: string; priceUnit: string; isNew?: boolean }; amount?: number; currency?: string }[];
+		total: { positions: number; cash: number; cost: number; now: number; broker: number | null };
+		match: { add: number; same: number; differs: number; notListed: { symbol: string; qty: number }[] };
 	} | null>(null);
 	let transferBusy = $state(false);
 	let transferError = $state<string | null>(null);
@@ -806,7 +807,7 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45`)}</pre>
 				{@const tp = transferPreview}
 				<ul class="tp">
 					{#each tp.rows as r (r.n)}
-						<li class:bad={!r.ok}>
+						<li class:bad={!r.ok || r.match === 'differs'} class:same={r.match === 'same'}>
 							<span class="tn">{r.n}</span>
 							<span class="tw">
 								{#if r.kind === 'position'}
@@ -816,6 +817,8 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45`)}</pre>
 									{tx('деньги', 'cash')} {money(r.amount ?? 0, r.currency ?? 'ILS')}
 								{:else if r.kind === 'tax'}
 									{tx('начисленный налог', 'accrued tax')} {money(r.amount ?? 0, tp.currency)}
+								{:else if r.kind === 'total'}
+									{tx('итог брокера по бумагам', 'the broker\'s total of the securities')} {money(r.amount ?? 0, tp.currency)}
 								{:else}
 									{r.text}
 								{/if}
@@ -827,6 +830,14 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45`)}</pre>
 				<p class="small">
 					{tx('На', 'On')} {d(tp.date)}: {tx('бумаги', 'securities')} <b>{money(tp.total.positions, tp.currency)}</b> + {tx('деньги', 'cash')} {money(tp.total.cash, tp.currency)} =
 					<b>{money(tp.total.positions + tp.total.cash, tp.currency)}</b>{#if tp.total.cost} · {tx('стоимость покупки', 'purchase cost')} {money(tp.total.cost, tp.currency)}{/if}
+				</p>
+				<!-- owner 27.11.2026: the list against what the portfolio holds, and the check sum against the broker -->
+				<p class="small">
+					{tx(`Добавится: ${tp.match.add} · уже есть: ${tp.match.same} · расходится: ${tp.match.differs}`, `To add: ${tp.match.add} · already there: ${tp.match.same} · differ: ${tp.match.differs}`)}{#if tp.match.notListed.length} · <b>{tx('в портфеле, но нет в списке', 'in the portfolio but not in the list')}: {tp.match.notListed.map((x) => `${x.symbol} ${qtyText(x.qty)}`).join(', ')}</b>{/if}
+				</p>
+				<p class="small">
+					{tx('По сегодняшним ценам', 'At today\'s prices')}: <b>{money(tp.total.now, tp.currency)}</b>{#if tp.total.broker !== null} · {tx('у брокера', 'at the broker')} {money(tp.total.broker, tp.currency)} · {tx('разница', 'difference')}
+						<b class:err={Math.abs(tp.total.now - tp.total.broker) > tp.total.broker * 0.01}>{money(tp.total.now - tp.total.broker, tp.currency, true)} ({(((tp.total.now - tp.total.broker) / tp.total.broker) * 100).toFixed(2)}%)</b>{/if}
 				</p>
 				<button class="primary" disabled={transferBusy} onclick={() => transfer(true)}>{tp.ok ? tx('Перенести', 'Carry over') : tx('Перенести строки без ошибок', 'Carry over the lines without errors')}</button>
 			{:else}
@@ -1167,6 +1178,9 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45`)}</pre>
 		padding: var(--s2);
 		border-radius: var(--r1);
 		background: var(--surface-2);
+	}
+	.tp li.same {
+		opacity: 0.6;
 	}
 	.tp li.bad {
 		background: var(--warn-bg);
