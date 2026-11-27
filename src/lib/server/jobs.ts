@@ -8,6 +8,7 @@ import { checkMonthlyAgainstDaily, loadMonthly, monthlyDue, type MonthlySummary 
 import { loadProfiles, staleProfiles, type ProfilesSummary } from './market/profiles.js';
 import { eventsDue, loadEvents, type EventsSummary } from './market/events.js';
 import { heldSecurities, loadQuotes, marketsOpen, readSchedule, type QuotesSummary } from './market/quotes.js';
+import { begin, breathe } from './activity.js';
 import { asUser, currentUserId, forEachUser, listUsers } from './auth.js';
 import { notifyOnce, pushKinds, sendSignals } from './push.js';
 import { syncDecisions } from './decisions.js';
@@ -116,6 +117,12 @@ export function runHistoryJob(): Promise<QueueSummary> {
 		const empty: QueueSummary = { done: 0, failed: 0, none: 0, added: 0, updated: 0, received: 0, issues: 0, errors: [] };
 		if (!pending) return empty;
 		const id = startRun('history', 'yahoo');
+		const act = begin('history', 'Загружаю историю цен', pending);
+		const left = m.prepare(`select count(*) as n from ops_ingest_tasks where job = 'history' and status in ('queued', 'running')`);
+		const timer = setInterval(() => {
+			const n = (left.get() as { n: number }).n;
+			act.progress(Math.max(0, pending - n), Math.max(pending, n));
+		}, 1000);
 		try {
 			const c = ctx(id);
 			const a = await runQueue(c, { benchmarksOnly: true, parallel: 2 });
@@ -136,6 +143,9 @@ export function runHistoryJob(): Promise<QueueSummary> {
 		} catch (e) {
 			finishRun(id, { status: 'error', error: String(e) });
 			throw e;
+		} finally {
+			clearInterval(timer);
+			act.end();
 		}
 	});
 }
@@ -181,7 +191,7 @@ export function queueSecurities(ids: number[]) {
 				const left = (m.prepare(`select count(*) as n from ops_ingest_tasks where job = 'history' and status = 'queued'`).get() as { n: number }).n;
 				if (!left) break;
 			}
-			runHypothesesStep();
+			await runHypothesesStepAsync();
 		} catch (e) {
 			console.error(`history: ${e}`);
 		} finally {
@@ -253,7 +263,7 @@ export function runPricesJob(): Promise<DailySummary> {
 		}
 		s.history = await runHistoryJob();
 		s.fx = await runFxJob().catch((e) => (console.error(`fx: ${e}`), undefined));
-		s.hypotheses = runHypothesesStep();
+		s.hypotheses = await runHypothesesStepAsync();
 		console.log(`prices: ${s.securities} securities, +${s.added} rows, ${s.errors.length} errors; hypotheses ${JSON.stringify({ ...s.hypotheses, waiting: s.hypotheses.waiting.length })}`);
 		return s;
 	});
@@ -302,6 +312,66 @@ export function runHypothesesStep(): Summary {
 		finishRun(id, { status: 'error', error: String(e) });
 		throw e;
 	}
+}
+
+/**
+ * The same step in portions (owner 27.11.2026): 40 hypotheses at a time, then the automatic portfolios one source at a
+ * time, the server answering requests in between; its progress is shown in the app's bar. Calls while it runs share it.
+ */
+let stepRunning: Promise<Summary> | null = null;
+export function runHypothesesStepAsync(): Promise<Summary> {
+	if (stepRunning) return stepRunning;
+	stepRunning = (async () => {
+		const id = startRun('hypotheses', 'app');
+		const act = begin('hypotheses', 'Пересчитываю гипотезы и автоматические портфели');
+		const t0 = Date.now();
+		try {
+			const all: Summary[] = [];
+			for (const u of listUsersSafe()) all.push(await asUser(u, () => hypothesesOfAsync(act)));
+			const r = all.reduce((a, b) => ({ ...a, entries: a.entries + b.entries, updated: a.updated + b.updated, closed: a.closed + b.closed, waiting: [...a.waiting, ...b.waiting] }));
+			finishRun(id, { status: 'ok', received: r.entries + r.updated + r.closed, added: r.closed, updated: r.entries + r.updated });
+			console.log(`hypotheses step: ${r.updated} updated, ${r.closed} closed in ${Date.now() - t0} ms`);
+			return r;
+		} catch (e) {
+			finishRun(id, { status: 'error', error: String(e) });
+			throw e;
+		} finally {
+			act.end();
+			stepRunning = null;
+		}
+	})();
+	return stepRunning;
+}
+
+async function hypothesesOfAsync(act: { progress: (done: number, total?: number) => void }): Promise<Summary> {
+	const app = getApp().sqlite;
+	const market = getMarket().sqlite;
+	const ids = (app.prepare(`select id from hypotheses where status = 'open' order by id`).all() as { id: number }[]).map((x) => x.id);
+	const sources = (app.prepare(`select distinct auto_source_id as id from portfolios where auto_source_id is not null and archived_at is null`).all() as { id: number }[]).map((x) => x.id);
+	const total = ids.length + sources.length;
+	const out: Summary = { entries: 0, updated: 0, closed: 0, waiting: [] };
+	for (let i = 0; i < ids.length; i += 40) {
+		const r = updateHypotheses(app, market, new Date(), ids.slice(i, i + 40));
+		out.entries += r.entries;
+		out.updated += r.updated;
+		out.closed += r.closed;
+		out.waiting.push(...r.waiting);
+		act.progress(Math.min(i + 40, ids.length), total);
+		await breathe();
+	}
+	const auto = { bought: 0, sold: 0, dividends: 0, reversed: 0, carried: 0 };
+	for (const [k, sid] of sources.entries()) {
+		try {
+			const a = app.transaction(() => syncAuto(app, market, new Date(), sid))();
+			for (const x of Object.keys(auto) as (keyof typeof auto)[]) auto[x] += a[x];
+		} catch (e) {
+			console.error(`auto portfolios: source ${sid}: ${e}`);
+		}
+		act.progress(ids.length + k + 1, total);
+		await breathe();
+	}
+	if (auto.bought || auto.sold || auto.dividends || auto.reversed) console.log(`auto portfolios: ${JSON.stringify(auto)}`);
+	return out;
 }
 
 const listUsersSafe = () => {

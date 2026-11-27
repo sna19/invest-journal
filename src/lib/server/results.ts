@@ -86,13 +86,25 @@ const addDays = (d: string, n: number) => new Date(Date.parse(d + 'T12:00:00Z') 
  * The daily step for hypotheses: entry prices for those «ожидает цену», the current result of open ones,
  * closing those whose horizon has come. Never closes on incomplete data.
  */
-export function updateHypotheses(app: Database.Database, market: Database.Database, now = new Date()): Summary {
+/** `ids` — only these open hypotheses (the background step goes in portions, letting the server answer in between) */
+export function updateHypotheses(app: Database.Database, market: Database.Database, now = new Date(), ids?: number[]): Summary {
 	const today = israelDate(now);
 	const p = new Prices(market);
 	const out: Summary = { entries: 0, updated: 0, closed: 0, waiting: [] };
 	const open = app
 		.prepare(`select id, security_id, benchmark_id, direction, entry_date, entry_price, entry_price_date, horizon_date from hypotheses where status = 'open'`)
 		.all() as Open[];
+	const only = ids ? new Set(ids) : null;
+	const list = only ? open.filter((h) => only.has(h.id)) : open;
+	const calendarLastQ = market.prepare(
+		`select max(t.date) as d from ref_trading_days t
+		   join ref_securities s on s.id = ? join ref_exchanges e on e.code = s.exchange_code
+		  where t.exchange_code = case e.country when 'IL' then 'TASE' else 'US' end and t.date <= ?`
+	);
+	const behindQ = market.prepare(
+		`select count(*) as n from ref_trading_days t join ref_securities s on s.id = ? join ref_exchanges e on e.code = s.exchange_code
+		  where t.exchange_code = case e.country when 'IL' then 'TASE' else 'US' end and t.date > ? and t.date <= ?`
+	);
 	const setEntry = app.prepare('update hypotheses set entry_price = ?, benchmark_entry = ?, entry_price_date = ? where id = ?');
 	const setCurrent = app.prepare(
 		`update hypotheses set last_date = ?, last_price = ?, benchmark_last = ?, current_return_pct = ?, current_benchmark_return_pct = ?,
@@ -114,7 +126,7 @@ export function updateHypotheses(app: Database.Database, market: Database.Databa
 		`select id, rule, date from ops_quality_issues where status = 'open' and security_id in (?, ?) and date between ? and ?
 		    and rule in ('price.jump', 'price.unit_glitch', 'price.unit_mismatch') limit 1`
 	);
-	for (const h of open) {
+	for (const h of list) {
 		let entry = h.entry_price_date ? p.firstFrom(h.security_id, h.benchmark_id, h.entry_price_date) : null;
 		if (h.entry_price === null) {
 			entry = p.firstFrom(h.security_id, h.benchmark_id, h.entry_date);
@@ -146,16 +158,8 @@ export function updateHypotheses(app: Database.Database, market: Database.Databa
 			// all trading days up to the horizon must be known: the benchmark has a day on/after it, or the grace passed
 			const known = benchLast !== null && (benchLast >= h.horizon_date || today > addDays(h.horizon_date, GRACE_DAYS));
 			// and the security itself must have a price near the horizon, not a week before it
-			const calendarLast = (market
-				.prepare(
-					`select max(t.date) as d from ref_trading_days t
-					   join ref_securities s on s.id = ? join ref_exchanges e on e.code = s.exchange_code
-					  where t.exchange_code = case e.country when 'IL' then 'TASE' else 'US' end and t.date <= ?`
-				)
-				.get(h.security_id, h.horizon_date) as { d: string | null }).d;
-			const behind = calendarLast
-				? (market.prepare('select count(*) as n from ref_trading_days t join ref_securities s on s.id = ? join ref_exchanges e on e.code = s.exchange_code where t.exchange_code = case e.country when \'IL\' then \'TASE\' else \'US\' end and t.date > ? and t.date <= ?').get(h.security_id, exitDay.date, calendarLast) as { n: number }).n
-				: 0;
+			const calendarLast = (calendarLastQ.get(h.security_id, h.horizon_date) as { d: string | null }).d;
+			const behind = calendarLast ? (behindQ.get(h.security_id, exitDay.date, calendarLast) as { n: number }).n : 0;
 			if (known && behind <= 2) {
 				close.run(
 					exitDay.date, exitDay.s.close, exitDay.b.close, r.returnPct, r.benchmarkReturnPct, r.excessPct, r.excessPct > 0 ? 'hit' : 'miss',

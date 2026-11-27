@@ -1145,12 +1145,13 @@ function autoRules(app: Database.Database, sourceId: number): AutoRules {
  * rule keeps the position for the new hypothesis (auto_carries) instead of selling and buying; the tax of each
  * finished year is a money record on 31 December, the current year's is shown as accrued.
  */
-export function syncAuto(app: Database.Database, market: Database.Database, now = new Date()) {
+/** `only` — just this source (the background step goes source by source, letting the server answer in between) */
+export function syncAuto(app: Database.Database, market: Database.Database, now = new Date(), only?: number) {
 	const today = israelDate(now);
 	// sources switched on: having a portfolio not archived
-	const on = (app.prepare(`select distinct auto_source_id as id from portfolios where auto_source_id is not null and archived_at is null`).all() as { id: number }[]).map(
-		(r) => r.id
-	);
+	const on = (app.prepare(`select distinct auto_source_id as id from portfolios where auto_source_id is not null and archived_at is null`).all() as { id: number }[])
+		.map((r) => r.id)
+		.filter((id) => only === undefined || id === only);
 	const m = marketView(market);
 	const s = { bought: 0, sold: 0, dividends: 0, reversed: 0, carried: 0 };
 	const DAY = 86_400_000;

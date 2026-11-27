@@ -25,6 +25,7 @@
 	import { goto } from '$app/navigation';
 	import { israelDate } from '#lib/hypothesis.js';
 	import { CASH_LABEL, money, priceText, qtyText, STAGE_LABEL, STAGES, type Stage } from '#lib/portfolio.js';
+	import { watchActivity } from '#lib/activity.svelte.js';
 	import { showToast } from '#lib/toast.svelte.js';
 	import TradeSignals from '#lib/TradeSignals.svelte';
 	import PortfolioProtection from '#lib/portfolio/PortfolioProtection.svelte';
@@ -140,6 +141,8 @@
 		try {
 			const r = await fetch(`/api/portfolios/${current}/transfer`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: transferText, apply }) });
 			const j = await r.json().catch(() => ({}));
+			// the securities' history and the recalculation go on in the background: the bar shows them
+			watchActivity();
 			if (!r.ok) return (transferError = tl(j.message) || tx('Не получилось', 'It did not work'));
 			if (!apply) return (transferPreview = j);
 			showToast(`${tx('Перенесено позиций', 'Positions carried over')}: ${j.added}${j.deduped ? `, ${tx('дубликатов убрано', 'duplicates removed')}: ${j.deduped}` : ''}${j.skipped.length ? `, ${tx('пропущено строк', 'lines skipped')}: ${j.skipped.length}` : ''}`);

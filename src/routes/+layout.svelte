@@ -2,6 +2,7 @@
 	import '#lib/styles/tokens.css';
 	import TabBar from '#lib/TabBar.svelte';
 	import Toast from '#lib/Toast.svelte';
+	import ActivityBar from '#lib/ActivityBar.svelte';
 	import Composer from '#lib/journal/Composer.svelte';
 	import { composer } from '#lib/journal/screen.svelte.js';
 	import { page } from '$app/state';
@@ -16,6 +17,7 @@
 <main>{@render children()}</main>
 {#if page.url.pathname !== '/login'}<TabBar />{/if}
 <Toast />
+{#if page.url.pathname !== '/login'}<ActivityBar />{/if}
 {#if composer.open}<Composer />{/if}
 
 <style>

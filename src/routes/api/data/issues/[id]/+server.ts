@@ -1,6 +1,6 @@
 import { json } from '@sveltejs/kit';
 import { getMarket } from '#lib/server/db.js';
-import { runHypothesesStep } from '#lib/server/jobs.js';
+import { runHypothesesStepAsync } from '#lib/server/jobs.js';
 import { decideIssue } from '#lib/server/market/decide.js';
 import { body } from '#lib/server/respond.js';
 
@@ -13,6 +13,6 @@ export async function POST({ params, request }) {
 	if (d !== 'valid' && d !== 'invalid') return json({ message: 'decision: valid | invalid' }, { status: 400 });
 	const r = decideIssue(getMarket().sqlite, Number(params.id), d);
 	if ('error' in r) return json({ message: r.error }, { status: 409 });
-	const h = runHypothesesStep();
+	const h = await runHypothesesStepAsync();
 	return json({ ...r, closed: h.closed });
 }
