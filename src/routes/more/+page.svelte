@@ -15,7 +15,7 @@
 
 <svelte:head><title>{t('tab.more')} · {t('app.name')}</title></svelte:head>
 
-<TopBar title={t('tab.more')} />
+<TopBar title={t('tab.more')} help="app.colors" />
 <ul class="menu">
 	<li><a href="/journal"><BookOpen size={20} /><span>{tx('Дневник', 'Diary')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/review"><Scale size={20} /><span>{tx('Честный разбор', 'Honest review')}</span><ChevronRight size={18} /></a></li>
