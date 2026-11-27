@@ -30,32 +30,32 @@
 	type F = (x: S) => string | null;
 	const ROWS: { t: string; help: string; rows: [string, F, string][] }[] = $derived([
 		{
-			t: tx('Качество', 'Quality'),
+			t: tx('Качество (Quality)', 'Quality'),
 			help: 'security.quality',
 			rows: [
-				[tx('Чистая маржа', 'Net margin'), (x) => pct(x.profitMargin), 'margin_net'],
-				[tx('Операционная маржа', 'Operating margin'), (x) => pct(x.operatingMargin), 'margin_op'],
-				[tx('Валовая маржа', 'Gross margin'), (x) => pct(x.grossMargin), 'margin_gross'],
-				['ROE', (x) => pct(x.roe), 'roe'],
-				['ROA', (x) => pct(x.roa), 'roa'],
-				[tx('Долг / капитал', 'Debt / equity'), (x) => (typeof x.debtToEquity === 'number' ? pct(x.debtToEquity / 100, 0) : null), 'de'],
-				[tx('Текущая ликвидность', 'Current ratio'), (x) => num(x.currentRatio, 2), 'current_ratio']
+				[tx('Чистая маржа (NPM)', 'Net margin (NPM)'), (x) => pct(x.profitMargin), 'margin_net'],
+				[tx('Операционная маржа (OPM)', 'Operating margin (OPM)'), (x) => pct(x.operatingMargin), 'margin_op'],
+				[tx('Валовая маржа (GM)', 'Gross margin (GM)'), (x) => pct(x.grossMargin), 'margin_gross'],
+				[tx('ROE (рентабельность капитала)', 'ROE (return on equity)'), (x) => pct(x.roe), 'roe'],
+				[tx('ROA (рентабельность активов)', 'ROA (return on assets)'), (x) => pct(x.roa), 'roa'],
+				[tx('Долг / капитал (D/E)', 'Debt / equity (D/E)'), (x) => (typeof x.debtToEquity === 'number' ? pct(x.debtToEquity / 100, 0) : null), 'de'],
+				[tx('Текущая ликвидность (CR)', 'Current ratio (CR)'), (x) => num(x.currentRatio, 2), 'current_ratio']
 			]
 		},
 		{
-			t: tx('Рост (год к году)', 'Growth (year on year)'),
+			t: tx('Рост, год к году (Growth YoY)', 'Growth, year on year (YoY)'),
 			help: 'security.growth',
 			rows: [
-				[tx('Выручка', 'Revenue'), (x) => pct(x.revenueGrowth), 'growth_rev'],
-				[tx('Прибыль', 'Earnings'), (x) => pct(x.earningsGrowth), 'growth_eps']
+				[tx('Выручка (Rev YoY)', 'Revenue (Rev YoY)'), (x) => pct(x.revenueGrowth), 'growth_rev'],
+				[tx('Прибыль (EPS YoY)', 'Earnings (EPS YoY)'), (x) => pct(x.earningsGrowth), 'growth_eps']
 			]
 		},
 		{
-			t: tx('Оценка', 'Valuation'),
+			t: tx('Оценка (Valuation)', 'Valuation'),
 			help: 'security.valuation',
 			rows: [
 				['P/E', (x) => num(x.pe), 'pe'],
-				[tx('P/E прогноз', 'Forward P/E'), (x) => num(x.forwardPe), 'pe_fwd'],
+				[tx('P/E прогноз (Fwd P/E)', 'Forward P/E (Fwd P/E)'), (x) => num(x.forwardPe), 'pe_fwd'],
 				['P/S', (x) => num(x.ps), 'ps'],
 				['P/B', (x) => num(x.pb), 'pb'],
 				['EV/EBITDA', (x) => num(x.evEbitda), 'ev_ebitda'],
@@ -63,46 +63,46 @@
 			]
 		},
 		{
-			t: tx('Риск', 'Risk'),
+			t: tx('Риск (Risk)', 'Risk'),
 			help: 'security.risk',
 			rows: [
-				[tx('Колебания за год, % в год', 'Volatility, a year, % a year'), (x) => pct(x.vol1y, 0), 'vol'],
-				[tx('Колебания за 3 мес., % в год', 'Volatility, 3 months, % a year'), (x) => pct(x.vol3m, 0), 'vol'],
+				[tx('Колебания за год, % в год (HV 1Y)', 'Volatility, a year, % a year (HV 1Y)'), (x) => pct(x.vol1y, 0), 'vol'],
+				[tx('Колебания за 3 мес., % в год (HV 3M)', 'Volatility, 3 months, % a year (HV 3M)'), (x) => pct(x.vol3m, 0), 'vol'],
 				[tx('Дневной размах (ATR 14)', 'Daily range (ATR 14)'), (x) => pct(x.atrPct), 'atr'],
-				[tx('Ниже максимума года', 'Under the year\'s high'), (x) => pct(x.ddNow, 0), 'drawdown'],
-				[tx('Худшая просадка за год', 'Worst drawdown, a year'), (x) => pct(x.ddMax, 0), 'drawdown'],
-				[tx('Бета (к рынку)', 'Beta (vs market)'), (x) => num(x.beta, 2), 'beta'],
-				[tx('Бета за 3 года', '3-year beta'), (x) => num(x.beta3y, 2), 'beta'],
-				[tx('Шорт, % акций', 'Short, % of float'), (x) => pct(x.shortFloat), 'short']
+				[tx('Ниже максимума года (Off 52W High)', 'Under the year\'s high (Off 52W High)'), (x) => pct(x.ddNow, 0), 'drawdown'],
+				[tx('Худшая просадка за год (MDD 1Y)', 'Worst drawdown, a year (MDD 1Y)'), (x) => pct(x.ddMax, 0), 'drawdown'],
+				[tx('Бета к рынку (β)', 'Beta vs market (β)'), (x) => num(x.beta, 2), 'beta'],
+				[tx('Бета за 3 года (β 3Y)', '3-year beta (β 3Y)'), (x) => num(x.beta3y, 2), 'beta'],
+				[tx('Шорт, % акций (SI % Float)', 'Short, % of float (SI % Float)'), (x) => pct(x.shortFloat), 'short']
 			]
 		},
 		{
-			t: tx('Доход и владельцы', 'Income and holders'),
+			t: tx('Доход и владельцы (Income & Ownership)', 'Income and holders (Income & Ownership)'),
 			help: 'security.income',
 			rows: [
-				[tx('Дивидендная доходность', 'Dividend yield'), (x) => pct(x.dividendYield, 2), 'div_yield'],
-				[tx('Доля прибыли на дивиденды', 'Payout ratio'), (x) => pct(x.payoutRatio, 0), 'payout'],
-				[tx('У инсайдеров', 'Insiders'), (x) => pct(x.insiders, 0), 'insiders'],
-				[tx('У фондов', 'Institutions'), (x) => pct(x.institutions, 0), 'institutions']
+				[tx('Дивидендная доходность (DY)', 'Dividend yield (DY)'), (x) => pct(x.dividendYield, 2), 'div_yield'],
+				[tx('Доля прибыли на дивиденды (Payout Ratio)', 'Payout ratio (Payout Ratio)'), (x) => pct(x.payoutRatio, 0), 'payout'],
+				[tx('У инсайдеров (Insider Own.)', 'Insiders (Insider Own.)'), (x) => pct(x.insiders, 0), 'insiders'],
+				[tx('У фондов (Inst. Own.)', 'Institutions (Inst. Own.)'), (x) => pct(x.institutions, 0), 'institutions']
 			]
 		},
 		{
-			t: tx('Аналитики', 'Analysts'),
+			t: tx('Аналитики (Analysts)', 'Analysts'),
 			help: 'security.analysts',
 			rows: [
-				[tx('Цель, средняя', 'Mean target'), (x) => num(x.target, 2), 'target_analysts'],
-				[tx('Цель, разброс', 'Target range'), (x) => (typeof x.targetLow === 'number' && typeof x.targetHigh === 'number' ? `${num(x.targetLow, 0)}–${num(x.targetHigh, 0)}` : null), 'target_analysts'],
-				[tx('Мнение', 'Opinion'), (x) => (typeof x.recommendation === 'string' ? tx(...(REC[x.recommendation] ?? [x.recommendation, x.recommendation])) : null), 'rating'],
-				[tx('Аналитиков', 'Analysts'), (x) => num(x.analysts, 0), 'rating']
+				[tx('Цель, средняя (PT)', 'Mean target (PT)'), (x) => num(x.target, 2), 'target_analysts'],
+				[tx('Цель, разброс (PT Low–High)', 'Target range (PT Low–High)'), (x) => (typeof x.targetLow === 'number' && typeof x.targetHigh === 'number' ? `${num(x.targetLow, 0)}–${num(x.targetHigh, 0)}` : null), 'target_analysts'],
+				[tx('Мнение (Consensus Rating)', 'Opinion (Consensus Rating)'), (x) => (typeof x.recommendation === 'string' ? tx(...(REC[x.recommendation] ?? [x.recommendation, x.recommendation])) : null), 'rating'],
+				[tx('Аналитиков (# Analysts)', 'Analysts (# Analysts)'), (x) => num(x.analysts, 0), 'rating']
 			]
 		},
 		{
-			t: tx('Фонд', 'Fund'),
+			t: tx('Фонд (Fund)', 'Fund'),
 			help: 'security.fund',
 			rows: [
-				[tx('Активы', 'Assets'), (x) => big(x.totalAssets), 'aum'],
-				[tx('С начала года', 'Year to date'), (x) => pct(x.ytd), 'ytd'],
-				[tx('3 года, в год', '3 years, a year'), (x) => pct(x.threeYear), 'ytd']
+				[tx('Активы (AUM)', 'Assets (AUM)'), (x) => big(x.totalAssets), 'aum'],
+				[tx('С начала года (YTD)', 'Year to date (YTD)'), (x) => pct(x.ytd), 'ytd'],
+				[tx('3 года, в год (3Y CAGR)', '3 years, a year (3Y CAGR)'), (x) => pct(x.threeYear), 'cagr']
 			]
 		}
 	]);

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import HelpIcon from './HelpIcon.svelte';
+	import ScoreDot from './ScoreDot.svelte';
 	import { SECTORS, sectorName } from './allocation.js';
 	import { loc, tl, tx } from './i18n.js';
 	import { showToast } from './toast.svelte.js';
@@ -17,7 +18,8 @@
 		countries: W | null;
 		industries: W | null;
 		source: { sector: string | null; country: string | null; industry: string | null };
-		holdings: { symbol: string; name: string; weight: number }[] | null;
+		holdings: { symbol: string; name: string; weight: number; id: number | null }[] | null;
+		sectorPage: { sector: string; industry: string | null; country: 'US' | 'IL' } | null;
 	}
 	let c = $state<C | null>(null);
 	let editing = $state<'sector' | 'country' | 'industry' | null>(null);
@@ -47,6 +49,21 @@
 </script>
 
 {#if c}
+	{#if c.sectorPage}
+		{@const sp = c.sectorPage}
+		<a class="secpage" href="/sector?sector={sp.sector}{sp.industry ? `&industry=${encodeURIComponent(sp.industry)}` : ''}&country={sp.country}">{sp.industry ? tx('Все компании отрасли', 'All companies of the industry') : tx('Все компании сектора', 'All companies of the sector')} «{sp.industry ?? sectorName(sp.sector, tx)}» {tx('— с доходностью, отраслями и сезонностью', '— with returns, industries and seasonality')} →</a>
+	{/if}
+	{#if c.holdings?.length}
+		<p class="h"><b>{tx('Крупнейшие бумаги', 'Top holdings')}</b> <span class="muted small">{tx(`${pct(c.holdings.reduce((n, h) => n + h.weight, 0))} фонда`, `${pct(c.holdings.reduce((n, h) => n + h.weight, 0))} of the fund`)}</span></p>
+		<ul class="hold">
+			{#each c.holdings as h (h.symbol)}
+				<li>
+					{#if h.id}<a href="/security/{h.id}"><b>{h.symbol}</b><ScoreDot id={h.id} /> <span class="muted">{h.name}</span></a>{:else}<b>{h.symbol}</b> <span class="muted">{h.name}</span>{/if}
+					<span class="w">{pct(h.weight)}</span>
+				</li>
+			{/each}
+		</ul>
+	{/if}
 	{#each [['sector', tx('Секторы', 'Sectors'), c.sectors, c.source.sector], ['country', tx('Страны', 'Countries'), c.countries, c.source.country], ['industry', tx('Отрасли', 'Industries'), c.industries, c.source.industry]] as [kind, title, w, src] (kind)}
 		<div class="part">
 			<p class="h"><b>{title}</b>{#if src}<span class="muted small"> · {tx(...SRC[src as string])}</span>{/if}<button class="lnk" onclick={() => edit(kind as 'sector')}>{tx('править', 'edit')}</button></p>
@@ -78,14 +95,46 @@
 			{/if}
 		</div>
 	{/each}
-	{#if c.holdings?.length}
-		<p class="h"><b>{tx('Крупнейшие бумаги', 'Top holdings')}</b></p>
-		<p class="small">{c.holdings.map((h) => `${h.symbol} ${pct(h.weight)}`).join(' · ')}</p>
-	{/if}
 	<p class="muted small">{tx('Из этого состава считаются распределение портфеля и доля отрасли работы.', 'The portfolio\'s allocation and the job\'s industry share are counted from this.')}<HelpIcon topicKey="portfolio.exposure" label={tx('состав фонда', 'fund composition')} /></p>
 {/if}
 
 <style>
+	.secpage {
+		display: block;
+		margin: 0 0 var(--s3);
+		padding: var(--s2) var(--s3);
+		border: 1px solid var(--line);
+		border-radius: var(--r2);
+		color: var(--link);
+		text-decoration: none;
+		font-size: var(--fs-s);
+	}
+	.hold {
+		list-style: none;
+		margin: 4px 0 var(--s3);
+		padding: 0;
+		font-size: var(--fs-s);
+	}
+	.hold li {
+		display: flex;
+		align-items: center;
+		gap: var(--s2);
+		padding: 6px 0;
+		border-bottom: 1px solid var(--line);
+	}
+	.hold a {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
+		color: var(--text);
+		text-decoration: none;
+	}
+	.hold .w {
+		margin-left: auto;
+		font-variant-numeric: tabular-nums;
+	}
 	.part {
 		margin-bottom: var(--s2);
 	}

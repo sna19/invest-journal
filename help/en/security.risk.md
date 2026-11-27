@@ -15,6 +15,8 @@
 
 **When it matters.** When choosing the size of a position and the stop; when the short interest of a position rises — check the news and the thesis.
 
+**Abbreviations.** HV 1Y / HV 3M — Historical Volatility over a year / 3 months; ATR — Average True Range; Off 52W High — how far under the 52-week high; MDD — Max Drawdown; β — Beta; SI % Float — Short Interest as % of the float; IV — Implied Volatility (from options, not in the app).
+
 **Reminder.** The harder it swings, the smaller the piece.
 
 **Trap.** Beta is counted from the past and measures only the link to the market: a low-beta share can have crashes of its own (a report, a lawsuit) that beta does not see.

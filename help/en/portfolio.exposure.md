@@ -4,7 +4,7 @@
 
 **The idea.** Many securities ≠ diversification. Several shares of one industry, an industry fund and part of a broad fund with the same companies are one bet.
 
-**How to use it.** Look at the largest sector and compare it with the limit before every purchase.
+**How to use it.** Look at the largest sector and compare it with the limit before every purchase. On a fund's card, in the block «Fund composition», at the top — its largest holdings with their weights (a tap opens the share's card, the dot is the quant score) and, for a sector fund (XLV, XLK…), the link «All companies of the sector»: the whole sector with returns, industries and seasonality.
 
 **Reminder.** How much do I really have in one sector?
 

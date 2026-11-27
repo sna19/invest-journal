@@ -13,6 +13,8 @@
 
 **When it matters.** For dividend positions — at every report: a rising payout ratio is an early sign of a cut.
 
+**Abbreviations.** DY — Dividend Yield; Payout Ratio — the part of profit paid as dividends; Insider Own. — Insider Ownership; Inst. Own. — Institutional Ownership.
+
 **Reminder.** A dividend is good only while there is something to pay it from.
 
 **Trap.** Buying the highest dividend yield: often it is a company the market has already punished and that will soon cut its payouts.

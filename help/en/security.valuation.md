@@ -15,6 +15,8 @@
 
 **When it matters.** Before a purchase — always; when reviewing a position — after a big rise: has the valuation run ahead of the growth? Compare with the sector's neighbours in «Compare with» and with the ratios' snapshots in the diary.
 
+**Abbreviations.** P/E — Price-to-Earnings; Fwd P/E — Forward P/E; P/S — Price-to-Sales; P/B — Price-to-Book; EV — Enterprise Value; EBITDA — Earnings Before Interest, Taxes, Depreciation & Amortization; PEG — Price/Earnings-to-Growth.
+
 **Reminder.** Valuation asks «how much is already in the price», not «is it a good company».
 
 **Trap.** A low P/E of a cyclical company (steel, oil, chips) at the top of the cycle: earnings are high for a while, and a year later the P/E is «suddenly» high because the earnings fell.

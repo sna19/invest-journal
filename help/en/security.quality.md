@@ -16,6 +16,8 @@
 
 **When it matters.** First thing before a purchase and at every quarterly report: margins and ROE falling several quarters in a row — a reason to open the thesis.
 
+**Abbreviations.** NPM — Net Profit Margin; OPM — Operating Margin; GM — Gross Margin; ROE — Return on Equity; ROA — Return on Assets; D/E — Debt-to-Equity; CR — Current Ratio.
+
 **Reminder.** First — is it a good business; only then — what it costs.
 
 **Trap.** A high ROE from debt or buybacks: equity shrinks, ROE rises, and the business is no better.

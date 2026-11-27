@@ -33,7 +33,7 @@ const G = {
 export const TERMS: Term[] = [
 	{
 		id: 'atr',
-		term: ['ATR (дневной размах)', 'ATR (daily range)'],
+		term: ['ATR (Average True Range) — дневной размах', 'ATR (Average True Range) — daily range'],
 		aka: 'average true range размах atr14',
 		group: G.risk,
 		what: ['Средний размах цены за день за последние 14 дней, в % от цены: насколько бумага обычно ходит за день.', 'The price\'s average range of a day over the last 14 days, in % of the price: how far the share usually moves in a day.'],
@@ -41,7 +41,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'beta',
-		term: ['Бета', 'Beta'],
+		term: ['Бета (β, Beta)', 'Beta (β)'],
 		aka: 'beta β бета 3 года',
 		group: G.risk,
 		what: ['Во сколько раз бумага в среднем усиливает движение рынка (S&P 500). Бета 1,5: рынок −10% → бумага около −15%.', 'How many times the share amplifies the market\'s move (S&P 500) on average. Beta 1.5: market −10% → the share about −15%.'],
@@ -49,7 +49,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'corr',
-		term: ['Связь (корреляция)', 'Link (correlation)'],
+		term: ['Связь (Corr, Correlation)', 'Link (Corr, Correlation)'],
 		aka: 'correlation корреляция связь',
 		group: G.risk,
 		what: ['Насколько дневные движения бумаги совпадают с эталоном (сектор, индекс) за год: от −1 до 1.', 'How closely the share\'s daily moves match a reference (a sector, an index) over a year: from −1 to 1.'],
@@ -58,7 +58,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'current_ratio',
-		term: ['Текущая ликвидность (Current ratio)', 'Current ratio'],
+		term: ['Текущая ликвидность (CR, Current Ratio)', 'Current ratio (CR)'],
 		aka: 'current ratio ликвидность',
 		group: G.quality,
 		what: ['Оборотные активы / краткосрочные долги: хватит ли денег и того, что быстро станет деньгами, чтобы платить по счетам года.', 'Current assets / short-term debts: is there enough cash, and what soon turns into cash, to pay the year\'s bills.'],
@@ -66,7 +66,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'de',
-		term: ['Долг / капитал (D/E)', 'Debt / equity (D/E)'],
+		term: ['Долг / капитал (D/E, Debt-to-Equity)', 'Debt / equity (D/E)'],
 		aka: 'debt to equity d/e долг',
 		group: G.quality,
 		what: ['Сколько долга приходится на рубль собственного капитала, в %.', 'How much debt per unit of own capital, in %.'],
@@ -74,7 +74,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'div_yield',
-		term: ['Дивидендная доходность', 'Dividend yield'],
+		term: ['Дивидендная доходность (DY, Dividend Yield)', 'Dividend yield (DY)'],
 		aka: 'dividend yield дивиденды',
 		group: G.income,
 		what: ['Дивиденды за год / цена акции.', 'The year\'s dividends / the share price.'],
@@ -82,7 +82,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'payout',
-		term: ['Доля прибыли на дивиденды (Payout)', 'Payout ratio'],
+		term: ['Доля прибыли на дивиденды (Payout Ratio)', 'Payout ratio'],
 		aka: 'payout ratio выплата',
 		group: G.income,
 		what: ['Какая часть прибыли уходит на дивиденды.', 'Which part of the profit goes to dividends.'],
@@ -90,7 +90,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'ebitda',
-		term: ['EBITDA', 'EBITDA'],
+		term: ['EBITDA (Earnings Before Interest, Taxes, Depreciation & Amortization)', 'EBITDA (Earnings Before Interest, Taxes, Depreciation & Amortization)'],
 		aka: 'ebitda',
 		group: G.valuation,
 		what: ['Прибыль до процентов, налогов и амортизации — сколько зарабатывает сам бизнес, без влияния долга и бухгалтерии.', 'Earnings before interest, taxes and depreciation — what the business itself earns, without the debt and the accounting.'],
@@ -98,7 +98,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'eps',
-		term: ['EPS (прибыль на акцию)', 'EPS (earnings per share)'],
+		term: ['EPS (Earnings Per Share) — прибыль на акцию', 'EPS (Earnings Per Share)'],
 		aka: 'eps earnings per share прибыль на акцию',
 		group: G.growth,
 		what: ['Чистая прибыль / число акций. Цена / EPS = P/E.', 'Net profit / number of shares. Price / EPS = P/E.'],
@@ -106,7 +106,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'ev',
-		term: ['EV (стоимость компании)', 'EV (enterprise value)'],
+		term: ['EV (Enterprise Value) — стоимость компании', 'EV (Enterprise Value)'],
 		aka: 'enterprise value ev',
 		group: G.valuation,
 		what: ['Капитализация + долг − деньги: сколько стоило бы купить компанию целиком вместе с её долгами.', 'Market cap + debt − cash: what buying the whole company with its debts would cost.'],
@@ -122,7 +122,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'iv',
-		term: ['IV (подразумеваемая волатильность)', 'IV (implied volatility)'],
+		term: ['IV (Implied Volatility) — подразумеваемая волатильность', 'IV (Implied Volatility)'],
 		aka: 'implied volatility iv опционы',
 		group: G.risk,
 		what: ['Волатильность, которую рынок ожидает в будущем, — вычисляется из цен опционов. Историческая волатильность — о прошлом, IV — ожидание.', 'The volatility the market expects ahead — derived from option prices. Historical volatility is the past, IV is the expectation.'],
@@ -131,7 +131,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'insiders',
-		term: ['У инсайдеров', 'Insiders'],
+		term: ['У инсайдеров (Insider Own., Insider Ownership)', 'Insiders (Insider Own.)'],
 		aka: 'insiders инсайдеры',
 		group: G.income,
 		what: ['Доля акций у руководства и основателей.', 'The share of stock held by management and founders.'],
@@ -139,7 +139,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'institutions',
-		term: ['У фондов', 'Institutions'],
+		term: ['У фондов (Inst. Own., Institutional Ownership)', 'Institutions (Inst. Own.)'],
 		aka: 'institutions институциональные фонды',
 		group: G.income,
 		what: ['Доля акций у фондов, банков, пенсионных компаний.', 'The share of stock held by funds, banks, pension companies.'],
@@ -147,7 +147,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'drawdown',
-		term: ['Просадка', 'Drawdown'],
+		term: ['Просадка (DD, Drawdown; MDD — Max Drawdown; Off 52W High)', 'Drawdown (DD; MDD — Max Drawdown; Off 52W High)'],
 		aka: 'drawdown max drawdown просадка падение от максимума',
 		group: G.risk,
 		what: ['Насколько цена ниже своего максимума. «Сейчас» — от максимума года до последнего закрытия; «худшая» — самое глубокое падение за год от вершины до дна.', 'How far the price is under its high. «Now» — from the year\'s high to the last close; «worst» — the deepest fall within the year from a peak to a trough.'],
@@ -155,7 +155,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'margin_gross',
-		term: ['Валовая маржа', 'Gross margin'],
+		term: ['Валовая маржа (GM, Gross Margin)', 'Gross margin (GM)'],
 		aka: 'gross margin маржа',
 		group: G.quality,
 		what: ['(Выручка − себестоимость) / выручка: сколько остаётся с каждого доллара продаж после прямых затрат.', '(Revenue − cost of goods) / revenue: what stays from each dollar of sales after the direct costs.'],
@@ -163,7 +163,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'margin_net',
-		term: ['Чистая маржа', 'Net margin'],
+		term: ['Чистая маржа (NPM, Net Profit Margin)', 'Net margin (NPM, Net Profit Margin)'],
 		aka: 'net margin profit margin маржа',
 		group: G.quality,
 		what: ['Чистая прибыль / выручка: сколько остаётся акционерам с каждого доллара продаж.', 'Net profit / revenue: what stays for shareholders from each dollar of sales.'],
@@ -171,7 +171,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'margin_op',
-		term: ['Операционная маржа', 'Operating margin'],
+		term: ['Операционная маржа (OPM, Operating Margin)', 'Operating margin (OPM)'],
 		aka: 'operating margin маржа',
 		group: G.quality,
 		what: ['Прибыль от основной деятельности / выручка — до процентов и налогов.', 'Profit from the core business / revenue — before interest and taxes.'],
@@ -179,7 +179,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'oco',
-		term: ['OCO (одна отменяет другую)', 'OCO (one cancels the other)'],
+		term: ['OCO (One-Cancels-the-Other) — одна отменяет другую', 'OCO (One-Cancels-the-Other)'],
 		aka: 'oco one cancels other',
 		group: G.trade,
 		what: ['Пара заявок у брокера — стоп ниже цены и тейк-профит выше: исполнилась одна — вторая отменяется.', 'A pair of orders at the broker — a stop under the price and a take-profit above it: one fills, the other is cancelled.'],
@@ -188,7 +188,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'pb',
-		term: ['P/B (цена / балансовая стоимость)', 'P/B (price / book)'],
+		term: ['P/B (Price-to-Book) — цена / балансовая стоимость', 'P/B (Price-to-Book)'],
 		aka: 'price to book pb p/b',
 		group: G.valuation,
 		what: ['Цена / собственный капитал по балансу на акцию.', 'Price / the balance-sheet equity per share.'],
@@ -196,7 +196,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'pe',
-		term: ['P/E (цена / прибыль)', 'P/E (price / earnings)'],
+		term: ['P/E (Price-to-Earnings) — цена / прибыль', 'P/E (Price-to-Earnings)'],
 		aka: 'price earnings pe p/e',
 		group: G.valuation,
 		what: ['Цена / прибыль на акцию за последние 12 месяцев: сколько лет прибыли ты платишь.', 'Price / earnings per share over the last 12 months: how many years of profit you pay.'],
@@ -204,7 +204,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'pe_fwd',
-		term: ['P/E прогноз (Forward P/E)', 'Forward P/E'],
+		term: ['P/E прогноз (Fwd P/E, Forward P/E)', 'Forward P/E (Fwd P/E)'],
 		aka: 'forward pe прогнозный',
 		group: G.valuation,
 		what: ['Цена / прибыль, которую аналитики ждут в следующие 12 месяцев.', 'Price / the profit analysts expect over the next 12 months.'],
@@ -212,7 +212,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'peg',
-		term: ['PEG', 'PEG'],
+		term: ['PEG (Price/Earnings-to-Growth)', 'PEG (Price/Earnings-to-Growth)'],
 		aka: 'peg price earnings growth',
 		group: G.valuation,
 		what: ['P/E / ожидаемый рост прибыли в % в год: цена с поправкой на рост.', 'P/E / the expected profit growth in % a year: the price adjusted for growth.'],
@@ -220,7 +220,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'ps',
-		term: ['P/S (цена / выручка)', 'P/S (price / sales)'],
+		term: ['P/S (Price-to-Sales) — цена / выручка', 'P/S (Price-to-Sales)'],
 		aka: 'price to sales ps p/s',
 		group: G.valuation,
 		what: ['Капитализация / выручка за год.', 'Market cap / the year\'s revenue.'],
@@ -228,7 +228,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'r',
-		term: ['R (риск сделки)', 'R (the trade\'s risk)'],
+		term: ['R (R-multiple) — риск сделки', 'R (R-multiple) — the trade\'s risk'],
 		aka: 'r риск 1r риска risk multiple',
 		group: G.trade,
 		what: ['Единица риска: расстояние от входа до стопа. Вход 100, стоп 92 → 1R = 8. «Цель 2 риска» = цель 116.', 'The unit of risk: the distance from the entry to the stop. Entry 100, stop 92 → 1R = 8. «Target 2 risks» = target 116.'],
@@ -237,7 +237,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'rating',
-		term: ['Мнение аналитиков', 'Analysts\' opinion'],
+		term: ['Мнение аналитиков (Consensus Rating)', 'Analysts\' opinion (Consensus Rating)'],
 		aka: 'recommendation rating рейтинг',
 		group: G.analysts,
 		what: ['Среднее мнение аналитиков: от «активно покупать» до «продавать».', 'The analysts\' average view: from «strong buy» to «sell».'],
@@ -245,7 +245,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'roa',
-		term: ['ROA (рентабельность активов)', 'ROA (return on assets)'],
+		term: ['ROA (Return on Assets) — рентабельность активов', 'ROA (Return on Assets)'],
 		aka: 'return on assets roa',
 		group: G.quality,
 		what: ['Прибыль / все активы: сколько бизнес зарабатывает на каждый доллар имущества.', 'Profit / all assets: what the business earns per dollar of property.'],
@@ -253,7 +253,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'roe',
-		term: ['ROE (рентабельность капитала)', 'ROE (return on equity)'],
+		term: ['ROE (Return on Equity) — рентабельность капитала', 'ROE (Return on Equity)'],
 		aka: 'return on equity roe',
 		group: G.quality,
 		what: ['Прибыль / собственный капитал: сколько компания зарабатывает на деньги акционеров.', 'Profit / equity: what the company earns on the shareholders\' money.'],
@@ -261,7 +261,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'growth_rev',
-		term: ['Рост выручки', 'Revenue growth'],
+		term: ['Рост выручки (Rev YoY, Revenue Growth)', 'Revenue growth (Rev YoY)'],
 		aka: 'revenue growth выручка',
 		group: G.growth,
 		what: ['Выручка последнего квартала против того же квартала год назад.', 'The last quarter\'s revenue against the same quarter a year ago.'],
@@ -269,7 +269,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'growth_eps',
-		term: ['Рост прибыли', 'Earnings growth'],
+		term: ['Рост прибыли (EPS YoY, Earnings Growth)', 'Earnings growth (EPS YoY)'],
 		aka: 'earnings growth прибыль',
 		group: G.growth,
 		what: ['Прибыль последнего квартала против того же квартала год назад.', 'The last quarter\'s profit against the same quarter a year ago.'],
@@ -277,7 +277,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'score',
-		term: ['Квант-оценка', 'Quant score'],
+		term: ['Квант-оценка (Quant Score / Factor Score)', 'Quant score (Factor Score)'],
 		aka: 'quant score квант оценка точка',
 		group: G.score,
 		what: ['Одна оценка из четырёх факторов — качество, рост, оценка, моментум — каждый в процентилях среди акций своего сектора. Зелёная ≥ 65, жёлтая 35–65, красная < 35.', 'One score from four factors — quality, growth, valuation, momentum — each in percentiles among the shares of its sector. Green ≥ 65, yellow 35–65, red < 35.'],
@@ -286,7 +286,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'short',
-		term: ['Шорт, % акций (Short float)', 'Short, % of float'],
+		term: ['Шорт, % акций (SI % Float, Short Interest)', 'Short, % of float (SI % Float, Short Interest)'],
 		aka: 'short float шорт',
 		group: G.risk,
 		what: ['Какая доля свободно торгуемых акций продана в шорт — ставки на падение.', 'Which part of the freely traded shares is sold short — bets on a fall.'],
@@ -294,7 +294,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'sma',
-		term: ['SMA / EMA (скользящие средние)', 'SMA / EMA (moving averages)'],
+		term: ['SMA / EMA (Simple / Exponential Moving Average) — скользящие средние', 'SMA / EMA (Simple / Exponential Moving Average)'],
 		aka: 'sma ema moving average скользящая средняя 200 50 20',
 		group: G.chart,
 		what: ['Средняя цена закрытия за N дней (SMA — простая, EMA — с большим весом последних дней). SMA200 — долгий тренд, SMA50 — средний, SMA20 — короткий.', 'The average close over N days (SMA — simple, EMA — more weight on recent days). SMA200 — the long trend, SMA50 — the middle one, SMA20 — the short one.'],
@@ -303,7 +303,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'stop',
-		term: ['Стоп-лосс / стоп-лимит', 'Stop-loss / stop-limit'],
+		term: ['Стоп-лосс / стоп-лимит (SL, Stop-Loss / Stop-Limit)', 'Stop-loss / stop-limit (SL)'],
 		aka: 'stop loss limit стоп',
 		group: G.trade,
 		what: ['Заявка у брокера продать, если цена упадёт до уровня стопа. Стоп-лосс продаёт по любой цене, стоп-лимит — не ниже лимита (может не исполниться при обвале).', 'An order at the broker to sell if the price falls to the stop. A stop-loss sells at any price, a stop-limit not under its limit (may not fill in a crash).'],
@@ -312,7 +312,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'target_analysts',
-		term: ['Цель аналитиков', 'Analysts\' target'],
+		term: ['Цель аналитиков (PT, Price Target)', 'Analysts\' target (PT, Price Target)'],
 		aka: 'price target цель',
 		group: G.analysts,
 		what: ['Средняя цена, которую аналитики ждут через 12 месяцев, и разброс от самой низкой до самой высокой.', 'The average price analysts expect in 12 months, and the range from the lowest to the highest.'],
@@ -320,7 +320,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'tp',
-		term: ['Тейк-профит', 'Take-profit'],
+		term: ['Тейк-профит (TP, Take-Profit)', 'Take-profit (TP)'],
 		aka: 'take profit цель',
 		group: G.trade,
 		what: ['Заявка продать, когда цена дойдёт до цели.', 'An order to sell when the price reaches the target.'],
@@ -329,7 +329,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'trail',
-		term: ['Трейлинг-стоп', 'Trailing stop'],
+		term: ['Трейлинг-стоп (TSL, Trailing Stop-Loss)', 'Trailing stop (TSL)'],
 		aka: 'trailing stop трейлинг',
 		group: G.trade,
 		what: ['Стоп, который идёт за ценой вверх на заданном расстоянии (в %) и никогда не опускается.', 'A stop that follows the price up at a set distance (in %) and never goes down.'],
@@ -338,7 +338,7 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'vol',
-		term: ['Волатильность (колебания, % в год)', 'Volatility (swings, % a year)'],
+		term: ['Волатильность (HV, Historical Volatility) — колебания, % в год', 'Volatility (HV, Historical Volatility) — swings, % a year'],
 		aka: 'volatility волатильность колебания historical hv',
 		group: G.risk,
 		what: ['Историческая волатильность: разброс дневных изменений цены, приведённый к году. За год и за 3 месяца.', 'Historical volatility: the spread of daily price changes, scaled to a year. Over a year and over 3 months.'],
@@ -346,15 +346,23 @@ export const TERMS: Term[] = [
 	},
 	{
 		id: 'ytd',
-		term: ['С начала года (YTD)', 'Year to date (YTD)'],
+		term: ['С начала года (YTD, Year-to-Date)', 'Year to date (YTD)'],
 		aka: 'ytd year to date',
 		group: G.fund,
 		what: ['Доходность фонда с 1 января.', 'The fund\'s return since January 1.'],
 		how: ['Сравнивай с эталоном за тот же срок; короткий срок мало что говорит — смотри и «3 года, в год».', 'Compare with its benchmark over the same time; a short span says little — look at «3 years, a year» too.']
 	},
 	{
+		id: 'cagr',
+		term: ['3 года, в год (3Y CAGR, Compound Annual Growth Rate)', '3 years, a year (3Y CAGR, Compound Annual Growth Rate)'],
+		aka: 'cagr annualized среднегодовая',
+		group: G.fund,
+		what: ['Среднегодовая доходность за 3 года: с какой постоянной скоростью в год рос бы фонд, чтобы прийти к тому же итогу.', 'The average yearly return over 3 years: the steady yearly rate that would bring the fund to the same result.'],
+		how: ['Сравнивай с эталоном (S&P 500 — около 10% в год в долгую). Говорит больше, чем YTD, но не показывает просадок по пути — смотри и волатильность.', 'Compare with its benchmark (the S&P 500 — about 10% a year over the long run). Says more than YTD, but hides the drawdowns along the way — look at the volatility too.']
+	},
+	{
 		id: 'aum',
-		term: ['Активы фонда (AUM)', 'Fund assets (AUM)'],
+		term: ['Активы фонда (AUM, Assets Under Management)', 'Fund assets (AUM, Assets Under Management)'],
 		aka: 'aum total assets активы',
 		group: G.fund,
 		what: ['Сколько денег в фонде.', 'How much money is in the fund.'],

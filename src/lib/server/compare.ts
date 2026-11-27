@@ -221,3 +221,20 @@ export function drawdowns(closes: number[]) {
 	const r = (x: number) => Math.round(x * 10000) / 10000;
 	return { now: r(closes.at(-1)! / peak - 1), max: r(max) };
 }
+
+/**
+ * Owner 27.11.2026 («в секторе XLV не вижу акций»): a fund's top holdings with the securities they are in the base (a
+ * tap opens the card), and the sector page the fund stands for — an SPDR sector ETF by its symbol, any other fund by a
+ * sector of 60% and more of it (and its industry, if one is 50% and more).
+ */
+export function fundLinks(market: Database.Database, id: number, c: { sectors: Record<string, number> | null; industries: Record<string, number> | null; holdings: { symbol: string; name: string; weight: number }[] | null }) {
+	const me = market.prepare('select symbol, exchange_code as x from ref_securities where id = ?').get(id) as { symbol: string; x: string } | undefined;
+	const il = me?.x === 'TASE';
+	const find = market.prepare(`select id from ref_securities where symbol = ? and type in ('stock', 'etf') order by (exchange_code = 'TASE') ${il ? 'desc' : 'asc'}, id limit 1`);
+	const holdings = (c.holdings ?? []).map((h) => ({ ...h, id: ((find.get(h.symbol.replace(/\.TA$/, '')) as { id: number } | undefined)?.id ?? null) }));
+	const top = (w: Record<string, number> | null, min: number) => Object.entries(w ?? {}).sort((a, b) => b[1] - a[1]).find(([, x]) => x >= min)?.[0] ?? null;
+	const bySymbol = me ? (Object.entries(US_SECTOR).find(([, e]) => e === me.symbol)?.[0] ?? null) : null;
+	const sector = bySymbol ?? top(c.sectors, 0.6);
+	const industry = sector && !bySymbol ? top(c.industries, 0.5) : null;
+	return { holdings, sectorPage: sector ? { sector, industry, country: il ? 'IL' : 'US' } : null };
+}

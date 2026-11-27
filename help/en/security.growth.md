@@ -12,6 +12,8 @@
 
 **When it matters.** After every quarterly report (the dates are in the security's calendar). It is one quarter's number: one quarter is noise, two or three in a row in one direction — a trend.
 
+**Abbreviations.** Rev YoY — Revenue growth Year-over-Year; EPS — Earnings Per Share; EPS YoY — earnings growth year over year.
+
 **Reminder.** Is what I pay for growing?
 
 **Trap.** Comparing a quarter with the previous quarter in a seasonal business (retail, travel): that is why the comparison here is with the same quarter a year ago — and one-off events (selling a division) can distort even that.

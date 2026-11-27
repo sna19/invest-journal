@@ -13,19 +13,19 @@
 	$effect(() => wantScore(id));
 	const s = $derived(scores[id]);
 	let open = $state(false);
-	const F: Record<Factor, [string, string]> = { quality: ['Качество', 'Quality'], growth: ['Рост', 'Growth'], valuation: ['Оценка', 'Valuation'], momentum: ['Моментум', 'Momentum'] };
+	const F: Record<Factor, [string, string]> = { quality: ['Качество (Quality)', 'Quality'], growth: ['Рост (Growth)', 'Growth'], valuation: ['Оценка (Valuation)', 'Valuation'], momentum: ['Моментум (Momentum)', 'Momentum'] };
 	const M: Record<string, [string, string, 'pct' | 'x']> = {
-		operatingMargin: ['Операционная маржа', 'Operating margin', 'pct'],
-		grossMargin: ['Валовая маржа', 'Gross margin', 'pct'],
+		operatingMargin: ['Операционная маржа (OPM)', 'Operating margin (OPM)', 'pct'],
+		grossMargin: ['Валовая маржа (GM)', 'Gross margin (GM)', 'pct'],
 		roe: ['ROE', 'ROE', 'pct'],
-		debtToEquity: ['Долг / капитал', 'Debt / equity', 'x'],
-		revenueGrowth: ['Рост выручки', 'Revenue growth', 'pct'],
-		earningsGrowth: ['Рост прибыли', 'Earnings growth', 'pct'],
-		forwardPe: ['P/E прогноз', 'Forward P/E', 'x'],
+		debtToEquity: ['Долг / капитал (D/E)', 'Debt / equity (D/E)', 'x'],
+		revenueGrowth: ['Рост выручки (Rev YoY)', 'Revenue growth (Rev YoY)', 'pct'],
+		earningsGrowth: ['Рост прибыли (EPS YoY)', 'Earnings growth (EPS YoY)', 'pct'],
+		forwardPe: ['P/E прогноз (Fwd P/E)', 'Forward P/E (Fwd P/E)', 'x'],
 		ps: ['P/S', 'P/S', 'x'],
 		evEbitda: ['EV/EBITDA', 'EV/EBITDA', 'x'],
 		peg: ['PEG', 'PEG', 'x'],
-		mom12: ['Рост за 12 мес. без последнего', '12 months less the last', 'pct']
+		mom12: ['Рост за 12 мес. без последнего (12-1M Momentum)', '12 months less the last (12-1M Momentum)', 'pct']
 	};
 	const NAME = { green: ['сильная', 'strong'], yellow: ['смешанная', 'mixed'], red: ['слабая', 'weak'], grey: ['мало данных', 'little data'] } as const;
 	const val = (key: string, v: number) => (M[key][2] === 'pct' ? `${(v * 100).toLocaleString(loc(), { maximumFractionDigits: 1 })}%` : key === 'debtToEquity' ? `${Math.round(v)}%` : v.toLocaleString(loc(), { maximumFractionDigits: 1 }));

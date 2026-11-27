@@ -13,6 +13,8 @@
 
 **When it matters.** As a check of your own thesis: if you expect a rise and the target is below the price — find what you are not seeing. To test the analysts — record their target as a «Target price» hypothesis and look a year later.
 
+**Abbreviations.** PT — Price Target; PT Low–High — the targets' range; Consensus Rating — the average view (Strong Buy / Buy / Hold / Underperform / Sell); # Analysts — how many analysts.
+
 **Reminder.** An opinion is not a reason to buy.
 
 **Trap.** Buying because the mean target is 30% above the price: targets chase the price, not the other way round.

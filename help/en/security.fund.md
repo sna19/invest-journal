@@ -12,6 +12,8 @@
 
 **When it matters.** When choosing between similar funds and when reviewing the portfolio: two funds with the same composition do not make the portfolio more diverse.
 
+**Abbreviations.** AUM — Assets Under Management; YTD — Year-to-Date; 3Y CAGR — Compound Annual Growth Rate over 3 years; ER — Expense Ratio.
+
 **Reminder.** A fund is its composition.
 
 **Trap.** Looking at the name, not the composition: a «technology» fund may be half made of the five largest companies already in the portfolio.

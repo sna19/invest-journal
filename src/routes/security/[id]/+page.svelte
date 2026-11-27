@@ -538,7 +538,7 @@
 
 	{#if c.security.type === 'etf'}
 		<!-- T-016: what the fund is made of — sectors, countries, industries, top holdings; editable -->
-		<Fold key="sec-fund" title={tx('Состав фонда', 'Fund composition')} open={false} remind="portfolio.exposure">
+		<Fold key="sec-fund" title={tx('Состав фонда — из чего он', 'Fund composition — what it holds')} remind="portfolio.exposure">
 			{#snippet aside()}<HelpIcon topicKey="portfolio.exposure" label={tx('состав фонда', 'fund composition')} />{/snippet}
 			{#key page.params.id}<FundComposition securityId={Number(page.params.id)} />{/key}
 		</Fold>
@@ -570,7 +570,7 @@
 			<div class="smas refs" role="group" aria-label={tx('Сравнить на графике', 'Compare on the chart')}>
 				{#each cmp.refs as r (r.id)}
 					<button class:on={shown.includes(r.id)} aria-pressed={shown.includes(r.id)} disabled={!r.loaded} onclick={() => toggleRef(r.id)} title={`${tx(...ROLE[r.role])}: ${refLabel(r)}`}>
-						{r.symbol}{#if r.corr !== null && r.corr !== undefined}<small> · {tx('связь', 'corr')} {r.corr.toFixed(2).replace('.', tx(',', '.'))}</small>{/if}
+						{r.symbol}{#if r.corr !== null && r.corr !== undefined}<small> · Corr {r.corr.toFixed(2).replace('.', tx(',', '.'))}</small>{/if}
 					</button>
 				{/each}
 				<HelpIcon topicKey="security.compare" label={tx('сравнение', 'comparison')} />
@@ -697,7 +697,7 @@
 			{#snippet aside()}<HelpIcon topicKey="security.compare" label={tx('сравнение', 'comparison')} />{/snippet}
 			<div class="cmp">
 			<div class="scroll"><table>
-				<thead><tr><th></th>{#each cmp.periods as p (p)}<th>{tx(PERIODS.find((x) => x[0] === p)?.[1] ?? p, p)}</th>{/each}<th title={tx('корреляция дневных доходностей за год', 'the correlation of daily returns over a year')}>{tx('Связь', 'Corr')}</th><th title={tx('волатильность за год, % в год', 'volatility over a year, % a year')}>{tx('Колеб.', 'Vol')}</th></tr></thead>
+				<thead><tr><th></th>{#each cmp.periods as p (p)}<th>{tx(PERIODS.find((x) => x[0] === p)?.[1] ?? p, p)}</th>{/each}<th title={tx('корреляция дневных доходностей за год', 'the correlation of daily returns over a year')}>{tx('Связь', 'Link')}<br /><small>Corr</small></th><th title={tx('волатильность за год, % в год', 'volatility over a year, % a year')}>{tx('Колеб.', 'Swings')}<br /><small>HV</small></th></tr></thead>
 				<tbody>
 					<tr class="me"><td><b>{c.security.symbol}</b></td>{#each cmp.periods as p (p)}<td>{pctText(cmp.security[p])}</td>{/each}<td>—</td><td>{cmp.vol?.vol1y != null ? `${Math.round(cmp.vol.vol1y * 100)}%` : '—'}</td></tr>
 					{#each cmp.refs as r (r.id)}

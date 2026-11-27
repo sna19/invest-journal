@@ -16,6 +16,8 @@
 
 The references are always in the daily price load. A reference without history yet is loaded when the card is first opened.
 
+**Abbreviations.** Corr — Correlation of daily returns; HV — Historical Volatility, % a year; ETF — Exchange-Traded Fund.
+
 **Reminder.** What does this security go together with?
 
 **Trap.** Comparing with someone else's sector or market.

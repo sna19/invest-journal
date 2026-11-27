@@ -13,6 +13,8 @@ Each metric is the share's place among the shares of **the same sector** (100 �
 
 **How to use it.** The dot is a filter for attention, not an order. Green — worth a closer look; red on a position — a reason to open the thesis. A tap on the line in the card — what each grade is made of. The quant score is kept as a source in the journal: once a month the 10 best green US shares are recorded as hypotheses for 3 months and bought by its virtual portfolio — «Sources» will show whether it beats the market. While the statistics are thin, trust it no more than any new source.
 
+**Abbreviations.** Quant Score / Factor Score; Quality, Growth, Valuation, Momentum — the four factors; 12-1M Momentum — the 12 months' return less the last month; SMA200 — 200-day Simple Moving Average.
+
 **Reminder.** The colour compresses four questions; the answers are in the line under it.
 
 **Trap.** Buying everything green. The score sees past reports and the price, but knows neither the news, nor the thesis, nor what is already in the portfolio. The ratios are refreshed once a week; for TASE there is no «Valuation» grade — Yahoo's ratios are wrong there.
