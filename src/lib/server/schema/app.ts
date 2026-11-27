@@ -766,3 +766,17 @@ export const signalIdeas = sqliteTable(
 	},
 	(t) => [index('signal_ideas_run').on(t.run)]
 );
+
+/**
+ * Owner 27.11.2026: saved charts — a security's chart with everything chosen on it (the period, the SMAs, the lines
+ * shown, the shares added to compare — shown or not — and the shaded quarter), opened, changed and saved again.
+ */
+export const savedCharts = sqliteTable('saved_charts', {
+	id: integer().primaryKey({ autoIncrement: true }),
+	name: text().notNull(),
+	securityId: integer().notNull(),
+	/** JSON: { period, sma, shown, peers, highlight } */
+	config: text().notNull(),
+	createdAt: now(),
+	updatedAt: now()
+});

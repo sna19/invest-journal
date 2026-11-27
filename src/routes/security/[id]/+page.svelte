@@ -8,6 +8,7 @@
 	import Fold from '#lib/Fold.svelte';
 	import RecentCards, { rememberCard } from '#lib/RecentCards.svelte';
 	import StatsGrid from '#lib/StatsGrid.svelte';
+	import ChartWidget from '#lib/charts/ChartWidget.svelte';
 	import Sheet from '#lib/Sheet.svelte';
 	import TickerSearch, { type Security } from '#lib/TickerSearch.svelte';
 	import SortHead from '#lib/SortHead.svelte';
@@ -108,20 +109,6 @@
 		const r = await fetch(`/api/model/security/${page.params.id}?${qs}`).catch(() => null);
 		if (r?.ok) model = await r.json();
 	}
-	/** the chosen quarter shaded in every year of the chart */
-	const bands = $derived(
-		highlight
-			? Array.from({ length: 16 }, (_, i) => new Date().getFullYear() - i).map((y) => ({
-					from: `${y}-${String((highlight! - 1) * 3 + 1).padStart(2, '0')}-01`,
-					to: new Date(Date.UTC(y, highlight! * 3, 0)).toISOString().slice(0, 10)
-				}))
-			: []
-	);
-	function toggleHighlight() {
-		const q = model?.quarter ?? (Number(page.url.searchParams.get('q')) || Math.floor(new Date().getMonth() / 3) + 1);
-		highlight = highlight ? null : q;
-		if (highlight && period !== '10Y') setPeriod('10Y');
-	}
 	const capText = (x: number) => (x >= 1e12 ? `${(x / 1e12).toFixed(1)} ${tx('трлн $', 'T $')}` : x >= 1e9 ? `${Math.round(x / 1e9)} ${tx('млрд $', 'B $')}` : `${Math.round(x / 1e6)} ${tx('млн $', 'M $')}`);
 	const pctText = (x: number | null) => (x === null ? '—' : `${x > 0 ? '+' : x < 0 ? '−' : ''}${Math.abs(x).toFixed(1)}%`);
 	const maxAbs = $derived(model ? Math.max(5, ...model.price.map((x) => Math.abs(x ?? 0)), ...model.bench.map((x) => Math.abs(x ?? 0))) : 5);
@@ -144,8 +131,6 @@
 	// owner 27.11.2026: a tap on a column's header sorts the references
 	const refSort = new TableSort<string>();
 	let cmp = $state<{ periods: string[]; security: Record<string, number | null>; refs: CmpRef[]; vol?: { vol1y: number | null; vol3m: number | null } } | null>(null);
-	let shown = $state<number[]>([]);
-	let refLines = $state<Record<number, { date: string; value: number }[]>>({});
 	const VARIANT_NAME: Record<string, [string, string]> = {
 		A: ['А. Рост цены', 'A. Price rise'],
 		B: ['Б. Против рынка', 'B. Against the market'],
@@ -153,16 +138,6 @@
 		G: ['Г. С причиной', 'G. With a reason'],
 		D: ['Д. Против тренда', 'D. Against its trend']
 	};
-	// T-018 (5): SMA 20, 50, 200 days on the chart — chosen on this device
-	let smaOn = $state<string[]>([]);
-	function toggleSma(n: string) {
-		smaOn = smaOn.includes(n) ? smaOn.filter((x) => x !== n) : [...smaOn, n];
-		try {
-			localStorage.setItem('chart-sma', JSON.stringify(smaOn));
-		} catch {
-			/* ignore */
-		}
-	}
 	// leveraged and inverse ETFs on the share, its industry, sector and indices (owner's request 20.11.2026)
 	interface Lev {
 		id: number;
@@ -282,63 +257,8 @@
 		const r = await fetch(`/api/securities/${page.params.id}/compare`).catch(() => null);
 		if (r?.ok) cmp = await r.json();
 	}
-	async function loadRefLine(id: number) {
-		const r = await fetch(`/api/securities/${id}/chart?period=${period}`).catch(() => null);
-		if (!r?.ok) return;
-		const j = await r.json();
-		refLines = { ...refLines, [id]: j.points };
-	}
-	// owner 27.11.2026 «сравнивать огурцы с огурцами»: any share on the chart — by default the biggest of the same
-	// industry (then sector), or any ticker found by the quick search; the chosen ones are remembered per security here
-	type Peer = { id: number; symbol: string; name: string; exchange: string; industry: string | null; same: 'industry' | 'sector' | 'asked'; corr: number | null; loaded: boolean };
-	let peers = $state<{ industry: string | null; sector: string | null; peers: Peer[] } | null>(null);
-	let mine = $state<number[]>([]);
-	let picking = $state(false);
-	const peerKey = () => `cmp-peers:${page.params.id}`;
-	async function loadPeers() {
-		const r = await fetch(`/api/securities/${page.params.id}/peers${mine.length ? `?with=${mine.join(',')}` : ''}`).catch(() => null);
-		if (r?.ok) peers = await r.json();
-	}
-	function saveMine() {
-		try {
-			localStorage.setItem(peerKey(), JSON.stringify(mine));
-		} catch {
-			/* ignore */
-		}
-	}
-	function addPeer(id: number) {
-		if (id === Number(page.params.id)) return;
-		if (!mine.includes(id)) mine = [...mine, id];
-		saveMine();
-		if (!shown.includes(id)) toggleRef(id);
-		void loadPeers();
-	}
-	function removePeer(id: number) {
-		mine = mine.filter((x) => x !== id);
-		shown = shown.filter((x) => x !== id);
-		saveMine();
-	}
-	const peerOf = (id: number) => peers?.peers.find((p) => p.id === id) ?? null;
-	const corrText = (x: number | null | undefined) => (x === null || x === undefined ? '' : x.toFixed(2).replace('.', tx(',', '.')));
-	function toggleRef(id: number) {
-		shown = shown.includes(id) ? shown.filter((x) => x !== id) : [...shown, id];
-		// the lines stay when coming back from a compared share's card
-		try {
-			localStorage.setItem(`chart-shown:${page.params.id}`, JSON.stringify(shown));
-		} catch {
-			/* ignore */
-		}
-		if (shown.includes(id)) void loadRefLine(id);
-	}
 	const ROLE: Record<CmpRef['role'], [string, string]> = { sector: ['Сектор', 'Sector'], industry: ['Отрасль', 'Industry'], index: ['Индекс', 'Index'] };
 	const refLabel = (r: CmpRef) => (r.role === 'sector' ? sectorName(r.label, tx) : r.label);
-	/** a reference line brought to the security's first close of the period: both start at one point */
-	function scaled(points: { date: string; value: number }[]) {
-		if (!c?.points.length || !points.length) return [];
-		const start = c.points[0];
-		const base = [...points].reverse().find((p) => p.date <= start.date) ?? points[0];
-		return points.filter((p) => p.date >= start.date).map((p) => ({ date: p.date, value: Math.round((p.value / base.value) * start.value * 10000) / 10000 }));
-	}
 
 	let protV = $state(0);
 	async function load() {
@@ -383,22 +303,6 @@
 		load();
 		loadModel();
 		loadCompare();
-		try {
-			const v = JSON.parse(localStorage.getItem(peerKey()) ?? '[]');
-			if (Array.isArray(v)) mine = v.filter((x) => Number.isInteger(x) && x > 0).slice(0, 10);
-		} catch {
-			/* ignore */
-		}
-		loadPeers();
-		try {
-			const v = JSON.parse(localStorage.getItem(`chart-shown:${page.params.id}`) ?? '[]');
-			if (Array.isArray(v)) {
-				shown = v.filter((x) => Number.isInteger(x) && x > 0).slice(0, 12);
-				for (const id of shown) void loadRefLine(id);
-			}
-		} catch {
-			/* ignore */
-		}
 		loadLev();
 		loadNews();
 		void fetch('/api/shortlist').then((r) => r.json()).then((r) => (picked = (r.items ?? []).some((x: { id: number }) => x.id === Number(page.params.id)))).catch(() => {});
@@ -407,12 +311,6 @@
 			.then((r) => r.json())
 			.then((r) => (riskLabels = r?.items ?? []))
 			.catch(() => {});
-		try {
-			const v = JSON.parse(localStorage.getItem('chart-sma') ?? '[]');
-			if (Array.isArray(v)) smaOn = v.filter((x) => ['20', '50', '200'].includes(x));
-		} catch {
-			/* ignore */
-		}
 		try {
 			if (localStorage.getItem('lev-dir') === 'short') levDir = 'short';
 		} catch {
@@ -428,8 +326,6 @@
 	}
 	function setPeriod(p: string) {
 		period = p;
-		refLines = {};
-		for (const id of shown) void loadRefLine(id);
 		try {
 			localStorage.setItem(KEY, p);
 		} catch {
@@ -439,23 +335,6 @@
 	}
 
 	const css = (n: string) => (typeof document === 'undefined' ? '' : getComputedStyle(document.documentElement).getPropertyValue(n).trim());
-	const lines = $derived<Line[]>(
-		c
-			? [
-					{ key: 'sec', label: c.security.symbol, points: c.points, main: true },
-					...(c.benchmark && c.bench.length ? [{ key: 'bench', label: tl(c.benchmark.label), points: c.bench, color: css('--muted'), dashed: true, href: `/security/${c.benchmark.id}` }] : []),
-					...(['20', '50', '200'] as const)
-						.filter((n) => smaOn.includes(n) && c!.sma?.[n]?.length)
-						.map((n, i) => ({ key: `sma${n}`, label: `SMA${n}`, points: c!.sma![n], color: css(`--series-${i + 5}`) || css('--accent') })),
-					...(cmp?.refs ?? [])
-						.filter((r) => shown.includes(r.id) && refLines[r.id]?.length && !c!.monthly)
-						.map((r, i) => ({ key: `ref${r.id}`, label: r.symbol, points: scaled(refLines[r.id]), color: css(`--series-${(i % 6) + 2}`), dashed: true, href: `/security/${r.id}` })),
-					...mine
-						.filter((id) => shown.includes(id) && refLines[id]?.length && !c!.monthly)
-						.map((id, i) => ({ key: `peer${id}`, label: peerOf(id)?.symbol ?? String(id), points: scaled(refLines[id]), color: css(`--series-${((i + (cmp?.refs.length ?? 0)) % 6) + 2}`), href: `/security/${id}` }))
-				]
-			: []
-	);
 	// T-022: a day with news about the share — a small mark above the line (a weekend's news on the next trading day)
 	const newsMarks = $derived.by<Mark[]>(() => {
 		if (!c || c.monthly || !news) return [];
@@ -609,60 +488,32 @@
 	<PathBlock securityId={Number(page.params.id)} positionId={myIds[0] ?? null} onmonth={showMonth} />
 	<div id="sec-chart-anchor"></div>
 	<Fold key="sec-chart" remind="security.chart" title={tx('График', 'Chart')} summary={PERIODS.find((p) => p[0] === period)?.[1]}>
-	<div class="periods" role="radiogroup" aria-label={tx('Период', 'Period')}>
-		{#each PERIODS as [k, ru, en] (k)}
-			<button role="radio" aria-checked={period === k} class:on={period === k} onclick={() => setPeriod(k)}>{tx(ru, en)}</button>
-		{/each}
-	</div>
-
-	{#if c.points.length < 2}
-		<p class="muted center">{tx('За этот период цен нет: бумага не в кругах загрузки или история ещё грузится.', 'No prices for this period: the security is not in the load rings or its history is still loading.')}</p>
-	{:else}
-		{#if c.monthly}<p class="muted small center">{tx('Месячные закрытия: дневная история бумаги загружается, откройте карточку чуть позже.', 'Monthly closes: the daily history is loading, open the card again a little later.')}</p>{/if}
-		<LineChart {lines} {marks} {onmarker} {bands} format={(v) => priceText(v, c!.security.priceUnit)} />
-		{#if c.sma}
-			<div class="smas" role="group" aria-label={tx('Скользящие средние', 'Moving averages')}>
-				{#each ['20', '50', '200'] as n (n)}
-					<button class:on={smaOn.includes(n)} aria-pressed={smaOn.includes(n)} onclick={() => toggleSma(n)}>SMA {n}</button>
-				{/each}
-				<HelpIcon topicKey="chart.sma" label={tx('скользящие средние', 'moving averages')} />
-			</div>
-		{/if}
-		{#if cmp?.refs.length && !c.monthly}
-			<!-- owner 27.11.2026: the sector, industry and indices on the chart, with the correlation of each -->
-			<div class="smas refs" role="group" aria-label={tx('Сравнить на графике', 'Compare on the chart')}>
-				{#each cmp.refs as r (r.id)}
-					<button class:on={shown.includes(r.id)} aria-pressed={shown.includes(r.id)} disabled={!r.loaded} onclick={() => toggleRef(r.id)} title={`${tx(...ROLE[r.role])}: ${refLabel(r)}`}>
-						{r.symbol}{#if r.corr !== null && r.corr !== undefined}<small> · Corr {r.corr.toFixed(2).replace('.', tx(',', '.'))}</small>{/if}
-					</button>
-				{/each}
-				<HelpIcon topicKey="security.compare" label={tx('сравнение', 'comparison')} />
-			</div>
-		{/if}
-		{#if !c.monthly}
-			<!-- owner 27.11.2026: other shares on the chart — the same industry by default, any ticker by the search -->
-			<div class="smas refs" role="group" aria-label={tx('Сравнить с акциями', 'Compare with shares')}>
-				{#each mine as id (id)}
-					{@const p = peerOf(id)}
-					<span class="peer">
-						<button class:on={shown.includes(id)} aria-pressed={shown.includes(id)} onclick={() => toggleRef(id)} title={p?.name ?? ''}>
-							{p?.symbol ?? '…'}{#if p?.corr !== null && p?.corr !== undefined}<small> · Corr {corrText(p.corr)}</small>{:else if p && !p.loaded}<small> · {tx('грузится', 'loading')}</small>{/if}
-						</button>
-						<button class="rm" aria-label={tx(`Убрать ${p?.symbol ?? ''}`, `Remove ${p?.symbol ?? ''}`)} onclick={() => removePeer(id)}>×</button>
-					</span>
-				{/each}
-				<button class="add" onclick={() => ((picking = true), void loadPeers())}>+ {tx('Сравнить с акцией', 'Compare with a share')}</button>
-			</div>
-		{/if}
-		<ToJournal
-			links={[{ type: 'security', id: String(c.security.id), label: c.security.symbol }]}
-			snapshot={() => {
-				// a long period is thinned to about 600 points a line: the snapshot stays small, the shape stays
-				const thin = (p: { date: string; value: number }[]) => (p.length > 600 ? p.filter((_, i) => i % Math.ceil(p.length / 600) === 0 || i === p.length - 1) : p);
-				return { type: 'chart', params: { securityId: c!.security.id, symbol: c!.security.symbol, period }, data: { lines: lines.map((l) => ({ ...l, points: thin(l.points) })), marks: marks.filter((m) => !m.id.startsWith('news:')) } };
-			}}
-		/>
-		<button class="hl" class:on={!!highlight} aria-pressed={!!highlight} onclick={toggleHighlight}>{highlight ? tx(`Подсвечен Q${highlight} — снять`, `Q${highlight} shaded — clear`) : tx('Подсветить квартал', 'Shade the quarter')}</button>
+	<!-- owner 27.11.2026: one chart widget — here and in «Сохранённые графики» -->
+	{#key page.params.id}
+		<ChartWidget
+			securityId={c.security.id}
+			data={c}
+			config={{ period, highlight }}
+			onperiod={setPeriod}
+			refs={cmp?.refs ?? null}
+			{marks}
+			{onmarker}
+			persist
+			quarter={model?.quarter ?? (Number(page.url.searchParams.get('q')) || undefined)}
+		>
+			{#snippet below(lines)}
+				<ToJournal
+					links={[{ type: 'security', id: String(c!.security.id), label: c!.security.symbol }]}
+					snapshot={() => {
+						// a long period is thinned to about 600 points a line: the snapshot stays small, the shape stays
+						const thin = (p: { date: string; value: number }[]) => (p.length > 600 ? p.filter((_, i) => i % Math.ceil(p.length / 600) === 0 || i === p.length - 1) : p);
+						return { type: 'chart', params: { securityId: c!.security.id, symbol: c!.security.symbol, period }, data: { lines: lines.map((l) => ({ ...l, points: thin(l.points) })), marks: marks.filter((m) => !m.id.startsWith('news:')) } };
+					}}
+				/>
+			{/snippet}
+		</ChartWidget>
+	{/key}
+	{#if c.points.length >= 2}
 		<p class="muted small keys">
 			● {tx('вход гипотезы', 'hypothesis entry')} · ■ {tx('выход', 'exit')} · <span class="up">▲</span> {tx('купил', 'bought')} · <span class="down">▼</span> {tx('продал', 'sold')}{#if newsMarks.length} · <span class="newsdot">●</span> {tx('новости (тап — новости дня)', 'news (tap — the day\'s news)')}{/if}{#if sources.length} · {#each sources as [id, name] (id)}<span class="src"><i style:background={colorOf(id)}></i>{tl(name)}</span>{/each}{/if}
 		</p>
@@ -892,35 +743,6 @@
 	<div class="skeleton"></div>
 {/if}
 
-{#if picking && c}
-	<Sheet title={tx(`Сравнить ${c.security.symbol} с акцией`, `Compare ${c.security.symbol} with a share`)} onclose={() => (picking = false)}>
-		<div class="pick">
-			<TickerSearch noIndex label={tx('Найти тикер', 'Find a ticker')} onselect={(s: Security) => (addPeer(s.id), (picking = false))} />
-			{#each [['industry', peers?.industry ? tx(`Та же отрасль «${peers.industry}»`, `The same industry «${peers.industry}»`) : ''], ['sector', peers?.sector ? tx(`Тот же сектор «${sectorName(peers.sector, tx)}»`, `The same sector «${sectorName(peers.sector, tx)}»`) : '']] as [grp, title] (grp)}
-				{@const list = (peers?.peers ?? []).filter((p) => p.same === grp)}
-				{#if list.length}
-					<p class="pick-h">{title} <span class="muted small">— {tx('крупнейшие; Corr — связь с', 'the biggest; Corr — the link with')} {c.security.symbol}</span> <HelpIcon topicKey="security.compare" label={tx('связь', 'correlation')} /></p>
-					<ul class="pick-list">
-						{#each list as p (p.id)}
-							<li>
-								<button class:on={mine.includes(p.id)} aria-pressed={mine.includes(p.id)} onclick={() => (mine.includes(p.id) ? removePeer(p.id) : addPeer(p.id))}>
-									<span class="ck" aria-hidden="true">{mine.includes(p.id) ? '✓' : '+'}</span>
-									<b>{p.symbol}</b>
-									<span class="muted nm">{p.name}{grp === 'sector' && p.industry ? ` · ${p.industry}` : ''}</span>
-									<span class="cr">{p.corr !== null ? `Corr ${corrText(p.corr)}` : p.loaded ? '' : grp === 'sector' && !mine.includes(p.id) ? tx('цены — при выборе', 'prices on choosing') : tx('грузится', 'loading')}</span>
-								</button>
-							</li>
-						{/each}
-					</ul>
-				{:else if grp === 'industry' && peers?.industry}
-					<p class="muted small">{tx(`Других компаний отрасли «${peers.industry}» на этой бирже в базе нет — ниже сектор.`, `No other companies of «${peers.industry}» on this market in the base — the sector below.`)}</p>
-				{/if}
-			{/each}
-			<button class="primary" onclick={() => (picking = false)}>{tx('Готово', 'Done')}</button>
-		</div>
-	</Sheet>
-{/if}
-
 <style>
 	.mypos {
 		margin: 0 0 var(--s3);
@@ -1081,109 +903,6 @@
 		color: var(--link);
 		font-weight: 400;
 		align-self: flex-start;
-	}
-	.smas {
-		display: flex;
-		align-items: center;
-		gap: var(--s2);
-		margin: var(--s2) 0;
-	}
-	.smas button {
-		min-height: 32px;
-		padding: 0 var(--s3);
-		border: 1px solid var(--line);
-		border-radius: var(--r-pill);
-		background: var(--surface);
-		font-size: var(--fs-xs);
-		cursor: pointer;
-	}
-	.smas.refs {
-		flex-wrap: wrap;
-	}
-	.peer {
-		display: inline-flex;
-		align-items: center;
-	}
-	.peer .rm {
-		min-height: 32px;
-		padding: 0 6px;
-		margin-left: -2px;
-		border: none;
-		background: none;
-		color: var(--muted);
-	}
-	.smas .add {
-		border-style: dashed;
-		color: var(--link);
-	}
-	.pick {
-		display: flex;
-		flex-direction: column;
-		gap: var(--s3);
-	}
-	.pick-h {
-		margin: 0;
-		font-weight: 600;
-	}
-	.pick-list {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-	}
-	.pick-list button {
-		display: flex;
-		align-items: center;
-		gap: var(--s2);
-		width: 100%;
-		min-height: 44px;
-		padding: 0 4px;
-		border: none;
-		border-bottom: 1px solid var(--line);
-		background: none;
-		color: var(--text);
-		font: inherit;
-		text-align: left;
-		cursor: pointer;
-	}
-	.pick-list .ck {
-		width: 1.2em;
-		color: var(--link);
-		font-weight: 700;
-	}
-	.pick-list button.on .ck {
-		color: var(--up);
-	}
-	.pick-list .nm {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		white-space: nowrap;
-		text-overflow: ellipsis;
-		font-size: var(--fs-xs);
-	}
-	.pick-list .cr {
-		font-size: var(--fs-xs);
-		font-variant-numeric: tabular-nums;
-		color: var(--muted);
-	}
-	.pick .primary {
-		min-height: 44px;
-		border: none;
-		border-radius: var(--r2);
-		background: var(--accent);
-		color: var(--accent-text);
-		font-weight: 600;
-	}
-	.smas button:disabled {
-		opacity: 0.4;
-	}
-	.smas button small {
-		opacity: 0.8;
-	}
-	.smas button.on {
-		background: var(--text);
-		border-color: var(--text);
-		color: var(--bg);
 	}
 	.trendwarn {
 		color: var(--down);
@@ -1365,9 +1084,6 @@
 		font-size: var(--fs-s);
 		cursor: pointer;
 	}
-	.hl.on {
-		border-color: var(--text);
-	}
 	.head {
 		display: flex;
 		align-items: baseline;
@@ -1395,28 +1111,6 @@
 		flex-wrap: wrap;
 		gap: 4px var(--s2);
 		align-items: baseline;
-	}
-	.periods {
-		display: flex;
-		gap: 4px;
-		padding: 3px;
-		margin-bottom: var(--s3);
-		border-radius: var(--r2);
-		background: var(--surface-2);
-	}
-	.periods button {
-		flex: 1;
-		min-height: 36px;
-		border: none;
-		border-radius: var(--r1);
-		background: none;
-		font-size: var(--fs-s);
-		cursor: pointer;
-	}
-	.periods button.on {
-		background: var(--surface);
-		font-weight: 600;
-		box-shadow: 0 1px 3px rgb(0 0 0 / 0.15);
 	}
 	.keys {
 		display: flex;
@@ -1492,9 +1186,6 @@
 	.tiny {
 		font-size: var(--fs-xs);
 		text-align: right;
-	}
-	.center {
-		text-align: center;
 	}
 	.warn {
 		padding: var(--s3);

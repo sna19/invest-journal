@@ -62,8 +62,11 @@
 		withManual?: boolean;
 		/** the filters by kind and sector, and the list without a query (the «Тикеры» screen) */
 		filters?: boolean;
+		/** owner 27.11.2026: choose one after another — the query is cleared and the field keeps the focus */
+		multi?: boolean;
 	}
-	let { onselect, includeInactive = false, noIndex = false, label = tx('Тикер', 'Ticker'), autofocus = false, withManual = false, filters = false }: Props = $props();
+	let { onselect, includeInactive = false, noIndex = false, label = tx('Тикер', 'Ticker'), autofocus = false, withManual = false, filters = false, multi = false }: Props = $props();
+	let field = $state<HTMLInputElement | null>(null);
 
 	type Kind = '' | 'stock' | 'etf' | 'commodity';
 	const FILTER_KEY = 'ticker-filter';
@@ -172,6 +175,11 @@
 		rememberSecurity(s);
 		recent = readRecent();
 		onselect?.(s);
+		if (multi) {
+			q = '';
+			search();
+			field?.focus();
+		}
 	}
 
 	function key(e: KeyboardEvent) {
@@ -216,6 +224,7 @@
 			placeholder={tx('AMAT, Teva или לאומי', 'AMAT, Teva or לאומי')}
 			{autofocus}
 			bind:value={q}
+			bind:this={field}
 			oninput={input}
 			onkeydown={key}
 		/>
