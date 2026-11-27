@@ -128,9 +128,9 @@
 		date: string;
 		currency: string;
 		ok: boolean;
-		rows: { n: number; text: string; kind: string; ok: boolean; warnings: string[]; error?: string; qty?: number; price?: number; valuePc?: number; valueNow?: number; match?: 'add' | 'same' | 'differs'; found?: { symbol: string; name: string; exchange: string; priceUnit: string; isNew?: boolean }; amount?: number; currency?: string }[];
+		rows: { n: number; text: string; kind: string; ok: boolean; warnings: string[]; error?: string; qty?: number; price?: number; valuePc?: number; valueNow?: number; match?: 'add' | 'same' | 'differs' | 'dedupe' | 'other_listing'; found?: { symbol: string; name: string; exchange: string; priceUnit: string; isNew?: boolean }; amount?: number; currency?: string }[];
 		total: { positions: number; cash: number; cost: number; now: number; broker: number | null };
-		match: { add: number; same: number; differs: number; notListed: { symbol: string; qty: number }[] };
+		match: { add: number; same: number; differs: number; dedupe: number; notListed: { symbol: string; qty: number }[] };
 	} | null>(null);
 	let transferBusy = $state(false);
 	let transferError = $state<string | null>(null);
@@ -142,13 +142,15 @@
 			const j = await r.json().catch(() => ({}));
 			if (!r.ok) return (transferError = tl(j.message) || tx('Не получилось', 'It did not work'));
 			if (!apply) return (transferPreview = j);
-			showToast(`${tx('Перенесено позиций', 'Positions carried over')}: ${j.added}${j.skipped.length ? `, ${tx('пропущено строк', 'lines skipped')}: ${j.skipped.length}` : ''}`);
-			if (!j.skipped.length) {
+			showToast(`${tx('Перенесено позиций', 'Positions carried over')}: ${j.added}${j.deduped ? `, ${tx('дубликатов убрано', 'duplicates removed')}: ${j.deduped}` : ''}${j.skipped.length ? `, ${tx('пропущено строк', 'lines skipped')}: ${j.skipped.length}` : ''}`);
+			// «уже есть» is not a problem: only the lines that need a hand are kept open
+			const real = j.skipped.filter((x: { why: string }) => x.why !== 'уже есть');
+			if (!real.length) {
 				transferring = false;
 				transferText = '';
 			}
 			transferPreview = null;
-			if (j.skipped.length) transferError = tx('Пропущены: ', 'Skipped: ') + j.skipped.map((x: { n: number; why: string }) => `${tx('строка', 'line')} ${x.n} — ${tl(x.why)}`).join('; ');
+			if (real.length) transferError = tx('Пропущены: ', 'Skipped: ') + real.map((x: { n: number; why: string }) => `${tx('строка', 'line')} ${x.n} — ${tl(x.why)}`).join('; ');
 			load();
 		} finally {
 			transferBusy = false;
@@ -807,7 +809,7 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45`)}</pre>
 				{@const tp = transferPreview}
 				<ul class="tp">
 					{#each tp.rows as r (r.n)}
-						<li class:bad={!r.ok || r.match === 'differs'} class:same={r.match === 'same'}>
+						<li class:bad={!r.ok || r.match === 'differs' || r.match === 'other_listing'} class:same={r.match === 'same'}>
 							<span class="tn">{r.n}</span>
 							<span class="tw">
 								{#if r.kind === 'position'}
@@ -833,7 +835,7 @@ cash ILS 5290.91 · cash USD 663.15 · tax 2881.45`)}</pre>
 				</p>
 				<!-- owner 27.11.2026: the list against what the portfolio holds, and the check sum against the broker -->
 				<p class="small">
-					{tx(`Добавится: ${tp.match.add} · уже есть: ${tp.match.same} · расходится: ${tp.match.differs}`, `To add: ${tp.match.add} · already there: ${tp.match.same} · differ: ${tp.match.differs}`)}{#if tp.match.notListed.length} · <b>{tx('в портфеле, но нет в списке', 'in the portfolio but not in the list')}: {tp.match.notListed.map((x) => `${x.symbol} ${qtyText(x.qty)}`).join(', ')}</b>{/if}
+					{tx(`Добавится: ${tp.match.add} · уже есть: ${tp.match.same} · дубликатов уберётся: ${tp.match.dedupe} · расходится: ${tp.match.differs}`, `To add: ${tp.match.add} · already there: ${tp.match.same} · duplicates to remove: ${tp.match.dedupe} · differ: ${tp.match.differs}`)}{#if tp.match.notListed.length} · <b>{tx('в портфеле, но нет в списке', 'in the portfolio but not in the list')}: {tp.match.notListed.map((x) => `${x.symbol} ${qtyText(x.qty)}`).join(', ')}</b>{/if}
 				</p>
 				<p class="small">
 					{tx('По сегодняшним ценам', 'At today\'s prices')}: <b>{money(tp.total.now, tp.currency)}</b>{#if tp.total.broker !== null} · {tx('у брокера', 'at the broker')} {money(tp.total.broker, tp.currency)} · {tx('разница', 'difference')}

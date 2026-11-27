@@ -4,7 +4,7 @@ import { unitFactor } from '../portfolio.js';
 import { searchText } from './market/pipeline.js';
 import { chartUrl } from './market/yahoo.js';
 import type { Fetcher } from './market/types.js';
-import { addCash, addEvent, marketView, moneyOf, portfolioView, security, updatePortfolio } from './portfolio.js';
+import { addCash, addEvent, marketView, moneyOf, portfolioView, reverseEvent, security, updatePortfolio } from './portfolio.js';
 
 /**
  * Spec section 18 «Перенос существующих позиций» — positions bought before the portfolio was kept, entered as a list
@@ -23,7 +23,9 @@ import { addCash, addEvent, marketView, moneyOf, portfolioView, security, update
  * pasted into a portfolio that already holds some of it. Each line is matched with the portfolio's holding of the
  * security: the same quantity — «уже есть», nothing is added (an average price off by more than 1% is reported);
  * another quantity — reported, nothing is added (a trade fixes it); none — added. Holdings missing from the list are
- * reported too. `total 150000` — the broker's value of the positions today: the sum of the lines at today's prices
+ * reported too. Duplicates (owner 27.11.2026, «разбери дубликаты»): a holding bigger than the broker's by exactly some
+ * repeated purchases (the same kind, date, quantity and price) gets those repeats reversed by «Перенести»; a security
+ * held here on another exchange under the same symbol is shown, not added twice. `total 150000` — the broker's value of the positions today: the sum of the lines at today's prices
  * is checked against it.
  */
 
@@ -119,7 +121,9 @@ export interface Row extends Line {
 	/** today's value in the portfolio's currency, by the latest price (for the check against the broker's total) */
 	valueNow?: number;
 	/** against the portfolio's holding: add — not there; same — the same quantity; differs — another quantity */
-	match?: 'add' | 'same' | 'differs';
+	match?: 'add' | 'same' | 'differs' | 'dedupe' | 'other_listing';
+	/** dedupe: the repeated purchase events to reverse, so that the holding comes to the broker's quantity */
+	dedupe?: { id: number; date: string; qty: number; price: number | null }[];
 	existing?: { qty: number; avgPrice: number | null };
 	warnings: string[];
 	ok: boolean;
@@ -169,7 +173,22 @@ export async function previewTransfer(
 	const date = lines.find((l) => l.kind === 'date')?.date ?? today;
 	const m = marketView(market);
 	// what the portfolio holds now, by security
-	const held = new Map((portfolioView(app, market, portfolioId, today)?.positions ?? []).filter((x) => x.qty > 1e-9 && x.stage !== 'closed').map((x) => [x.securityId, { qty: x.qty, avgPrice: x.avgPrice, symbol: x.symbol }]));
+	const held = new Map<number, { qty: number; avgPrice: number | null; symbol: string; positions: number[] }>();
+	for (const x of (portfolioView(app, market, portfolioId, today)?.positions ?? []).filter((x) => x.qty > 1e-9 && x.stage !== 'closed')) {
+		const h = held.get(x.securityId);
+		if (h) ((h.qty += x.qty), h.positions.push(x.id));
+		else held.set(x.securityId, { qty: x.qty, avgPrice: x.avgPrice, symbol: x.symbol, positions: [x.id] });
+	}
+	// the purchases still counted (not cancelled, not reversed) of the given positions, oldest first
+	const buysOf = (ids: number[]) =>
+		app
+			.prepare(
+				`select e.id, e.kind, e.date, e.qty, e.price from position_events e
+				  where e.position_id in (${ids.map(() => '?').join(',')}) and e.kind in ('buy', 'opening') and e.cancelled_at is null
+				    and not exists (select 1 from position_events r where r.reverses_event_id = e.id and r.cancelled_at is null)
+				  order by e.date, e.id`
+			)
+			.all(...ids) as { id: number; kind: string; date: string; qty: number; price: number | null }[];
 	const rows: Row[] = [];
 	for (const l of lines) {
 		if (l.kind === 'skip' || l.kind === 'date') continue;
@@ -258,7 +277,12 @@ export async function previewTransfer(
 			const now = m.live(r.securityId)?.price ?? m.last(r.securityId)?.close ?? null;
 			if (now !== null) r.valueNow = (r.qty ?? 0) * now * f * m.conv(moneyOf(unit), pc, today);
 			const h = held.get(r.securityId);
-			if (!h) r.match = 'add';
+			// the same symbol held here on another exchange (a share listed in New York and Tel Aviv)
+			const twin = !h ? [...held.entries()].find(([id, x]) => id !== r.securityId && x.symbol === r.found?.symbol) : undefined;
+			if (twin) {
+				r.match = 'other_listing';
+				r.warnings.push(`${twin[1].symbol} уже есть в портфеле на другой бирже (${twin[1].qty}) — не добавляется; если у брокера она на этой бирже, удали ту позицию и проверь ещё раз`);
+			} else if (!h) r.match = 'add';
 			else {
 				r.existing = { qty: h.qty, avgPrice: h.avgPrice };
 				if (Math.abs(h.qty - (r.qty ?? 0)) < 1e-6) {
@@ -267,14 +291,33 @@ export async function previewTransfer(
 					const avg = l.avg ?? (l.cost !== undefined && r.qty ? l.cost / (r.qty * f * rate) : undefined);
 					if (avg !== undefined && h.avgPrice && Math.abs(avg / h.avgPrice - 1) > 0.01) r.warnings.push(`Средняя цена в портфеле ${+h.avgPrice.toFixed(4)}, у брокера ${+avg.toFixed(4)} — поправь «Цену покупки» в карточке`);
 				} else {
-					r.match = 'differs';
-					r.warnings.push(`В портфеле ${h.qty}, у брокера ${r.qty} — не добавляется: внеси разницу сделкой «Купил» / «Продал»`);
+					// more than the broker by exactly some repeats of a purchase — a double entry
+					const extra = h.qty - (r.qty ?? 0);
+					const seen = new Set<string>();
+					const repeats: { id: number; date: string; qty: number; price: number | null }[] = [];
+					for (const e of buysOf(h.positions)) {
+						const k = `${e.kind}|${e.date}|${e.qty}|${e.price}`;
+						if (seen.has(k)) repeats.push({ id: e.id, date: e.date, qty: e.qty, price: e.price });
+						else seen.add(k);
+					}
+					let sum = 0;
+					const pick: typeof repeats = [];
+					for (const e of repeats.reverse()) if (sum + e.qty <= extra + 1e-6) ((sum += e.qty), pick.push(e));
+					if (extra > 0 && Math.abs(sum - extra) < 1e-6) {
+						r.match = 'dedupe';
+						r.dedupe = pick;
+						r.warnings.push(`Дубликат: в портфеле ${h.qty}, у брокера ${r.qty}; повтор ${pick.map((e) => `${e.date} × ${e.qty}`).join(', ')} будет сторнирован`);
+					} else {
+						r.match = 'differs';
+						r.warnings.push(`В портфеле ${h.qty}, у брокера ${r.qty} — не добавляется: внеси разницу сделкой «Купил» / «Продал»`);
+					}
 				}
 			}
 		}
 	}
 	// held here but not in the broker's list
 	const listed = new Set(rows.map((r) => r.securityId).filter((x): x is number => !!x));
+	for (const r of rows) if (r.match === 'other_listing') for (const [id, x] of held) if (x.symbol === r.found?.symbol) listed.add(id);
 	const notListed = [...held.entries()].filter(([id]) => !listed.has(id)).map(([, h]) => ({ symbol: h.symbol, qty: h.qty }));
 	const brokerTotal = rows.find((r) => r.kind === 'total')?.amount ?? null;
 	const totalNow = rows.filter((r) => r.kind === 'position').reduce((n, r) => n + (r.valueNow ?? 0), 0);
@@ -292,7 +335,7 @@ export async function previewTransfer(
 			now: totalNow,
 			broker: brokerTotal
 		},
-		match: { add: positions.filter((r) => r.match === 'add').length, same: positions.filter((r) => r.match === 'same').length, differs: positions.filter((r) => r.match === 'differs').length, notListed },
+		match: { add: positions.filter((r) => r.match === 'add').length, same: positions.filter((r) => r.match === 'same').length, differs: positions.filter((r) => r.match === 'differs' || r.match === 'other_listing').length, dedupe: positions.filter((r) => r.match === 'dedupe').length, notListed },
 		ok: rows.every((r) => r.ok),
 		/** securities to queue for prices now, so that a repeated preview finds them */
 		securities: positions.map((r) => r.securityId).filter((x): x is number => !!x)
@@ -331,10 +374,16 @@ export async function applyTransfer(
 	const p = await previewTransfer(app, market, portfolioId, text, opts);
 	const done: number[] = [];
 	const skipped: { n: number; text: string; why: string }[] = [];
+	const deduped: number[] = [];
 	app.transaction(() => {
 		for (const r of p.rows) {
 			if (!r.ok) {
 				skipped.push({ n: r.n, text: r.text, why: r.warnings.join('; ') || r.error || 'ошибка' });
+				continue;
+			}
+			if (r.kind === 'position' && r.match === 'dedupe') {
+				for (const e of r.dedupe ?? []) reverseEvent(app, market, e.id, 'дубликат — сверка с брокером', opts.now);
+				deduped.push(r.n);
 				continue;
 			}
 			if (r.kind === 'position' && r.match && r.match !== 'add') {
@@ -358,5 +407,5 @@ export async function applyTransfer(
 			}
 		}
 	})();
-	return { date: p.date, added: done.length, securities: done, skipped };
+	return { date: p.date, added: done.length, deduped: deduped.length, securities: done, skipped };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { openApp, openMarket } from './db.js';
-import { createPortfolio, portfolioView } from './portfolio.js';
+import { addEvent, createPortfolio, portfolioView } from './portfolio.js';
 import { applyTransfer, parseTransfer, previewTransfer } from './transfer.js';
 
 // fictional securities and numbers only: the owner's portfolio never goes into the repository
@@ -108,5 +108,32 @@ describe('transfer of existing positions (section 18)', () => {
 		expect(done.skipped.map((x) => x.why)).toEqual(['уже есть']);
 		const v = portfolioView(s.app, s.market, p.id, '2026-11-17')!;
 		expect(v.positions.filter((x) => x.qty > 0).map((x) => [x.symbol, x.qty])).toEqual(expect.arrayContaining([['TTT', 10], ['UUU', 4]]));
+	});
+
+	it('owner 27.11.2026: duplicates — a purchase entered twice is reversed so the holding matches the broker; a share held on another exchange is not added twice', async () => {
+		const s = setup();
+		const p = createPortfolio(s.app, { name: 'D2', currency: 'ILS' });
+		// TTT entered by hand twice (10 + the same 10), the broker holds 10
+		await applyTransfer(s.app, s.market, p.id, 'date 2026-11-17\nTTT 10 avg=1000', { today: '2026-11-17' });
+		const pos = (s.app.prepare('select id from positions where portfolio_id = ?').get(p.id) as { id: number }).id;
+		const ev = s.app.prepare(`select security_id as sid from positions where id = ?`).get(pos) as { sid: number };
+		addEvent(s.app, s.market, { portfolioId: p.id, securityId: ev.sid, kind: 'opening', date: '2026-11-17', qty: 10, price: 1200, basisPrice: 1000, note: 'перенос', confirm: true });
+		// AAA on NASDAQ held; the broker shows AAA on TASE
+		const aaaIl = s.market.prepare(`insert into ref_securities (exchange_code, type, symbol, name_en, currency, price_unit, search) values ('TASE', 'stock', 'AAA', 'Alpha IL', 'ILS', 'ILA', 'aaa') returning id`).get() as { id: number };
+		s.market.prepare(`insert into market_prices_daily (security_id, date, low, high, close, provider_code) values (?, '2026-11-17', 18000, 18000, 18000, 'test')`).run(aaaIl.id);
+		const aaaUs = (s.market.prepare(`select id from ref_securities where symbol = 'AAA' and exchange_code = 'NASDAQ'`).get() as { id: number }).id;
+		addEvent(s.app, s.market, { portfolioId: p.id, securityId: aaaUs, kind: 'opening', date: '2026-11-17', qty: 3, price: 50, note: 'перенос', confirm: true });
+		const text = 'date 2026-11-17\nTTT 10 avg=1000\nAAA 3';
+		const pv = await previewTransfer(s.app, s.market, p.id, text, { today: '2026-11-17' });
+		const [ttt, aaa] = pv.rows.filter((r) => r.kind === 'position');
+		expect(ttt.match).toBe('dedupe');
+		expect(ttt.dedupe?.length).toBe(1);
+		expect(aaa.match).toBe('other_listing');
+		expect(pv.match.notListed).toEqual([]);
+		const done = await applyTransfer(s.app, s.market, p.id, text, { today: '2026-11-17' });
+		expect(done.deduped).toBe(1);
+		expect(done.added).toBe(0);
+		const v = portfolioView(s.app, s.market, p.id, '2026-11-17')!;
+		expect(v.positions.find((x) => x.symbol === 'TTT')!.qty).toBe(10);
 	});
 });
