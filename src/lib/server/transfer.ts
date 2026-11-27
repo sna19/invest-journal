@@ -15,6 +15,8 @@ import { addCash, addEvent, marketView, moneyOf, portfolioView, reverseEvent, se
  *                                      (a broker without them): quantity = value / the day's close, rounded to whole shares
  *   yahoo:CSPX.L value=10000 cost=9000   an ETF UCITS on the LSE, added to the reference by hand
  *   cash ILS 5290.91 · cash USD 663.15 · tax 2881.45 · date 2026-11-17
+ *   (cash — the broker's balance of that currency now: the app deposits or withdraws the difference from what the
+ *   portfolio holds, dated no later than its first trade, so a portfolio of hand-entered purchases is not «minus»)
  *
  * Optional on a position line: avg=<average price> or cost=<whole purchase cost>, price=<price>. First a preview
  * (matches, quantities, roundings over 1%, prices off the base by more than 5%), then «Перенести» writes it all.
@@ -125,6 +127,10 @@ export interface Row extends Line {
 	/** dedupe: the repeated purchase events to reverse, so that the holding comes to the broker's quantity */
 	dedupe?: { id: number; date: string; qty: number; price: number | null }[];
 	existing?: { qty: number; avgPrice: number | null };
+	/** cash: what the portfolio holds of the currency now, and the deposit (+) or withdrawal (−) that brings it there */
+	cashNow?: number;
+	cashMove?: number;
+	cashDate?: string;
 	warnings: string[];
 	ok: boolean;
 }
@@ -174,7 +180,9 @@ export async function previewTransfer(
 	const m = marketView(market);
 	// what the portfolio holds now, by security
 	const held = new Map<number, { qty: number; avgPrice: number | null; symbol: string; positions: number[] }>();
-	for (const x of (portfolioView(app, market, portfolioId, today)?.positions ?? []).filter((x) => x.qty > 1e-9 && x.stage !== 'closed')) {
+	const view = portfolioView(app, market, portfolioId, today);
+	const firstTrade = (app.prepare(`select min(e.date) as d from position_events e join positions s on s.id = e.position_id where s.portfolio_id = ? and e.cancelled_at is null`).get(portfolioId) as { d: string | null }).d;
+	for (const x of (view?.positions ?? []).filter((x) => x.qty > 1e-9 && x.stage !== 'closed')) {
 		const h = held.get(x.securityId);
 		if (h) ((h.qty += x.qty), h.positions.push(x.id));
 		else held.set(x.securityId, { qty: x.qty, avgPrice: x.avgPrice, symbol: x.symbol, positions: [x.id] });
@@ -194,6 +202,13 @@ export async function previewTransfer(
 		if (l.kind === 'skip' || l.kind === 'date') continue;
 		const r: Row = { ...l, warnings: [], ok: l.kind !== 'error' };
 		rows.push(r);
+		if (l.kind === 'cash') {
+			r.cashNow = view?.summary.balances.find((b) => b.currency === l.currency)?.amount ?? 0;
+			r.cashMove = Math.round((l.amount! - r.cashNow) * 100) / 100;
+			r.cashDate = firstTrade && firstTrade < date ? firstTrade : date;
+			if (Math.abs(r.cashMove) < 0.01) r.warnings.push('Деньги уже совпадают с брокером');
+			else if (Math.abs(r.cashNow) >= 0.01) r.warnings.push(`В портфеле сейчас ${Math.round(r.cashNow * 100) / 100} ${l.currency}: ${r.cashMove > 0 ? 'взнос' : 'вывод'} ${Math.abs(r.cashMove)} от ${r.cashDate}`);
+		}
 		if (l.kind !== 'position') continue;
 		// the security: by symbol on the portfolio's market first; or a provider symbol added by hand
 		if (l.yahoo) {
@@ -330,6 +345,8 @@ export async function previewTransfer(
 		total: {
 			positions: positions.reduce((n, r) => n + (r.valuePc ?? 0), 0),
 			cash: cash.reduce((n, r) => n + (r.amount ?? 0) * m.conv(r.currency!, pc, date), 0),
+			/** the money's moves «Перенести» makes, in the portfolio's currency */
+			cashMove: cash.reduce((n, r) => n + (r.cashMove ?? 0) * m.conv(r.currency!, pc, date), 0),
 			cost: positions.reduce((n, r) => n + (r.cost ?? 0), 0),
 			/** the lines at today's prices, and the broker's own total to check it against */
 			now: totalNow,
@@ -391,8 +408,10 @@ export async function applyTransfer(
 				continue;
 			}
 			if (r.kind === 'total') continue;
-			if (r.kind === 'cash') addCash(app, market, portfolioId, { kind: 'deposit', date: p.date, amount: r.amount, currency: r.currency, note: 'перенос' }, opts.now);
-			else if (r.kind === 'tax') updatePortfolio(app, portfolioId, { taxAccrued: r.amount });
+			if (r.kind === 'cash') {
+				const mv = r.cashMove ?? r.amount ?? 0;
+				if (Math.abs(mv) >= 0.01) addCash(app, market, portfolioId, { kind: mv > 0 ? 'deposit' : 'withdraw', date: r.cashDate ?? p.date, amount: Math.abs(mv), currency: r.currency, note: 'перенос — остаток как у брокера' }, opts.now);
+			} else if (r.kind === 'tax') updatePortfolio(app, portfolioId, { taxAccrued: r.amount });
 			else if (r.kind === 'position') {
 				let sid = r.securityId;
 				if (!sid && r.found?.isNew && r.yahoo) sid = addManualSecurity(market, { symbol: r.found.symbol, name: r.found.name, yahoo: r.yahoo });

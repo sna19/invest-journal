@@ -136,4 +136,19 @@ describe('transfer of existing positions (section 18)', () => {
 		const v = portfolioView(s.app, s.market, p.id, '2026-11-17')!;
 		expect(v.positions.find((x) => x.symbol === 'TTT')!.qty).toBe(10);
 	});
+
+	it('owner 27.11.2026: «cash» is the broker\'s balance now — a portfolio of hand-entered purchases (cash in minus) gets the difference deposited before its first trade', async () => {
+		const s = setup();
+		const p = createPortfolio(s.app, { name: 'C', currency: 'ILS' });
+		const ttt = (s.market.prepare(`select id from ref_securities where symbol = 'TTT'`).get() as { id: number }).id;
+		// bought by hand for 10 × 12 ₪ = 120 ₪ without any deposit: the money is −120
+		addEvent(s.app, s.market, { portfolioId: p.id, securityId: ttt, kind: 'buy', date: '2026-11-17', qty: 10, price: 1200, fee: 0, confirm: true });
+		const pv = await previewTransfer(s.app, s.market, p.id, 'date 2026-11-18\ncash ILS 30', { today: '2026-11-18' });
+		expect(pv.rows[0]).toMatchObject({ cashNow: -120, cashMove: 150, cashDate: '2026-11-17' });
+		await applyTransfer(s.app, s.market, p.id, 'date 2026-11-18\ncash ILS 30', { today: '2026-11-18' });
+		expect(portfolioView(s.app, s.market, p.id, '2026-11-18')!.summary.cash).toBeCloseTo(30, 6);
+		// once more — nothing to do
+		const again = await previewTransfer(s.app, s.market, p.id, 'date 2026-11-18\ncash ILS 30', { today: '2026-11-18' });
+		expect(again.rows[0].cashMove).toBe(0);
+	});
 });

@@ -9,7 +9,7 @@
 - `SCHD 40.5 30.00` — ticker, quantity, price on the carry-over date (fractions — up to 6 decimals).
 - `ESLT value=5000 cost=4000` — the position's value and purchase cost in the portfolio currency: quantity = value / close on the date, to whole units.
 - `yahoo:CSPX.L value=10000` — a UCITS ETF on the London exchange by its Yahoo symbol: the security is added to the base by hand (it is not in search or models).
-- `cash ILS 5290.91`, `cash USD 663.15` — cash; `tax 2881.45` — accrued tax, for reference.
+- `cash ILS 5290.91`, `cash USD 663.15` — cash: how much the broker holds now. The app deposits (or withdraws) the difference from what the portfolio already holds, dated no later than its first trade — so purchases entered by hand without deposits do not drive the money below zero, and pasting again doubles nothing; `tax 2881.45` — accrued tax, for reference.
 
 A line can get `avg=` (average price) or `cost=` (the whole purchase cost): then profit counts from the purchase, otherwise — «since carry-over».
 
