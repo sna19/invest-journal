@@ -241,6 +241,25 @@
 			: []
 	);
 
+	// ── full screen ───────────────────────────────────────────────────────────────────────────────────────
+	let full = $state(false);
+	let vh = $state(typeof window === 'undefined' ? 800 : window.innerHeight);
+	$effect(() => {
+		if (!full) return;
+		const resize = () => (vh = window.innerHeight);
+		const esc = (e: KeyboardEvent) => e.key === 'Escape' && (full = false);
+		resize();
+		const prev = document.body.style.overflow;
+		document.body.style.overflow = 'hidden';
+		window.addEventListener('resize', resize);
+		window.addEventListener('keydown', esc);
+		return () => {
+			document.body.style.overflow = prev;
+			window.removeEventListener('resize', resize);
+			window.removeEventListener('keydown', esc);
+		};
+	});
+
 	// ── saving ────────────────────────────────────────────────────────────────────────────────────────────
 	let naming = $state(false);
 	let name = $state('');
@@ -271,6 +290,14 @@
 	}
 </script>
 
+<!-- owner 27.11.2026: the chart on the whole screen — everything stays usable, the chart takes the height -->
+<div class="cw" class:full>
+	{#if full}
+		<div class="fullbar">
+			<b>{c?.security.symbol ?? ''}</b>
+			<button class="close" onclick={() => (full = false)} aria-label={tx('Свернуть график', 'Close the full-screen chart')}>✕ {tx('Свернуть', 'Close')}</button>
+		</div>
+	{/if}
 <div class="periods" role="radiogroup" aria-label={tx('Период', 'Period')}>
 	{#each PERIODS as [k, ru, en] (k)}
 		<button role="radio" aria-checked={period === k} class:on={period === k} onclick={() => setPeriod(k)}>{tx(ru, en)}</button>
@@ -283,7 +310,7 @@
 	<p class="muted center">{tx('За этот период цен нет: бумага не в кругах загрузки или история ещё грузится.', 'No prices for this period: the security is not in the load rings or its history is still loading.')}</p>
 {:else}
 	{#if c.monthly}<p class="muted small center">{tx('Месячные закрытия: дневная история бумаги загружается, откройте позже.', 'Monthly closes: the daily history is loading, open it a little later.')}</p>{/if}
-	<LineChart {lines} {marks} {onmarker} {bands} format={(v) => priceText(v, c!.security.priceUnit)} />
+	<LineChart {lines} {marks} {onmarker} {bands} height={full ? Math.max(320, vh - 300) : 260} format={(v) => priceText(v, c!.security.priceUnit)} />
 	{#if c.sma}
 		<div class="smas" role="group" aria-label={tx('Скользящие средние', 'Moving averages')}>
 			{#each ['20', '50', '200'] as n (n)}
@@ -318,6 +345,7 @@
 	{/if}
 	{@render below?.(lines)}
 	<div class="tools">
+		{#if !full}<button class="hl" onclick={() => (full = true)} aria-label={tx('График на весь экран', 'The chart on the whole screen')}>⤢ {tx('На весь экран', 'Full screen')}</button>{/if}
 		<button class="hl" class:on={!!highlight} aria-pressed={!!highlight} onclick={toggleHighlight}>{highlight ? tx(`Подсвечен Q${highlight} — снять`, `Q${highlight} shaded — clear`) : tx('Подсветить квартал', 'Shade the quarter')}</button>
 		{#if savedAs}
 			<button class="hl save" disabled={!changed} onclick={saveChanges}>{changed ? tx('Сохранить изменения', 'Save the changes') : tx('Сохранён', 'Saved')}</button>
@@ -341,6 +369,7 @@
 		</div>
 	{/if}
 {/if}
+</div>
 
 {#if picking && c}
 	<Sheet title={tx(`Сравнить ${c.security.symbol} с акцией`, `Compare ${c.security.symbol} with a share`)} onclose={() => (picking = false)}>
@@ -379,6 +408,31 @@
 {/if}
 
 <style>
+	.cw.full {
+		position: fixed;
+		inset: 0;
+		z-index: 15;
+		overflow-y: auto;
+		padding: calc(env(safe-area-inset-top) + 8px) 12px calc(env(safe-area-inset-bottom) + 16px);
+		background: var(--bg);
+	}
+	.fullbar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: var(--s2);
+		font-size: var(--fs-m);
+	}
+	.close {
+		min-height: 36px;
+		padding: 0 12px;
+		border: 1px solid var(--line);
+		border-radius: var(--r-pill);
+		background: var(--surface);
+		color: var(--text);
+		font-size: var(--fs-s);
+		cursor: pointer;
+	}
 	.periods {
 		display: flex;
 		gap: 4px;
