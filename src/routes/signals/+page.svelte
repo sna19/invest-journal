@@ -5,6 +5,7 @@
 	import Fold from '#lib/Fold.svelte';
 	import HelpIcon from '#lib/HelpIcon.svelte';
 	import ScoreDot from '#lib/ScoreDot.svelte';
+	import StarToggle from '#lib/StarToggle.svelte';
 	import ProtectionItem from '#lib/portfolio/ProtectionItem.svelte';
 	import type { PItem } from '#lib/portfolio/protection.js';
 	import { showToast } from '#lib/toast.svelte.js';
@@ -121,18 +122,18 @@
 	<Fold key="sig-sell" remind="signals.screen" title={`${tx('Продать', 'Sell')} · ${v.day.sell.length}`} open={v.day.sell.length > 0}>
 		{#if !v.day.sell.length}<p class="muted small">{tx('Жёстких сигналов нет: стопы не пробиты, периоды моделей не кончились.', 'No hard signals: no stop broken, no model period over.')}</p>{/if}
 		{#each v.day.sell as s (s.key)}
-			<a class="row hot" href="/position/{s.positionId}"><b>{s.symbol}</b> {tradeText(s)} <span class="muted">· {s.portfolio} · {tx('Продал? Внеси продажу', 'Sold? Enter the sale')} →</span></a>
+			<div class="srow"><StarToggle id={s.securityId} symbol={s.symbol} origin="сигнал" /><a class="row hot" href="/position/{s.positionId}"><b>{s.symbol}</b> {tradeText(s)} <span class="muted">· {s.portfolio} · {tx('Продал? Внеси продажу', 'Sold? Enter the sale')} →</span></a></div>
 		{/each}
 	</Fold>
 
 	<Fold key="sig-review" remind="signals.screen" title={`${tx('Пересмотреть', 'Review')} · ${v.day.review.length + v.day.soft.length}`} open={v.day.review.length + v.day.soft.length > 0}>
 		{#if !v.day.review.length && !v.day.soft.length}<p class="muted small">{tx('Всё спокойно.', 'All calm.')}</p>{/if}
 		{#each v.day.review as s (s.key)}
-			<a class="row" href="/security/{s.securityId}?position={s.positionId}"><b>{s.symbol}</b> {tradeText(s)} <span class="muted">· {s.portfolio} →</span></a>
+			<div class="srow"><StarToggle id={s.securityId} symbol={s.symbol} origin="сигнал" /><a class="row" href="/security/{s.securityId}?position={s.positionId}"><b>{s.symbol}</b> {tradeText(s)} <span class="muted">· {s.portfolio} →</span></a></div>
 		{/each}
 		{#each v.day.soft as s (s.key)}
 			<div class="row">
-				<a href="/security/{s.securityId}?position={s.positionId}"><b>{s.symbol}</b> {tx(...SOFT[s.kind])}: {s.detail} <span class="muted">· {s.portfolio} →</span></a>
+				<span class="srow"><StarToggle id={s.securityId} symbol={s.symbol} origin="сигнал" /><a href="/security/{s.securityId}?position={s.positionId}"><b>{s.symbol}</b> {tx(...SOFT[s.kind])}: {s.detail} <span class="muted">· {s.portfolio} →</span></a></span>
 				{#if keepFor === s.key}
 					<input bind:value={keepWhy} placeholder={tx('Держу, потому что…', 'I keep it because…')} />
 					<div class="btns"><button class="primary" onclick={() => keep(s.key)}>{tx('Записать', 'Save')}</button><button class="ghost" onclick={() => (keepFor = null)}>{tx('Отмена', 'Cancel')}</button></div>
@@ -159,7 +160,7 @@
 		{#if !v.day.want.length}<p class="muted small">{tx('Запланированных покупок нет. «Хочу купить» — в карточке бумаги, у идеи недели или в портфеле.', 'No planned purchases. «Want to buy» is on a security card, an idea of the week or the portfolio.')}</p>{/if}
 		{#each v.day.want as w (w.positionId)}
 			<section class="item want" class:hot={w.status === 'buy' || w.status === 'broken'}>
-				<h3><a href="/position/{w.positionId}">{w.symbol}</a><ScoreDot id={w.securityId} /> <span class="muted name">{w.name} · {w.portfolio}{w.days !== null ? ` · ${tx(`ждёт ${w.days} дн.`, `waits ${w.days} d`)}` : ''}</span></h3>
+				<h3><a href="/position/{w.positionId}">{w.symbol}</a><ScoreDot id={w.securityId} /><StarToggle id={w.securityId} symbol={w.symbol} origin="хочу купить" /> <span class="muted name">{w.name} · {w.portfolio}{w.days !== null ? ` · ${tx(`ждёт ${w.days} дн.`, `waits ${w.days} d`)}` : ''}</span></h3>
 				<div class="plan">
 					<span>{tx('Сейчас', 'Now')} <b>{pt(w.price, w.priceUnit)}</b></span>
 					{#if w.want}<span>{tx('Желаемая', 'Wanted')} <b>{pt(w.want, w.priceUnit)}</b>{#if w.toWant !== null}&nbsp;({w.toWant > 0 ? tx(`ещё −${w.toWant.toFixed(1)}%`, `−${w.toWant.toFixed(1)}% to go`) : tx('дошла', 'reached')}){/if}</span>{/if}
@@ -184,7 +185,7 @@
 		{#each v.ideas as i (i.id)}
 			{@const p = i.data.plan}
 			<section class="idea" class:done={i.status !== 'new'}>
-				<h3><a href="/security/{i.securityId}">{i.data.symbol}</a><ScoreDot id={i.securityId} /> <span class="muted name">{i.data.name}</span></h3>
+				<h3><a href="/security/{i.securityId}">{i.data.symbol}</a><ScoreDot id={i.securityId} /> <span class="muted name">{i.data.name}</span><StarToggle id={i.securityId} symbol={i.data.symbol} origin="идея недели" /></h3>
 				<ul class="why">{#each i.data.reasons as r (r)}<li>{r}</li>{/each}</ul>
 				<div class="plan">
 					<span>{tx('Цена', 'Price')} <b>{pt(p.price, p.priceUnit)}</b></span>
@@ -318,6 +319,15 @@
 	.idea {
 		padding: var(--s3) 0;
 		border-top: 1px solid var(--line);
+	}
+	.srow {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+	}
+	.srow > a {
+		flex: 1;
+		min-width: 0;
 	}
 	.want.hot {
 		border-left: 3px solid var(--accent);

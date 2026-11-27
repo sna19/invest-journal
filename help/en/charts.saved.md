@@ -1,6 +1,8 @@
-# Saved charts
+# Sets and saved charts
 
-**What it is.** A security's chart with everything chosen on it: the period, the SMA lines, the references on (sector, industry, indices) and the shares added to compare — shown and hidden alike (their buttons under the chart), and the shaded quarter. «More → Saved charts» keeps them all.
+**What it is.** A set — securities seen together: a saved chart (the main security and the ones added to it) or «★ Picked». A set has three views — **Chart**, **Map of ties**, **Comparison** (the tabs on top).
+
+**Chart.** A security's chart with everything chosen on it: the period, the SMA lines, the references on (sector, industry, indices) and the shares added to compare — shown and hidden alike (their buttons under the chart), and the shaded quarter. «More → Saved charts» keeps them all.
 
 **The idea.** A good comparison takes a while to build: finding the industry peers, picking the period, turning the right lines on. A saved chart brings it back in one tap — and a week later you see which of the peers went ahead.
 
@@ -12,6 +14,7 @@
 - **New.** In the section — «+ A new chart»: find a security, set it up and save.
 - **Where a security takes part.** Under the chart on a security's card — links to the saved charts where it is the main one or added to compare.
 - The lines' names above the chart link to those securities' cards.
+- The set's **Map of ties**: which move together; the portfolios' buttons join their positions, «+ share» adds a security, «×» takes one off. **Comparison** — returns, valuation, risk and quality in one table, sorted by a tap on a header.
 
 **Reminder.** Am I comparing with the peers, not with the whole market?
 

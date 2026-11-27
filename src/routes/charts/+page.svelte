@@ -24,8 +24,8 @@
 	};
 </script>
 
-<svelte:head><title>{tx('Сохранённые графики', 'Saved charts')}</title></svelte:head>
-<TopBar title={tx('Сохранённые графики', 'Saved charts')} help="charts.saved" back={{ href: '/more', label: tx('Ещё', 'More') }} />
+<svelte:head><title>{tx('Наборы и графики', 'Sets and charts')}</title></svelte:head>
+<TopBar title={tx('Наборы и графики', 'Sets and charts')} help="charts.saved" back={{ href: '/more', label: tx('Ещё', 'More') }} />
 
 {#if adding}
 	<section class="new">
@@ -35,6 +35,9 @@
 {:else}
 	<button class="primary" onclick={() => (adding = true)}>+ {tx('Новый график', 'A new chart')}</button>
 {/if}
+
+<!-- owner 27.11.2026: the picked ones are the first set — the same views: chart, map of ties, comparison -->
+<a class="picked" href="/charts/picked">★ {tx('Отмеченные — график · карта связей · сравнение', 'Picked — chart · map of ties · comparison')} →</a>
 
 {#if !items}
 	<p class="muted">{tx('Загружаю…', 'Loading…')}</p>
@@ -65,6 +68,14 @@
 		font-weight: 600;
 		font-size: var(--fs-m);
 		cursor: pointer;
+	}
+	.picked {
+		display: block;
+		padding: var(--s3) var(--s2);
+		border-bottom: 1px solid var(--line);
+		color: var(--text);
+		font-weight: 600;
+		text-decoration: none;
 	}
 	.ghost {
 		min-height: 38px;
