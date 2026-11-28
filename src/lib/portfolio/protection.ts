@@ -30,6 +30,8 @@ export interface PItem {
 	noStopReason: string | null;
 	broker: string | null;
 	oco: boolean | null;
+	/** owner 28.11.2026: a price or a percent into money at once */
+	calc?: { qty: number; perUnit: number; portfolioValue: number; avgPrice: number | null; currency: string };
 }
 /** a price as the broker takes it: dollars to cents, agorot whole */
 export const plain = (x: number, unit: string) => (unit === 'ILA' ? String(Math.round(x)) : x.toFixed(2));

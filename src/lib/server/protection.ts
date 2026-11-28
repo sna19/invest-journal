@@ -322,6 +322,7 @@ export interface Protection {
 	/** a position: its quantity and what the recommended stop would lose from today's price */
 	position: { id: number; qty: number; portfolioId: number; portfolio: string; portfolioCurrency: string } | null;
 	maxLoss: { fixed: number; trail: number; pctFixed: number | null; pctTrail: number | null; currency: string } | null;
+	calc: { qty: number; perUnit: number; portfolioValue: number; avgPrice: number | null; currency: string };
 	order: (Order & { level: number | null }) | null;
 	status: Status | null;
 	noStopReason: string | null;
@@ -410,7 +411,16 @@ function build(app: Database.Database, market: Database.Database, securityId: nu
 		status,
 		noStopReason: plan?.noStopReason ?? null,
 		broker,
-		oco: p.oco
+		oco: p.oco,
+		// owner 28.11.2026: what the screen needs to turn any price or percent into money at once
+		calc: {
+			qty: pos && pos.qty > 0 ? pos.qty : (size?.qty ?? 0),
+			/** money of the portfolio's currency for one price unit of one share */
+			perUnit: k * conv,
+			portfolioValue: value,
+			avgPrice: pos?.avgPrice ?? null,
+			currency: pcur
+		}
 	};
 }
 
