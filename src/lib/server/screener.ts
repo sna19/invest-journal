@@ -99,7 +99,8 @@ export function screen(market: Database.Database, f: Filters, sort: { by: Column
 		if (f.caps?.length && !f.caps.some((c) => r.cap !== null && r.cap >= CAP[c][0] && r.cap < CAP[c][1])) continue;
 		let d: Record<string, unknown> = {};
 		try {
-			d = r.data ? JSON.parse(r.data) : {};
+			// a load the provider answered with nothing is kept as «null»
+			d = (r.data ? JSON.parse(r.data) : null) ?? {};
 		} catch {
 			d = {};
 		}

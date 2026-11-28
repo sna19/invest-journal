@@ -17,13 +17,15 @@ describe('owner 28.11.2026: the screener', () => {
 	add('MID', 'technology', 5e9, { pe: 12, dividendYield: 0.03, roe: 0.18 });
 	add('DIV', 'utilities', 2e10, { pe: 16, dividendYield: 0.05, roe: 0.09 });
 	add('LOSS', 'technology', 1e9, { pe: -4 });
+	// the provider answered with nothing: the row holds «null» (a 500 on the NAS, 28.11.2026)
+	add('NONE', 'energy', 3e9, null as unknown as object);
 	it('ranges, size classes, sector; sorted by a column; a loss is not «cheap»', () => {
 		const cheap = screen(m, cleanFilters({ pe: { max: 20 } }), { by: 'pe', desc: false });
 		expect(cheap.items.map((r) => r.symbol)).toEqual(['MID', 'DIV']);
 		expect(screen(m, cleanFilters({ div: { min: 3 } }), { by: 'div', desc: true }).items.map((r) => r.symbol)).toEqual(['DIV', 'MID']);
 		expect(screen(m, cleanFilters({ caps: ['mega'] })).items.map((r) => r.symbol)).toEqual(['BIG']);
 		expect(screen(m, cleanFilters({ sector: 'technology', roe: { min: 15 } }), { by: 'roe', desc: true }).items.map((r) => r.symbol)).toEqual(['BIG', 'MID']);
-		expect(screen(m, cleanFilters({})).total).toBe(4);
+		expect(screen(m, cleanFilters({})).total).toBe(5);
 	});
 	it('the form keeps only what it may', () => {
 		expect(cleanFilters({ market: 'XX', sector: 'DROP TABLE', colors: ['green', 'blue'], pe: { min: '', max: '15' } })).toMatchObject({ market: null, sector: null, colors: ['green'], pe: { min: null, max: 15 } });
