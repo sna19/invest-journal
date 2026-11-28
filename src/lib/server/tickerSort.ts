@@ -12,9 +12,11 @@ export const SORTS = ['cap', 'score', 'y1', 'm3', 'pe', 'ps', 'div', 'growth', '
 export type SortKey = (typeof SORTS)[number];
 
 const COLOR_RANK: Record<string, number> = { green: 3, yellow: 2, red: 1 };
-let scoreCache: { at: number; map: Map<number, { v: number; color: string; total: number } | null> } | null = null;
+export type ScoreBrief = { v: number; color: string; total: number; above: boolean | null };
+let scoreCache: { at: number; map: Map<number, ScoreBrief | null> } | null = null;
 
-function scoreMap(market: Database.Database, ids: number[]) {
+/** the quant score of many shares, remembered 6 hours (the screener and the sorted list share it) */
+export function scoreMap(market: Database.Database, ids: number[]) {
 	if (!scoreCache || Date.now() - scoreCache.at > 6 * 3600_000) scoreCache = { at: Date.now(), map: new Map() };
 	const need = ids.filter((id) => !scoreCache!.map.has(id));
 	if (need.length)
@@ -24,7 +26,7 @@ function scoreMap(market: Database.Database, ids: number[]) {
 		for (const s of scoresOf(market, need)) {
 			// green above yellow above red, inside a colour — by the total; grey and no score — none
 			if (s.total === null || s.color === 'grey') continue;
-			scoreCache.map.set(s.id, { v: (COLOR_RANK[s.color] ?? 0) * 10 + s.total, color: s.color, total: s.total });
+			scoreCache.map.set(s.id, { v: (COLOR_RANK[s.color] ?? 0) * 10 + s.total, color: s.color, total: s.total, above: s.trend ? s.trend.above : null });
 		}
 	}
 	return scoreCache.map;

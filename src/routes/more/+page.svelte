@@ -12,6 +12,7 @@
 	import Globe from '@lucide/svelte/icons/globe';
 	import Radar from '@lucide/svelte/icons/radar';
 	import ChartLine from '@lucide/svelte/icons/chart-line';
+	import Filter from '@lucide/svelte/icons/filter';
 	import { t, tx } from '#lib/i18n.js';
 </script>
 
@@ -25,6 +26,7 @@
 	<li><a href="/model"><CalendarRange size={20} /><span>{tx('Квартальная модель', 'Quarterly model')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/model/momentum"><Globe size={20} /><span>{tx('Страновой моментум', 'Country momentum')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/rules"><ListChecks size={20} /><span>{tx('Мои правила', 'My rules')}</span><ChevronRight size={18} /></a></li>
+	<li><a href="/screener"><Filter size={20} /><span>{tx('Скринер', 'Screener')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/charts"><ChartLine size={20} /><span>{tx('Наборы и графики', 'Sets and charts')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/shortlist"><Star size={20} /><span>{tx('Отмеченные', 'Picked')}</span><ChevronRight size={18} /></a></li>
 	<li><a href="/tickers"><Database size={20} /><span>{t('more.tickers')}</span><ChevronRight size={18} /></a></li>

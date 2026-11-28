@@ -8,6 +8,7 @@
 	 */
 	const items = [
 		['/tickers', 'Тикеры', 'Tickers'],
+		['/screener', 'Скринер', 'Screener'],
 		['/model', 'Модель', 'Model'],
 		['/shortlist', 'Отмеченные', 'Picked']
 	] as const;
