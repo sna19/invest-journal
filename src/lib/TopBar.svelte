@@ -3,6 +3,7 @@
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import HelpIcon from './HelpIcon.svelte';
 	import { loadReminders, rem } from './reminders.svelte.js';
+	import SectionNav from './SectionNav.svelte';
 
 	/** A screen's title with its «?» (spec section 8), an optional way back and actions on the right. */
 	interface Props {
@@ -32,6 +33,8 @@
 	{#if subtitle}<p>{subtitle}</p>{/if}
 	{#if rkey && rem.show && rem.items[rkey]}<div class="remind"><HelpIcon topicKey={rkey} text={rem.items[rkey]} /></div>{/if}
 </header>
+<!-- owner 28.11.2026: the screen's blocks as links, sticky at the top (shown where there are 4 blocks or more) -->
+<SectionNav />
 
 <style>
 	.remind {
