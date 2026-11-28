@@ -6,7 +6,8 @@
 
 **How to use it.**
 
-1. **Ready screens** on top: «Green in a trend» (green quant score, above SMA200, liquid), «Dividend» (DY 3%+, P/E up to 25), «Cheap and sound» (P/E up to 15, ROE 15%+, debt up to 100% of equity), «Fast growth» (revenue +20%+, up over the year), «Calm and big» (beta up to 0.8, market cap 10B+). A tap fills the filters; they can be adjusted.
+1. **Dividend candidates**: «Dividend US» (DY 3%+, payout up to 80%, liquid) and «Dividend Israel» (DY 3%+) — the highest yield first; ☆ — pick for later, they gather in «Picked». DY here is of the last 12 months: by the payments themselves where there is daily history; else by the monthly prices (US); else Yahoo's. **Payout** — the part of the profit paid out: over 100% the company pays more than it earns. Before deciding open the card → «Dividends by year»: is the payment growing.
+2. **Ready screens** on top: «Green in a trend» (green quant score, above SMA200, liquid), «Dividend» (DY 3%+, P/E up to 25), «Cheap and sound» (P/E up to 15, ROE 15%+, debt up to 100% of equity), «Fast growth» (revenue +20%+, up over the year), «Calm and big» (beta up to 0.8, market cap 10B+). A tap fills the filters; they can be adjusted.
 2. **Your own filters**: market, sector and industry, size, the quant score's colour, «above SMA200», «liquid» ($1M+ a day), and «min / max» for each ratio. An empty field — no limit. Percentages as in «Ratios»: dividends 3 = 3%.
 3. **The table** updates by itself; «Found: N». A tap on a header sorts (the first tap the useful way: P/E, P/S and beta — smaller first), ☆ in a row picks it, the ticker opens the card. «Show more» — the next 50.
 4. **★ Save the screen** — under its name, it joins the ready ones (× deletes).

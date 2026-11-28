@@ -87,7 +87,7 @@ export function find(market: Database.Database, symbol: string) {
 
 /** every reference ETF that exists in the base — they are kept in the daily price ring */
 export function ringRefIds(market: Database.Database): number[] {
-	const symbols = [...Object.values(US_SECTOR), ...US_INDUSTRY.map((x) => x[1]), ...Object.values(IL_SECTOR), ...IL_INDUSTRY.map((x) => x[1]), 'QQQ', 'IWM', 'KSM.F59', 'KSM.F72', 'KSM.F55'];
+	const symbols = [...Object.values(US_SECTOR), ...US_INDUSTRY.map((x) => x[1]), ...Object.values(IL_SECTOR), ...IL_INDUSTRY.map((x) => x[1]), 'QQQ', 'IWM', 'SPY', 'KSM.F59', 'KSM.F72', 'KSM.F55'];
 	return [...new Set(symbols)].map((s) => find(market, s)?.id).filter((x): x is number => !!x);
 }
 

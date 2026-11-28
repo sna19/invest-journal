@@ -138,3 +138,52 @@ export function dividendView(app: Database.Database, market: Database.Database, 
 		soon
 	};
 }
+
+/**
+ * Owner 28.11.2026: a security's dividend history — each year's total a share with the change against the year before,
+ * the number of payments, the years in a row it grew, the cuts; the payments of the last two years. The current year
+ * is marked as not complete yet. Amounts in the price's unit, split-adjusted by the provider.
+ */
+export function dividendHistory(market: Database.Database, securityId: number, today = israelDate()) {
+	const all = market.prepare(`select ex_date as date, amount from market_corporate_actions where security_id = ? and kind = 'dividend' and amount > 0 order by ex_date`).all(securityId) as { date: string; amount: number }[];
+	const year = today.slice(0, 4);
+	const by = new Map<string, { total: number; n: number }>();
+	for (const d of all) {
+		const y = d.date.slice(0, 4);
+		const e = by.get(y) ?? { total: 0, n: 0 };
+		e.total += d.amount;
+		e.n++;
+		by.set(y, e);
+	}
+	const years = [...by.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([y, e], i, arr) => {
+		const prev = i > 0 ? arr[i - 1][1].total : null;
+		return { year: y, total: Math.round(e.total * 10000) / 10000, payments: e.n, partial: y === year, change: prev ? Math.round((e.total / prev - 1) * 1000) / 10 : null };
+	});
+	const full = years.filter((y) => !y.partial);
+	let growth = 0;
+	for (let i = full.length - 1; i > 0; i--) {
+		if (full[i].total > full[i - 1].total * 1.001) growth++;
+		else break;
+	}
+	const cuts = full.filter((y) => y.change !== null && y.change < -10).map((y) => y.year);
+	// the 5 and 10 years' average yearly growth of the dividend (full years)
+	const cagr = (n: number) => {
+		if (full.length <= n) return null;
+		const a = full[full.length - 1 - n].total;
+		const b = full[full.length - 1].total;
+		return a > 0 ? Math.round(((b / a) ** (1 / n) - 1) * 1000) / 10 : null;
+	};
+	const lastClose = (market.prepare('select close from market_prices_daily where security_id = ? order by date desc limit 1').get(securityId) as { close: number } | undefined)?.close ?? null;
+	const yearAgo = new Date(Date.parse(today + 'T12:00:00Z') - 365 * 86_400_000).toISOString().slice(0, 10);
+	const ttm = all.filter((d) => d.date > yearAgo && d.date <= today).reduce((n, d) => n + d.amount, 0);
+	return {
+		years: years.slice(-15),
+		payments: all.filter((d) => d.date.slice(0, 4) >= String(Number(year) - 1)).reverse(),
+		growthYears: growth,
+		cuts,
+		cagr5: cagr(5),
+		cagr10: cagr(10),
+		ttm,
+		yieldNow: lastClose && ttm ? Math.round((ttm / lastClose) * 10000) / 100 : null
+	};
+}

@@ -26,6 +26,7 @@
 	type V = {
 		asOf: string;
 		market: string;
+		basis?: 'with' | 'price' | 'mixed';
 		periods: P[];
 		months: MonthPt[];
 		held: { from: string; to: string | null }[];
@@ -40,11 +41,26 @@
 	let concYears = $state(3);
 	let ladYears = $state(3);
 	let ladUnit = $state<'year' | 'quarter'>('year');
+	// owner 28.11.2026: both the share and the market with their dividends, or both by the price alone
+	let withDiv = $state(true);
+	try {
+		withDiv = localStorage.getItem('path:div') !== '0';
+	} catch {
+		/* private mode */
+	}
+	function setDiv(on: boolean) {
+		withDiv = on;
+		try {
+			localStorage.setItem('path:div', on ? '1' : '0');
+		} catch {
+			/* private mode */
+		}
+	}
 
 	$effect(() => {
 		void securityId;
 		void positionId;
-		fetch(`/api/path?security=${securityId}${positionId ? `&position=${positionId}` : ''}`)
+		fetch(`/api/path?security=${securityId}${positionId ? `&position=${positionId}` : ''}${withDiv ? '' : '&div=0'}`)
 			.then((r) => (r.ok ? r.json() : null))
 			.then((j) => {
 				v = j;
@@ -100,6 +116,16 @@
 {#if v}
 	<Fold key="sec-path" title={tx('Как набиралась прибыль', 'How the profit was made')} {summary} remind="stock.periods">
 		{#snippet aside()}<HelpIcon topicKey="stock.periods" label={tx('периоды', 'periods')} />{/snippet}
+		<div class="basis" role="radiogroup" aria-label={tx('Как считать', 'How to count')}>
+			<button role="radio" aria-checked={withDiv} class:on={withDiv} onclick={() => setDiv(true)}>{tx('С дивидендами', 'With dividends')}</button>
+			<button role="radio" aria-checked={!withDiv} class:on={!withDiv} onclick={() => setDiv(false)}>{tx('Только цена', 'Price only')}</button>
+			<HelpIcon topicKey="stock.periods" label={tx('с дивидендами или без', 'with dividends or not')} />
+		</div>
+		<p class="muted small basisnote">
+			{#if v.basis === 'price'}{tx(`Бумага и ${v.market} — только по цене, без дивидендов.`, `The share and the ${v.market} — the price alone, no dividends.`)}
+			{:else if v.basis === 'mixed'}{tx(`Бумага — с дивидендами, ${v.market} — пока без них (цены фонда-повторителя ещё грузятся): сравнение немного в пользу бумаги.`, `The share — with dividends, the ${v.market} — without them for now (the tracking fund's prices are loading): the comparison leans to the share.`)}
+			{:else}{tx(`Бумага и ${v.market} — обе с дивидендами (рынок — по фонду, который его повторяет): честное сравнение полной доходности.`, `The share and the ${v.market} — both with dividends (the market by the fund that tracks it): a fair comparison of the total return.`)}{/if}
+		</p>
 		<PeriodsRow periods={v.periods} market={v.market} />
 		{#if v.flags.length}
 			<div class="flags"><FlagChips flags={v.flags} /><HelpIcon topicKey="stock.flags" label={tx('метки пути', 'path marks')} /></div>
@@ -159,7 +185,7 @@
 			<section>
 				<h3>{tx('Относительная сила', 'Relative strength')} <HelpIcon topicKey="stock.relative" label={tx('относительная сила', 'relative strength')} /></h3>
 				{#if rs[0].points.length > 1}<LineChart lines={rs} height={150} format={(x) => x.toFixed(0)} />{/if}
-				<p class="muted small">{tx(`Цена с дивидендами, делённая на ${v.market}; 100 — три года назад.`, `The price with dividends over the ${v.market}; 100 three years ago.`)}</p>
+				<p class="muted small">{(v.basis === 'price' ? tx(`Цена, делённая на ${v.market}; 100 — три года назад.`, `The price over the ${v.market}; 100 three years ago.`) : tx(`Цена с дивидендами, делённая на ${v.market}; 100 — три года назад.`, `The price with dividends over the ${v.market}; 100 three years ago.`))}</p>
 				<p class="remind">{tx('Это бумага сильная или рынок растёт?', 'Is the share strong or is the market rising?')}</p>
 			</section>
 
@@ -193,6 +219,30 @@
 {/if}
 
 <style>
+	.basis {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-bottom: 4px;
+	}
+	.basis button {
+		min-height: 30px;
+		padding: 0 12px;
+		border: 1px solid var(--line);
+		border-radius: var(--r-pill);
+		background: none;
+		color: var(--text);
+		font-size: var(--fs-xs);
+		cursor: pointer;
+	}
+	.basis button.on {
+		background: var(--text);
+		border-color: var(--text);
+		color: var(--bg);
+	}
+	.basisnote {
+		margin: 0 0 var(--s2);
+	}
 	section {
 		margin-top: var(--s4);
 	}

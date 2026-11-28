@@ -34,15 +34,18 @@
 		roe: Range;
 		margin: Range;
 		debt: Range;
+		payout: Range;
 		beta: Range;
 		y1: Range;
 		m3: Range;
 	};
 	const r = (min = '', max = ''): Range => ({ min, max });
-	const empty = (): F => ({ market: '', sector: '', industry: '', caps: [], colors: [], trendUp: false, liquid: false, pe: r(), ps: r(), div: r(), growth: r(), roe: r(), margin: r(), debt: r(), beta: r(), y1: r(), m3: r() });
-	const PRESETS: [string, string, string, () => F][] = [
+	const empty = (): F => ({ market: '', sector: '', industry: '', caps: [], colors: [], trendUp: false, liquid: false, pe: r(), ps: r(), div: r(), growth: r(), roe: r(), margin: r(), debt: r(), payout: r(), beta: r(), y1: r(), m3: r() });
+	// owner 28.11.2026: the dividend candidates of each exchange, the highest yield first
+	const PRESETS: [string, string, string, () => F, string?][] = [
+		['div-us', 'Дивидендные США', 'Dividend US', () => ({ ...empty(), market: 'US', div: r('3'), payout: r('', '80'), liquid: true }), 'div'],
+		['div-il', 'Дивидендные Израиль', 'Dividend Israel', () => ({ ...empty(), market: 'IL', div: r('3') }), 'div'],
 		['green', 'Зелёные в тренде', 'Green in a trend', () => ({ ...empty(), colors: ['green'], trendUp: true, liquid: true })],
-		['div', 'Дивидендные', 'Dividend', () => ({ ...empty(), div: r('3'), pe: r('', '25'), liquid: true })],
 		['value', 'Дешёвые и качественные', 'Cheap and sound', () => ({ ...empty(), pe: r('', '15'), roe: r('15'), debt: r('', '100'), liquid: true })],
 		['growth', 'Быстрый рост', 'Fast growth', () => ({ ...empty(), growth: r('20'), y1: r('0'), liquid: true })],
 		['calm', 'Спокойные крупные', 'Calm and big', () => ({ ...empty(), beta: r('', '0.8'), caps: ['large', 'mega'], liquid: true })]
@@ -62,6 +65,7 @@
 		['roe', 'ROE, %', 'ROE, %', ''],
 		['margin', 'Чистая маржа (NPM), %', 'Net margin (NPM), %', ''],
 		['debt', 'Долг / капитал (D/E), %', 'Debt / equity (D/E), %', ''],
+		['payout', 'Доля прибыли на дивиденды, %', 'Payout ratio, %', ''],
 		['beta', 'Бета (β)', 'Beta (β)', ''],
 		['y1', 'За 1 год, %', '1 year, %', ''],
 		['m3', 'За 3 мес., %', '3 months, %', '']
@@ -71,7 +75,7 @@
 	let f = $state<F>(empty());
 	let total = $state<number | null>(null);
 	let ms = $state(0);
-	type Row = { id: number; symbol: string; name: string; sector: string | null; industry: string | null; cap: number | null; pe: number | null; ps: number | null; div: number | null; growth: number | null; roe: number | null; beta: number | null; y1: number | null; m3: number | null; turnover: number | null };
+	type Row = { id: number; symbol: string; name: string; sector: string | null; industry: string | null; cap: number | null; pe: number | null; ps: number | null; div: number | null; payout: number | null; growth: number | null; roe: number | null; beta: number | null; y1: number | null; m3: number | null; turnover: number | null };
 	let rows = $state<Row[]>([]);
 	let busy = $state(false);
 	let industries = $state<{ name: string; sector: string; market: string; count: number }[]>([]);
@@ -82,14 +86,14 @@
 
 	const toServer = (x: F) => {
 		const rg = (v: Range) => ({ min: v.min === '' ? null : Number(v.min.replace(',', '.')), max: v.max === '' ? null : Number(v.max.replace(',', '.')) });
-		return { market: x.market || null, sector: x.sector || null, industry: x.industry || null, caps: x.caps, colors: x.colors, trendUp: x.trendUp, turnover: x.liquid ? 1e6 : null, pe: rg(x.pe), ps: rg(x.ps), div: rg(x.div), growth: rg(x.growth), roe: rg(x.roe), margin: rg(x.margin), debt: rg(x.debt), beta: rg(x.beta), y1: rg(x.y1), m3: rg(x.m3) };
+		return { market: x.market || null, sector: x.sector || null, industry: x.industry || null, caps: x.caps, colors: x.colors, trendUp: x.trendUp, turnover: x.liquid ? 1e6 : null, pe: rg(x.pe), ps: rg(x.ps), div: rg(x.div), growth: rg(x.growth), roe: rg(x.roe), margin: rg(x.margin), debt: rg(x.debt), payout: rg(x.payout), beta: rg(x.beta), y1: rg(x.y1), m3: rg(x.m3) };
 	};
 	const fromServer = (o: Record<string, unknown>): F => {
 		const g = (k: string): Range => {
 			const v = (o[k] ?? {}) as { min?: number | null; max?: number | null };
 			return { min: v.min == null ? '' : String(v.min), max: v.max == null ? '' : String(v.max) };
 		};
-		return { market: (o.market as F['market']) ?? '', sector: (o.sector as string) ?? '', industry: (o.industry as string) ?? '', caps: (o.caps as string[]) ?? [], colors: (o.colors as string[]) ?? [], trendUp: !!o.trendUp, liquid: Number(o.turnover) > 0, pe: g('pe'), ps: g('ps'), div: g('div'), growth: g('growth'), roe: g('roe'), margin: g('margin'), debt: g('debt'), beta: g('beta'), y1: g('y1'), m3: g('m3') };
+		return { market: (o.market as F['market']) ?? '', sector: (o.sector as string) ?? '', industry: (o.industry as string) ?? '', caps: (o.caps as string[]) ?? [], colors: (o.colors as string[]) ?? [], trendUp: !!o.trendUp, liquid: Number(o.turnover) > 0, pe: g('pe'), ps: g('ps'), div: g('div'), growth: g('growth'), roe: g('roe'), margin: g('margin'), debt: g('debt'), payout: g('payout'), beta: g('beta'), y1: g('y1'), m3: g('m3') };
 	};
 
 	let seq = 0;
@@ -129,8 +133,17 @@
 		}
 		void fetch('/api/sectors/catalog').then((x) => x.json()).then((j) => (industries = j.industries ?? [])).catch(() => {});
 		void fetch('/api/screener/saved').then((x) => x.json()).then((j) => (saved = j.items ?? [])).catch(() => {});
-		run();
+		// «/screener?preset=div-us» — from the portfolio's «Дивиденды»
+		const pre = PRESETS.find((x) => x[0] === new URLSearchParams(location.search).get('preset'));
+		if (pre) applyPreset(pre[3], pre[4]);
+		else run();
 	});
+	function applyPreset(make: () => F, by?: string) {
+		f = make();
+		// a preset with its order: the dividend ones — the highest yield first
+		if (by && sort.key !== by) sort.by(by, true);
+		changed();
+	}
 	const toggle = (list: string[], v: string) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
 	const indList = $derived(industries.filter((i) => (!f.sector || i.sector === f.sector) && (!f.market || i.market === f.market)).sort((a, b) => a.name.localeCompare(b.name)));
 	const activeCount = $derived(
@@ -167,8 +180,8 @@
 <ScreenSwitch />
 
 <div class="chips presets" role="group" aria-label={tx('Готовые фильтры', 'Ready screens')}>
-	{#each PRESETS as [k, ru, en, make] (k)}
-		<button onclick={() => ((f = make()), changed())}>{tx(ru, en)}</button>
+	{#each PRESETS as [k, ru, en, make, by] (k)}
+		<button onclick={() => applyPreset(make, by)}>{tx(ru, en)}</button>
 	{/each}
 	{#each saved as s (s.name)}
 		<span class="mine"><button onclick={() => ((f = fromServer(s.filters as Record<string, unknown>)), changed())}>★ {s.name}</button><button class="x" aria-label={tx(`Удалить ${s.name}`, `Delete ${s.name}`)} onclick={() => dropScreen(s.name)}>×</button></span>
@@ -246,7 +259,8 @@
 					<th><SortHead s={sort} k="score">{tx('Квант', 'Quant')}</SortHead></th>
 					<th><SortHead s={sort} k="pe" desc={false}>P/E</SortHead></th>
 					<th><SortHead s={sort} k="ps" desc={false}>P/S</SortHead></th>
-					<th><SortHead s={sort} k="div">DY</SortHead></th>
+					<th><SortHead s={sort} k="div" title={tx('дивиденды за 12 месяцев к цене', 'dividends of 12 months over the price')}>DY</SortHead></th>
+					<th><SortHead s={sort} k="payout" desc={false} title={tx('доля прибыли на дивиденды', 'payout ratio')}>Payout</SortHead></th>
 					<th><SortHead s={sort} k="growth">{tx('Рост', 'Growth')}</SortHead></th>
 					<th><SortHead s={sort} k="roe">ROE</SortHead></th>
 					<th><SortHead s={sort} k="beta" desc={false}>β</SortHead></th>
@@ -263,6 +277,7 @@
 						<td>{n(x.pe)}</td>
 						<td>{n(x.ps)}</td>
 						<td>{x.div === null ? '—' : `${n(x.div)}%`}</td>
+						<td class:down={(x.payout ?? 0) > 100}>{x.payout === null ? '—' : `${n(x.payout, 0)}%`}</td>
 						<td class:up={(x.growth ?? 0) > 0} class:down={(x.growth ?? 0) < 0}>{p(x.growth)}</td>
 						<td>{x.roe === null ? '—' : `${n(x.roe, 0)}%`}</td>
 						<td>{n(x.beta, 2)}</td>

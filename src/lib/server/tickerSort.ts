@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { universe, type Series } from './model/quarterly.js';
 import { scoresOf } from './score.js';
+import { dividendYields } from './divYield.js';
 import type { SecurityHit } from './market/search.js';
 
 /**
@@ -53,6 +54,17 @@ export function sortHits(market: Database.Database, hits: SecurityHit[], key: So
 		const u = universe(market);
 		const byId = new Map(u.stocks.map((s) => [s.id, s]));
 		value = (h) => back(byId.get(h.id), u.lastMonth, key === 'y1' ? 12 : 3);
+	} else if (key === 'div') {
+		// the same 12 months' yield as the screener: from the monthly prices, both exchanges alike (a fraction here)
+		const u = universe(market);
+		const byId = new Map(u.stocks.map((s) => [s.id, s]));
+		const q = market.prepare(`select json_extract(data, '$.dividendYield') as v from ref_security_stats where security_id = ?`);
+		const exOf = new Map(hits.map((h) => [h.id, h.exchangeCode]));
+		const ys = dividendYields(market, hits.map((h) => h.id), (id) => byId.get(id), u.lastMonth, (id) => (exOf.get(id) === 'TASE' ? 'IL' : 'US'), (id) => (q.get(id) as { v: number | null } | undefined)?.v ?? null);
+		value = (h) => {
+			const y = ys.get(h.id);
+			return y === null || y === undefined ? null : y / 100;
+		};
 	} else {
 		const path = { pe: '$.pe', ps: '$.ps', div: '$.dividendYield', growth: '$.revenueGrowth', beta: '$.beta' }[key];
 		const q = market.prepare(`select json_extract(data, '${path}') as v from ref_security_stats where security_id = ?`);

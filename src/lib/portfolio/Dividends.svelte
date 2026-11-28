@@ -102,6 +102,7 @@
 				</tbody>
 			</table>
 		</div>
+		<p class="small"><a href="/screener?preset=div-us">{tx('Найти дивидендных кандидатов: США →', 'Find dividend candidates: US →')}</a> · <a href="/screener?preset=div-il">{tx('Израиль →', 'Israel →')}</a></p>
 		<p class="muted small">{tx('По истории выплат биржи и количеству акций в день перед датой отсечки; до налога (в Израиле 25%, на американские дивиденды обычно удерживается 25%). «С дивид.» — цена с покупки плюс полученные дивиденды. Тап по строке — выплаты.', 'By the exchange\'s payment history and the shares held the day before each ex-date; before tax (25% in Israel, usually 25% withheld on US dividends). «With div.» — the price since the purchase plus the dividends received. Tap a row — the payments.')}</p>
 	</Fold>
 {/if}

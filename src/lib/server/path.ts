@@ -47,6 +47,26 @@ export function trSeries(market: Database.Database, id: number, from?: string): 
 }
 
 /** the index's closes as a series (a price index: no dividends, as everywhere in the app) */
+/** the price alone, in today's split scale (owner 28.11.2026: «только цена») */
+export function priceSeries(market: Database.Database, id: number, from?: string): Pt[] {
+	const scale = splitScale(market, id);
+	const rows = market.prepare(`select date, close from market_prices_daily where security_id = ? ${from ? 'and date >= ?' : ''} order by date`).all(...(from ? [id, from] : [id])) as { date: string; close: number }[];
+	return rows.map((r) => ({ date: r.date, v: r.close / scale(r.date) }));
+}
+
+/**
+ * The market with its dividends: the fund that tracks the index (SPY for the S&P 500, KSM's TA-125 for Tel Aviv),
+ * its total return; null when that fund has no daily prices yet.
+ */
+function marketTr(market: Database.Database, securityId: number, from: string): { pts: Pt[]; label: string } | null {
+	const ex = (market.prepare('select exchange_code as e from ref_securities where id = ?').get(securityId) as { e: string } | undefined)?.e;
+	const symbol = ex === 'TASE' ? 'KSM.F55' : 'SPY';
+	const f = market.prepare(`select id from ref_securities where symbol = ? and active = 1 order by id limit 1`).get(symbol) as { id: number } | undefined;
+	if (!f) return null;
+	const pts = trSeries(market, f.id, from);
+	return pts.length > 20 ? { pts, label: ex === 'TASE' ? 'ТА-125' : 'S&P 500' } : null;
+}
+
 function indexSeries(market: Database.Database, id: number | null | undefined, from?: string): Pt[] {
 	if (!id) return [];
 	return (market.prepare(`select date, close as v from market_prices_daily where security_id = ? ${from ? 'and date >= ?' : ''} order by date`).all(...(from ? [id, from] : [id])) as Pt[]);
@@ -253,15 +273,18 @@ export function flagsFor(app: Database.Database, market: Database.Database, ids:
 }
 
 /** the block «Как набиралась прибыль» of a security (and of a position: «с покупки», the months held) */
-export function securityPath(app: Database.Database, market: Database.Database, id: number, opts: { positionId?: number } = {}) {
+export function securityPath(app: Database.Database, market: Database.Database, id: number, opts: { positionId?: number; dividends?: boolean } = {}) {
 	const t0 = Date.now();
-	const s = trSeries(market, id);
+	// owner 28.11.2026: both sides the same way — with their dividends (the market by its tracking fund) or the price alone
+	const withDiv = opts.dividends !== false;
+	const s = withDiv ? trSeries(market, id) : priceSeries(market, id);
 	if (s.length < 2) return null;
 	const end = s.at(-1)!.date;
 	const from10 = dayAdd(end, -1, -10);
 	const series = s.filter((x) => x.date >= from10);
 	const idx = marketIndexOf(market, id);
-	const b = indexSeries(market, idx.id, from10);
+	const tr = withDiv ? marketTr(market, id, from10) : null;
+	const b = tr ? tr.pts : indexSeries(market, idx.id, from10);
 	const p = readFlagParams(app);
 	let buy: string | null = null;
 	let held: { from: string; to: string | null }[] = [];
@@ -286,6 +309,8 @@ export function securityPath(app: Database.Database, market: Database.Database, 
 		securityId: id,
 		asOf: end,
 		market: idx.label,
+		/** with: both with dividends; price: both by the price; mixed: the share with them, the market without (no fund prices) */
+		basis: withDiv ? (tr ? 'with' : 'mixed') : 'price',
 		periods: per,
 		months: pts.map((x) => ({ m: x.m, v: Math.round(x.v * 1e6) / 1e6, b: x.b === null ? null : Math.round(x.b * 1e4) / 1e4 })),
 		held,

@@ -13,7 +13,7 @@ export function GET({ url }) {
 	const m = getMarket().sqlite;
 	const q = url.searchParams;
 	if (q.has('security')) {
-		const v = securityPath(app, m, Number(q.get('security')), q.get('position') ? { positionId: Number(q.get('position')) } : {});
+		const v = securityPath(app, m, Number(q.get('security')), { ...(q.get('position') ? { positionId: Number(q.get('position')) } : {}), dividends: q.get('div') !== '0' });
 		if (!v) error(404, 'no prices');
 		return json(v);
 	}

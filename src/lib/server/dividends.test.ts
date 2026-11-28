@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { openApp, openMarket } from './db.js';
 import { addEvent, createPortfolio } from './portfolio.js';
-import { dividendView } from './dividends.js';
+import { dividendHistory, dividendView } from './dividends.js';
 
 // fictional shares and numbers only
 describe('owner 28.11.2026: the dividends of a portfolio', () => {
@@ -31,5 +31,23 @@ describe('owner 28.11.2026: the dividends of a portfolio', () => {
 		expect(r.priceReturn).toBeCloseTo(-10, 1);
 		expect(r.totalReturn).toBeCloseTo(5, 1);
 		expect(v.income).toBeCloseTo(50, 6);
+	});
+
+	it('the history by year: the change against the year before, growth years, a cut, the current year not complete', () => {
+		const market = openMarket(':memory:').sqlite;
+		const id = (market.prepare(`insert into ref_securities (exchange_code, type, symbol, name_en, currency, price_unit, search) values ('TASE', 'stock', 'BNK', 'Bank', 'ILS', 'ILA', 'bnk') returning id`).get() as { id: number }).id;
+		const dv = market.prepare(`insert into market_corporate_actions (security_id, ex_date, kind, amount, provider_code) values (?, ?, 'dividend', ?, 'test')`);
+		for (const [d, a] of [['2021-05-01', 100], ['2022-05-01', 80], ['2023-05-01', 90], ['2024-05-01', 120], ['2025-05-01', 60], ['2025-11-01', 70], ['2026-05-01', 70]] as const) dv.run(id, d, a);
+		const h = dividendHistory(market, id, '2026-11-28');
+		expect(h.years.map((y) => [y.year, y.total, y.change, y.partial])).toEqual([
+			['2021', 100, null, false],
+			['2022', 80, -20, false],
+			['2023', 90, 12.5, false],
+			['2024', 120, 33.3, false],
+			['2025', 130, 8.3, false],
+			['2026', 70, -46.2, true]
+		]);
+		expect(h.growthYears).toBe(3);
+		expect(h.cuts).toEqual(['2022']);
 	});
 });

@@ -9,6 +9,7 @@
 	import RecentCards, { rememberCard } from '#lib/RecentCards.svelte';
 	import StatsGrid from '#lib/StatsGrid.svelte';
 	import ChartWidget from '#lib/charts/ChartWidget.svelte';
+	import SecurityDividends from '#lib/SecurityDividends.svelte';
 	import Sheet from '#lib/Sheet.svelte';
 	import TickerSearch, { type Security } from '#lib/TickerSearch.svelte';
 	import SortHead from '#lib/SortHead.svelte';
@@ -486,6 +487,8 @@
 		</Fold>
 	{/if}
 	<PathBlock securityId={Number(page.params.id)} positionId={myIds[0] ?? null} onmonth={showMonth} />
+	<!-- owner 28.11.2026: the dividends by year, growing or falling -->
+	{#key page.params.id}<SecurityDividends securityId={Number(page.params.id)} priceUnit={c.security.priceUnit} />{/key}
 	<div id="sec-chart-anchor"></div>
 	<Fold key="sec-chart" remind="security.chart" title={tx('График', 'Chart')} summary={PERIODS.find((p) => p[0] === period)?.[1]}>
 	<!-- owner 27.11.2026: one chart widget — here and in «Сохранённые графики» -->

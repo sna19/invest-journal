@@ -20,7 +20,8 @@ describe('owner 28.11.2026: the tickers list sorted by a key, down or up, emptie
 			['DDD', null]
 		]);
 	});
-	it('dividends down; market cap up', () => {
+	it('P/E down; dividends down (no payments or monthly prices — the provider\'s yield); market cap up', () => {
+		expect(sortHits(m, hits, 'pe', true).map((h) => h.symbol).slice(0, 2)).toEqual(['AAA', 'BBB']);
 		expect(sortHits(m, hits, 'div', true).map((h) => h.symbol).slice(0, 2)).toEqual(['BBB', 'AAA']);
 		expect(sortHits(m, hits, 'cap', false).map((h) => h.symbol)).toEqual(['CCC', 'DDD', 'AAA', 'BBB']);
 	});

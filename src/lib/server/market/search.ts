@@ -90,7 +90,7 @@ export function searchSecurities(
 		opts.kind === 'commodity' ? `${commodity} = 1` : opts.kind ? `s.type = '${opts.kind}' and ${commodity} = 0` : '1 = 1',
 		opts.sector ? 'p.sector = ?' : '1 = 1'
 	].join(' and ');
-	const cap = `case p.cap_currency when 'ILS' then p.market_cap / 3.7 when 'ILA' then p.market_cap / 370 else p.market_cap end`;
+	const cap = `case p.cap_currency when 'ILS' then p.market_cap / 3.7 when 'ILA' then p.market_cap / 3.7 else p.market_cap end`;
 	const order = browse
 		? `${cap} is null, ${cap} desc, s.symbol`
 		: `case

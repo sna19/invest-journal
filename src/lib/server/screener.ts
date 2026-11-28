@@ -1,6 +1,8 @@
 import type Database from 'better-sqlite3';
 import { liquidity, universe, type Series } from './model/quarterly.js';
 import { scoreMap } from './tickerSort.js';
+import { dividendYield12, dividendYields } from './divYield.js';
+export { dividendYield12 };
 
 /**
  * Owner 28.11.2026: a full screener — the shares of both markets filtered by any of their aspects (size, valuation,
@@ -22,6 +24,7 @@ export interface Filters {
 	trendUp?: boolean;
 	/** the average daily turnover, dollars, at least */
 	turnover?: number | null;
+	payout?: Range;
 	pe?: Range;
 	ps?: Range;
 	div?: Range;
@@ -33,7 +36,7 @@ export interface Filters {
 	y1?: Range;
 	m3?: Range;
 }
-export const COLUMNS = ['symbol', 'cap', 'score', 'pe', 'ps', 'div', 'growth', 'roe', 'beta', 'y1', 'm3', 'turnover'] as const;
+export const COLUMNS = ['symbol', 'cap', 'score', 'pe', 'ps', 'div', 'payout', 'growth', 'roe', 'beta', 'y1', 'm3', 'turnover'] as const;
 export type Column = (typeof COLUMNS)[number];
 
 const CAP: Record<string, [number, number]> = { micro: [0, 3e8], small: [3e8, 2e9], mid: [2e9, 1e10], large: [1e10, 2e11], mega: [2e11, Infinity] };
@@ -54,6 +57,7 @@ export interface Row {
 	roe: number | null;
 	margin: number | null;
 	debt: number | null;
+	payout: number | null;
 	beta: number | null;
 	y1: number | null;
 	m3: number | null;
@@ -84,7 +88,7 @@ export function screen(market: Database.Database, f: Filters, sort: { by: Column
 	const rows = market
 		.prepare(
 			`select s.id, s.symbol, s.name_en as name, s.exchange_code as exchange, e.country as market, p.sector, p.industry,
-			        case p.cap_currency when 'ILS' then p.market_cap / 3.7 when 'ILA' then p.market_cap / 370 else p.market_cap end as cap, st.data
+			        case p.cap_currency when 'ILS' then p.market_cap / 3.7 when 'ILA' then p.market_cap / 3.7 else p.market_cap end as cap, st.data
 			   from ref_securities s join ref_exchanges e on e.code = s.exchange_code
 			   left join ref_security_profiles p on p.security_id = s.id
 			   left join ref_security_stats st on st.security_id = s.id
@@ -94,6 +98,18 @@ export function screen(market: Database.Database, f: Filters, sort: { by: Column
 		.all(...[f.market, f.sector, f.industry].filter(Boolean)) as { id: number; symbol: string; name: string; exchange: string; market: 'US' | 'IL'; sector: string | null; industry: string | null; cap: number | null; data: string | null }[];
 	const u = universe(market);
 	const byId = new Map(u.stocks.map((s) => [s.id, s]));
+	const rowMarket = new Map(rows.map((r) => [r.id, r.market]));
+	const yahooDiv = new Map(
+		rows.map((r) => {
+			try {
+				const d = r.data ? JSON.parse(r.data) : null;
+				return [r.id, typeof d?.dividendYield === 'number' ? (d.dividendYield as number) : null] as const;
+			} catch {
+				return [r.id, null] as const;
+			}
+		})
+	);
+	const divs = dividendYields(market, rows.map((r) => r.id), (id) => byId.get(id), u.lastMonth, (id) => rowMarket.get(id) ?? 'US', (id) => yahooDiv.get(id) ?? null);
 	let list: Row[] = [];
 	for (const r of rows) {
 		if (f.caps?.length && !f.caps.some((c) => r.cap !== null && r.cap >= CAP[c][0] && r.cap < CAP[c][1])) continue;
@@ -118,11 +134,13 @@ export function screen(market: Database.Database, f: Filters, sort: { by: Column
 			cap: r.cap,
 			pe: pe !== null && pe >= 1 ? pe : null,
 			ps: ps !== null && ps > 0 ? ps : null,
-			div: num(d.dividendYield) === null ? null : (d.dividendYield as number) * 100,
+			// the payments themselves, the monthly prices (US), Yahoo's yield — the best there is (divYield.ts)
+			div: divs.get(r.id) ?? null,
 			growth: num(d.revenueGrowth) === null ? null : (d.revenueGrowth as number) * 100,
 			roe: num(d.roe) === null ? null : (d.roe as number) * 100,
 			margin: num(d.profitMargin) === null ? null : (d.profitMargin as number) * 100,
 			debt: num(d.debtToEquity),
+			payout: num(d.payoutRatio) === null ? null : (d.payoutRatio as number) * 100,
 			beta: num(d.beta),
 			y1: back(s, u.lastMonth, 12),
 			m3: back(s, u.lastMonth, 3),
@@ -132,6 +150,7 @@ export function screen(market: Database.Database, f: Filters, sort: { by: Column
 			above: null
 		};
 		if (!inRange(row.pe, f.pe) || !inRange(row.ps, f.ps) || !inRange(row.div, f.div) || !inRange(row.growth, f.growth) || !inRange(row.roe, f.roe)) continue;
+		if (!inRange(row.payout, f.payout)) continue;
 		if (!inRange(row.margin, f.margin) || !inRange(row.debt, f.debt) || !inRange(row.beta, f.beta) || !inRange(row.y1, f.y1) || !inRange(row.m3, f.m3)) continue;
 		if (f.turnover && !(row.turnover !== null && row.turnover >= f.turnover)) continue;
 		list.push(row);
@@ -182,6 +201,7 @@ export function cleanFilters(x: unknown): Filters {
 		roe: range(o.roe),
 		margin: range(o.margin),
 		debt: range(o.debt),
+		payout: range(o.payout),
 		beta: range(o.beta),
 		y1: range(o.y1),
 		m3: range(o.m3)

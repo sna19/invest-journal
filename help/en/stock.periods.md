@@ -6,6 +6,8 @@
 
 **How to use it.** Read the row from the long periods to the short. The short ones weaker than the long (as a year rate) — the growth slows; stronger — it speeds up. Compare with the market: +10% with the market at +15% is lagging.
 
+**With dividends or the price only.** A switch above the row. «With dividends» — the share and the market both with their payments (the market by the fund that tracks the index: SPY for the S&P 500, a TA-125 fund): the honest total return — that is how a bank that «falls» but pays 6% a year shows it really loses less. «Price only» — both without dividends: how the price itself behaved. Never mix them: a share with dividends against an index without looks better than it is. For dividend shares look at both: the price speaks of the market, the dividends of the income.
+
 **Reminder.** What matters is not what it made but what it makes now.
 
 **Trap.** Comparing a 3-year total with another share's yearly return, or being glad of a rise the market gave everyone.
