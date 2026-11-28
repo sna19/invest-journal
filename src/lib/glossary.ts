@@ -81,6 +81,15 @@ export const TERMS: Term[] = [
 		how: ['2–4% — обычно для зрелой компании. Очень высокая (больше 7–8%) часто значит, что цена упала и рынок ждёт урезания дивиденда — проверь долю прибыли на дивиденды.', '2–4% is usual for a mature company. Very high (over 7–8%) often means the price fell and the market expects a cut — check the payout ratio.']
 	},
 	{
+		id: 'div_growth',
+		term: ['Рост дивиденда (DGR, Dividend Growth Rate)', 'Dividend growth (DGR, Dividend Growth Rate)'],
+		aka: 'dividend growth dgr рост дивиденда лет подряд',
+		group: G.income,
+		what: ['Сколько лет подряд годовой дивиденд на акцию рос, и на сколько процентов в год он рос в среднем за 5 лет.', 'How many years in a row the yearly dividend a share grew, and by how many percent a year on average over 5 years.'],
+		how: ['Для дивидендной стратегии важнее самого процента: 3% с ростом 8% в год через 9 лет дают 6% на цену покупки. 10+ лет роста — компания держится за дивиденд; падение или «0 лет» после урезания — перечитай тезис.', 'For a dividend strategy it matters more than the percent itself: 3% growing 8% a year gives 6% on the purchase price in 9 years. 10+ years of growth — the company holds on to its dividend; a fall or «0 years» after a cut — re-read the thesis.'],
+		where: ['Показатели → «Доход и владельцы»; карточка → «Дивиденды по годам»', 'Ratios → «Income and holders»; the card → «Dividends by year»']
+	},
+	{
 		id: 'payout',
 		term: ['Доля прибыли на дивиденды (Payout Ratio)', 'Payout ratio'],
 		aka: 'payout ratio выплата',

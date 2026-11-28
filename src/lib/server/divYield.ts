@@ -33,6 +33,8 @@ export function dividendYields(
 	today = new Date()
 ): Map<number, number | null> {
 	const yearAgo = new Date(today.getTime() - 365 * 86_400_000).toISOString().slice(0, 10);
+	// a card's or a set's few securities — only theirs; the screener's thousands — one pass over all
+	const few = ids.length > 0 && ids.length <= 200;
 	const paid = new Map(
 		(
 			market
@@ -40,9 +42,10 @@ export function dividendYields(
 					`select d.security_id as id, sum(d.amount) as s,
 					        (select close from market_prices_daily p where p.security_id = d.security_id order by date desc limit 1) as close,
 					        (select min(date) from market_prices_daily p where p.security_id = d.security_id) as first
-					   from market_corporate_actions d where d.kind = 'dividend' and d.amount > 0 and d.ex_date > ? group by d.security_id`
+					   from market_corporate_actions d where d.kind = 'dividend' and d.amount > 0 and d.ex_date > ?
+					   ${few ? `and d.security_id in (${ids.map(() => '?').join(',')})` : ''} group by d.security_id`
 				)
-				.all(yearAgo) as { id: number; s: number; close: number | null; first: string | null }[]
+				.all(yearAgo, ...(few ? ids : [])) as { id: number; s: number; close: number | null; first: string | null }[]
 		)
 			// a year of daily history behind it, or the sum may miss payments
 			.filter((r) => r.close && r.first && r.first <= yearAgo)

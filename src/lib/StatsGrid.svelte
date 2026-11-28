@@ -80,7 +80,9 @@
 			t: tx('Доход и владельцы (Income & Ownership)', 'Income and holders (Income & Ownership)'),
 			help: 'security.income',
 			rows: [
-				[tx('Дивидендная доходность (DY)', 'Dividend yield (DY)'), (x) => pct(x.dividendYield, 2), 'div_yield'],
+				[tx('Дивидендная доходность (DY)', 'Dividend yield (DY)'), (x) => pct(x.dy12 ?? x.dividendYield, 2), 'div_yield'],
+				[tx('Рост дивиденда подряд, лет', 'Dividend growth in a row, years'), (x) => (typeof x.divGrowthYears === 'number' ? String(x.divGrowthYears) : null), 'div_growth'],
+				[tx('Рост дивиденда за 5 лет, в год (5Y DGR)', 'Dividend growth, 5 years, a year (5Y DGR)'), (x) => pct(x.divCagr5, 1), 'div_growth'],
 				[tx('Доля прибыли на дивиденды (Payout Ratio)', 'Payout ratio (Payout Ratio)'), (x) => pct(x.payoutRatio, 0), 'payout'],
 				[tx('У инсайдеров (Insider Own.)', 'Insiders (Insider Own.)'), (x) => pct(x.insiders, 0), 'insiders'],
 				[tx('У фондов (Inst. Own.)', 'Institutions (Inst. Own.)'), (x) => pct(x.institutions, 0), 'institutions']

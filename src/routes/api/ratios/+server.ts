@@ -3,6 +3,9 @@ import { getMarket } from '#lib/server/db.js';
 import { statsOf } from '#lib/server/market/stats.js';
 import { drawdowns, volatility } from '#lib/server/compare.js';
 import { atrOf, barsOf } from '#lib/server/protection.js';
+import { dividendYields } from '#lib/server/divYield.js';
+import { dividendHistory } from '#lib/server/dividends.js';
+import { universe } from '#lib/server/model/quarterly.js';
 
 /**
  * GET ?ids=1,2,… — the ratios of the securities (loaded from Yahoo if missing or older than 3 days, 8 per call), with
@@ -18,13 +21,28 @@ export async function GET({ url }) {
 	const market = getMarket().sqlite;
 	const m = await statsOf(market, ids);
 	const items: Record<number, unknown> = {};
+	// owner 28.11.2026: the dividend yield the same everywhere (the screener, the portfolio's «Дивиденды»), and its growth
+	const u = universe(market);
+	const byId = new Map(u.stocks.map((s) => [s.id, s]));
+	const ex = market.prepare('select exchange_code as e from ref_securities where id = ?');
+	const dys = dividendYields(market, ids, (id) => byId.get(id), u.lastMonth, (id) => ((ex.get(id) as { e: string } | undefined)?.e === 'TASE' ? 'IL' : 'US'), (id) => {
+		const st = m.get(id)?.stats as { dividendYield?: number | null } | null | undefined;
+		return st?.dividendYield ?? null;
+	});
 	for (const id of ids) {
 		const v = m.get(id);
 		const vol = volatility(market, id);
 		const b = barsOf(market, id, 20);
 		const atr = atrOf(b, 14);
 		const dd = drawdowns(barsOf(market, id, 253).map((x) => x.close));
-		const swings = { vol1y: vol.vol1y, vol3m: vol.vol3m, atrPct: atr && b.length ? Math.round((atr / b.at(-1)!.close) * 10000) / 10000 : null, ddNow: dd?.now ?? null, ddMax: dd?.max ?? null };
+		const dh = dividendHistory(market, id);
+		const dy = dys.get(id);
+		const div = {
+			dy12: dy === null || dy === undefined ? null : dy / 100,
+			divGrowthYears: dh.years.length ? dh.growthYears : null,
+			divCagr5: dh.cagr5 === null ? null : dh.cagr5 / 100
+		};
+		const swings = { ...div, vol1y: vol.vol1y, vol3m: vol.vol3m, atrPct: atr && b.length ? Math.round((atr / b.at(-1)!.close) * 10000) / 10000 : null, ddNow: dd?.now ?? null, ddMax: dd?.max ?? null };
 		if (v) items[id] = { ...v, stats: v.stats ? { ...v.stats, ...swings } : null, swings };
 		else if (swings.vol1y !== null) items[id] = { stats: null, fetchedAt: null, swings };
 	}
