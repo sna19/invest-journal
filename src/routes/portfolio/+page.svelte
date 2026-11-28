@@ -15,6 +15,7 @@
 	import FileJson from '@lucide/svelte/icons/file-json';
 	import TopBar from '#lib/TopBar.svelte';
 	import Allocation from '#lib/portfolio/Allocation.svelte';
+	import Dividends from '#lib/portfolio/Dividends.svelte';
 	import TvLink from '#lib/TvLink.svelte';
 	import type { AllocProfile } from '#lib/allocation.js';
 	import Empty from '#lib/Empty.svelte';
@@ -694,6 +695,8 @@
 	{#if v.positions.some((p) => p.valuePc > 0) || v.summary.cash > 0}
 		<Allocation positions={v.positions} cash={v.summary.cash} currency={v.summary.currency} />
 	{/if}
+	<!-- owner 28.11.2026: what the held securities pay, and the dividend strategy's numbers -->
+	{#key v.portfolio.id}<Dividends portfolioId={v.portfolio.id} version={loads} />{/key}
 
 
 	{#if v.portfolio.kind === 'real' && !v.portfolio.auto_source_id}{#key v.portfolio.id}<RiskReview portfolioId={v.portfolio.id} currency={v.summary.currency} />{/key}{/if}
