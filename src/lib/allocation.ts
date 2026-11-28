@@ -146,6 +146,19 @@ export interface AllocMember {
 	part: number;
 }
 
+/** a country's name in the language (owner 28.11.2026: «Страны») */
+export const countryName = (c: string, t: Tx) => t(COUNTRIES[c] ?? REGION_RU[c] ?? c, c);
+const REGION_RU: Record<string, string> = {
+	Europe: 'Европа',
+	'Developed ex-US': 'Развитые без США',
+	'Emerging markets': 'Развивающиеся рынки',
+	'Asia ex-Japan': 'Азия без Японии',
+	'Latin America': 'Латинская Америка',
+	World: 'Весь мир',
+	Portugal: 'Португалия'
+};
+export const REGION_LABEL = (r: string, t: Tx) => (r === 'region' ? t('Регионы', 'Regions') : t(...(REGION_NAME[r] ?? [r, r])));
+
 export interface AllocRow {
 	key: string;
 	label: string;

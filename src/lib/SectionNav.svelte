@@ -18,6 +18,7 @@
 		items = all
 			.map((el) => ({ el, label: (el.querySelector(':scope > .bar h2')?.textContent ?? '').split(' · ')[0].trim() }))
 			.filter((x) => x.label);
+		tickN++;
 	}
 	let timer: ReturnType<typeof setTimeout>;
 	const later = () => {
@@ -37,6 +38,17 @@
 			if (row && chip) row.scrollTo({ left: Math.max(0, chip.offsetLeft - 48), behavior: 'smooth' });
 		}
 	}
+	// owner 28.11.2026: «свернуть всё» — every block of the screen folded (or unfolded) at once
+	let tickN = $state(0);
+	const allClosed = () => items.length > 0 && items.every((it) => it.el.classList.contains('closed'));
+	function foldAll(close: boolean) {
+		for (const it of items) {
+			const closed = it.el.classList.contains('closed');
+			if (closed !== close) it.el.querySelector<HTMLButtonElement>(':scope > .bar button.title')?.click();
+		}
+		tickN++;
+		window.scrollTo({ top: 0 });
+	}
 	async function go(it: Item) {
 		const btn = it.el.querySelector<HTMLButtonElement>(':scope > .bar button.title');
 		if (it.el.classList.contains('closed')) btn?.click();
@@ -48,7 +60,8 @@
 		collect();
 		const mo = new MutationObserver(later);
 		const main = document.querySelector('main');
-		if (main) mo.observe(main, { childList: true, subtree: true });
+		// a block folded or unfolded by hand (its class) — the row's «fold all» follows
+		if (main) mo.observe(main, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
 		window.addEventListener('scroll', onScroll, { passive: true });
 		return () => {
 			mo.disconnect();
@@ -62,6 +75,7 @@
 {#if items.length >= 4}
 	<nav class="sn" bind:this={row} aria-label={tx('Разделы экрана', 'The screen\'s sections')}>
 		<button class="up" aria-label={tx('Наверх', 'To the top')} onclick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>↑</button>
+		{#key tickN}<button class="fold" onclick={() => foldAll(!allClosed())}>{allClosed() ? tx('⊞ Развернуть всё', '⊞ Unfold all') : tx('⊟ Свернуть всё', '⊟ Fold all')}</button>{/key}
 		{#each items as it, i (i)}
 			<button class:on={i === current} onclick={() => go(it)}>{it.label}</button>
 		{/each}
@@ -101,6 +115,9 @@
 		background: var(--text);
 		border-color: var(--text);
 		color: var(--bg);
+	}
+	.fold {
+		color: var(--link);
 	}
 	.up {
 		padding: 0 10px;

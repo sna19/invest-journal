@@ -9,6 +9,7 @@
 	const items = [
 		['/tickers', 'Тикеры', 'Tickers'],
 		['/screener', 'Скринер', 'Screener'],
+		['/countries', 'Страны', 'Countries'],
 		['/model', 'Модель', 'Model'],
 		['/shortlist', 'Отмеченные', 'Picked']
 	] as const;
@@ -29,11 +30,14 @@
 		border-radius: var(--r-pill);
 		background: var(--surface);
 		border: 1px solid var(--line);
+		overflow-x: auto;
+		scrollbar-width: none;
 	}
 	a {
-		flex: 1;
+		flex: 1 0 auto;
 		text-align: center;
-		padding: 6px 0;
+		padding: 6px 10px;
+		white-space: nowrap;
 		border-radius: var(--r-pill);
 		color: var(--text);
 		text-decoration: none;

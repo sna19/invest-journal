@@ -109,6 +109,8 @@ export async function runQueue(ctx: Ctx, opts: { parallel?: number; stopAfter?: 
 					)
 					.run(t.securityId, t.securityId);
 			}
+			// let the requests waiting for the server through between two securities
+			await new Promise<void>((r) => setImmediate(r));
 		}
 	};
 	await Promise.all(Array.from({ length: opts.parallel ?? 4 }, worker));
