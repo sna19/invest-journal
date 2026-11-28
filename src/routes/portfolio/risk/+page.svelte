@@ -6,6 +6,7 @@
 	import HelpIcon from '#lib/HelpIcon.svelte';
 	import RiskLabel from '#lib/RiskLabel.svelte';
 	import TickerSearch, { type Security } from '#lib/TickerSearch.svelte';
+	import Sheet from '#lib/Sheet.svelte';
 	import { SECTORS, sectorName } from '#lib/allocation.js';
 	import { loc, tx } from '#lib/i18n.js';
 	import { whatIf, type WhatIf } from '#lib/risk.js';
@@ -68,6 +69,19 @@
 	let years = $state(2);
 	let selected = $state<number | null>(null);
 	let adds = $state<Pick[]>([]);
+	// owner 28.11.2026: any shares put on the map just to see their ties — not the simulator's, not saved, gone on leaving
+	let peek = $state<Pick[]>([]);
+	let peeking = $state(false);
+	function addPeek(s: Security) {
+		if (peek.some((x) => x.id === s.id) || adds.some((x) => x.id === s.id) || adds.length + peek.length >= 12) return;
+		peek = [...peek, { id: s.id, symbol: s.symbol }];
+		void load();
+	}
+	function dropPeek(id: number) {
+		peek = peek.filter((x) => x.id !== id);
+		if (selected === id) selected = null;
+		void load();
+	}
 	let amountPct = $state(5);
 	let source = $state<number | 'cash'>('cash');
 	let busy = $state(false);
@@ -78,14 +92,15 @@
 	async function load() {
 		busy = true;
 		const q = new URLSearchParams({ years: String(years) });
-		if (adds.length) q.set('add', adds.map((a) => a.id).join(','));
+		const extra = [...adds, ...peek.filter((x) => !adds.some((a) => a.id === x.id))];
+		if (extra.length) q.set('add', extra.map((a) => a.id).join(','));
 		const r = await fetch(`/api/portfolios/${pid}/risk?${q}`).catch(() => null);
 		busy = false;
 		if (!r?.ok) return void (problem = tx('Нет связи с сервером.', 'No connection to the server.'));
 		problem = null;
 		v = await r.json();
 		// a tried security without history: ask again when its days are loaded
-		if (v!.loading.some((id) => adds.some((a) => a.id === id))) setTimeout(load, 20_000);
+		if (v!.loading.some((id) => adds.some((a) => a.id === id) || peek.some((a) => a.id === id))) setTimeout(load, 20_000);
 	}
 	async function loadQuick() {
 		const groups: { group: string; items: Pick[] }[] = [];
@@ -191,7 +206,8 @@
 	// ── the map ───────────────────────────────────────────────────────────────────
 	const SECTOR_KEYS = Object.keys(SECTORS);
 	const colorOf = (s: Sec) => (s.role === 'job' ? 'var(--text)' : s.sector && SECTOR_KEYS.includes(s.sector) ? `var(--series-${(SECTOR_KEYS.indexOf(s.sector) % 8) + 1})` : 'var(--series-muted)');
-	const shown = $derived(v ? v.securities.filter((s) => s.role !== 'add' || adds.some((a) => a.id === s.id)) : []);
+	const shown = $derived(v ? v.securities.filter((s) => s.role !== 'add' || adds.some((a) => a.id === s.id) || peek.some((a) => a.id === s.id)) : []);
+	const isPeek = (s: Sec) => s.role === 'add' && peek.some((a) => a.id === s.id) && !adds.some((a) => a.id === s.id);
 	const box = $derived.by(() => {
 		const pts = shown.map((s) => s.xy);
 		if (!pts.length) return { x0: -1, y0: -1, k: 1 };
@@ -201,7 +217,7 @@
 		return { x0: (Math.max(...xs) + Math.min(...xs)) / 2 - span / 2, y0: (Math.max(...ys) + Math.min(...ys)) / 2 - span / 2, k: 76 / span };
 	});
 	const px = (s: Sec): [number, number] => [12 + (s.xy[0] - box.x0) * box.k, 12 + (s.xy[1] - box.y0) * box.k];
-	const radius = (s: Sec) => (s.role === 'job' ? 4 : s.role === 'add' ? 2.5 + Math.sqrt(amountPct / 100) * 14 : 2.5 + Math.sqrt(s.weight) * 14);
+	const radius = (s: Sec) => (s.role === 'job' ? 4 : isPeek(s) ? 3 : s.role === 'add' ? 2.5 + Math.sqrt(amountPct / 100) * 14 : 2.5 + Math.sqrt(s.weight) * 14);
 	const neighbours = $derived.by(() => {
 		if (!v || selected === null) return [];
 		const i = v.securities.findIndex((s) => s.id === selected);
@@ -277,6 +293,11 @@
 
 	<Fold key="risk-map" title={tx('Карта связей', 'Map of ties')} summary={tx(`${v.links.length} сильных связей`, `${v.links.length} strong ties`)} remind="portfolio.risk_map">
 		{#snippet aside()}<HelpIcon topicKey="portfolio.risk_map" label={tx('карта риска', 'risk map')} />{/snippet}
+		<div class="peekrow">
+			{#each peek as x (x.id)}<span class="pk">{x.symbol}<button aria-label={tx(`Убрать ${x.symbol} с карты`, `Take ${x.symbol} off the map`)} onclick={() => dropPeek(x.id)}>×</button></span>{/each}
+			<button class="pkadd" onclick={() => (peeking = true)}>+ {tx('акция на карту', 'a share on the map')}</button>
+			{#if peek.length}<span class="muted small">{tx('только посмотреть, не сохраняется', 'just to look, not saved')}</span>{/if}
+		</div>
 		<svg class="map" viewBox="0 0 100 100" role="img" aria-label={tx('Карта связей позиций', 'Map of the positions\' ties')}>
 			{#each v.links as [a, b, c] (a + '-' + b)}
 				{@const pa = px(v.securities[a])}
@@ -285,8 +306,8 @@
 			{/each}
 			{#each shown as s (s.id)}
 				{@const p = px(s)}
-				<g class="node" class:ghost={s.role === 'add'} class:job={s.role === 'job'} class:sel={selected === s.id} role="button" tabindex="0" aria-label={s.symbol} onclick={() => (selected = selected === s.id ? null : s.id)} onkeydown={(e) => e.key === 'Enter' && (selected = s.id)}>
-					<circle cx={p[0]} cy={p[1]} r={radius(s)} fill={s.role === 'job' ? 'none' : colorOf(s)} />
+				<g class="node" class:ghost={s.role === 'add' && !isPeek(s)} class:peek={isPeek(s)} class:job={s.role === 'job'} class:sel={selected === s.id} role="button" tabindex="0" aria-label={s.symbol} onclick={() => (selected = selected === s.id ? null : s.id)} onkeydown={(e) => e.key === 'Enter' && (selected = s.id)}>
+					<circle cx={p[0]} cy={p[1]} r={radius(s)} fill={s.role === 'job' ? 'none' : isPeek(s) ? 'var(--surface)' : colorOf(s)} />
 					<text x={p[0]} y={p[1] + radius(s) + 3}>{s.role === 'job' ? tx('работа', 'job') + ' · ' + s.symbol : s.symbol}{s.short ? '*' : ''}</text>
 				</g>
 			{/each}
@@ -424,6 +445,16 @@
 	</Fold>
 {/if}
 
+{#if peeking}
+	<Sheet title={tx('Акции на карту связей', 'Shares on the map of ties')} onclose={() => (peeking = false)}>
+		<div class="pkpick">
+			<TickerSearch noIndex multi label={tx('Найти тикер — можно несколько подряд', 'Find a ticker — several in a row')} onselect={addPeek} />
+			<p class="muted small">{tx(`На карте добавлено ${peek.length}; всего добавленных — не больше 12 вместе с «Что если?».`, `Added ${peek.length}; at most 12 added together with «What if?».`)}</p>
+			<button class="pkdone" onclick={() => (peeking = false)}>{tx('Готово', 'Done')}</button>
+		</div>
+	</Sheet>
+{/if}
+
 <style>
 	.pchips {
 		display: flex;
@@ -537,6 +568,60 @@
 		stroke: var(--text);
 		stroke-width: 0.6;
 		stroke-dasharray: 1 0.8;
+	}
+	.node.peek circle {
+		/* filled, so a tap anywhere inside it counts */
+		fill: var(--surface);
+		pointer-events: all;
+		stroke: var(--text);
+		stroke-width: 0.6;
+		stroke-dasharray: 0.8 0.6;
+	}
+	.peekrow {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
+		margin-bottom: var(--s2);
+		font-size: var(--fs-xs);
+	}
+	.pk {
+		display: inline-flex;
+		align-items: center;
+		padding-left: 8px;
+		border: 1px dashed var(--text);
+		border-radius: var(--r-pill);
+	}
+	.pk button {
+		border: none;
+		background: none;
+		color: var(--muted);
+		padding: 4px 8px;
+		cursor: pointer;
+	}
+	.pkadd {
+		min-height: 30px;
+		padding: 0 12px;
+		border: 1px dashed var(--line);
+		border-radius: var(--r-pill);
+		background: none;
+		color: var(--link);
+		font-size: var(--fs-xs);
+		cursor: pointer;
+	}
+	.pkpick {
+		display: flex;
+		flex-direction: column;
+		gap: var(--s3);
+	}
+	.pkdone {
+		min-height: 44px;
+		border: none;
+		border-radius: var(--r2);
+		background: var(--accent);
+		color: var(--accent-text);
+		font-weight: 600;
+		cursor: pointer;
 	}
 	.node.ghost circle {
 		opacity: 0.35;
