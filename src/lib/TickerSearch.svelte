@@ -13,6 +13,8 @@
 		active: boolean;
 		sector?: string | null;
 		capUsd?: number | null;
+		/** owner 28.11.2026: the value the list was sorted by */
+		sortValue?: number | null;
 	}
 	type Market = 'all' | 'us' | 'il';
 
@@ -72,6 +74,21 @@
 	const FILTER_KEY = 'ticker-filter';
 	const PAGE = 50;
 	let kind = $state<Kind>('');
+	// owner 28.11.2026: the browsed list sorted by a key, down (first tap) or up (second)
+	type SortKey = 'cap' | 'score' | 'y1' | 'm3' | 'pe' | 'ps' | 'div' | 'growth' | 'beta';
+	const SORTS: [SortKey, string, string, boolean][] = [
+		['cap', 'Капитализация', 'Market cap', true],
+		['score', 'Квант-оценка', 'Quant score', true],
+		['y1', '1 год', '1 year', true],
+		['m3', '3 мес.', '3 months', true],
+		['pe', 'P/E', 'P/E', false],
+		['ps', 'P/S', 'P/S', false],
+		['div', 'Дивиденды', 'Dividends', true],
+		['growth', 'Рост выручки', 'Revenue growth', true],
+		['beta', 'Бета', 'Beta', false]
+	];
+	let sortKey = $state<SortKey>('cap');
+	let sortDesc = $state(true);
 	let sector = $state('');
 	let more = $state(false);
 	// sectors and industries found by name (the «Тикеры» screen)
@@ -97,6 +114,8 @@
 				const f = JSON.parse(localStorage.getItem(FILTER_KEY) ?? '{}');
 				if (['stock', 'etf', 'commodity'].includes(f.kind)) kind = f.kind;
 				if (typeof f.sector === 'string' && f.sector in SECTORS) sector = f.sector;
+				if (SORTS.some((x) => x[0] === f.sort)) sortKey = f.sort;
+				if (typeof f.desc === 'boolean') sortDesc = f.desc;
 			}
 		} catch {
 			/* ignore */
@@ -108,7 +127,7 @@
 		kind = k;
 		sector = k === 'stock' || k === '' ? sec : '';
 		try {
-			localStorage.setItem(FILTER_KEY, JSON.stringify({ kind, sector }));
+			localStorage.setItem(FILTER_KEY, JSON.stringify({ kind, sector, sort: sortKey, desc: sortDesc }));
 		} catch {
 			/* ignore */
 		}
@@ -136,6 +155,7 @@
 				p.set('limit', String(PAGE));
 				if (append) p.set('offset', String(items.length));
 				if (query.length >= 2) p.set('sectors', '1');
+				else if (sortKey !== 'cap' || !sortDesc) (p.set('sort', sortKey), p.set('dir', sortDesc ? 'desc' : 'asc'));
 			}
 			if (includeInactive) p.set('inactive', '1');
 			if (noIndex) p.set('noindex', '1');
@@ -155,6 +175,22 @@
 			if (my === seq) loading = false;
 		}
 	}
+
+	function setSort(k: SortKey) {
+		const first = SORTS.find((x) => x[0] === k)![3];
+		if (sortKey === k) sortDesc = !sortDesc;
+		else ((sortKey = k), (sortDesc = first));
+		setFilter(kind, sector);
+	}
+	const sortText = (s: Security) => {
+		const v = s.sortValue;
+		if (v === null || v === undefined || sortKey === 'cap') return '';
+		const n = (x: number, d = 1) => x.toLocaleString(undefined, { maximumFractionDigits: d, minimumFractionDigits: d });
+		if (sortKey === 'score') return `${tx('квант', 'quant')} ${Math.round(v * 100)}`;
+		if (sortKey === 'y1' || sortKey === 'm3') return `${sortKey === 'y1' ? tx('1Г', '1Y') : tx('3М', '3M')} ${v > 0 ? '+' : ''}${n(v)}%`;
+		if (sortKey === 'div' || sortKey === 'growth') return `${sortKey === 'div' ? 'DY' : tx('выручка', 'revenue')} ${n(v * 100)}%`;
+		return `${sortKey === 'beta' ? 'β' : sortKey === 'pe' ? 'P/E' : 'P/S'} ${n(v, sortKey === 'beta' ? 2 : 1)}`;
+	};
 
 	function input() {
 		clearTimeout(timer);
@@ -276,7 +312,14 @@
 	{/if}
 
 	{#if shown.length}
-		{#if browsing}<p class="caption">{items.some((s) => s.capUsd) ? tx('По капитализации', 'By market cap') : tx('По алфавиту', 'Alphabetically')}</p>{:else if query.length < 2}<p class="caption">{tx('Недавние', 'Recent')}</p>{/if}
+		{#if browsing}
+			<div class="sorts" role="group" aria-label={tx('Сортировка', 'Sort')}>
+				{#each SORTS as [k, ru, en] (k)}
+					<button class:on={sortKey === k} aria-pressed={sortKey === k} onclick={() => setSort(k)}>{tx(ru, en)}{sortKey === k ? (sortDesc ? ' ↓' : ' ↑') : ''}</button>
+				{/each}
+			</div>
+			{#if sortKey === 'score'}<p class="caption">{sortDesc ? tx('Сначала зелёные — сильнее соседей по сектору, стоит рассмотреть', 'Green first — stronger than their sector peers, worth a look') : tx('Сначала красные', 'Red first')}</p>{/if}
+		{:else if query.length < 2}<p class="caption">{tx('Недавние', 'Recent')}</p>{/if}
 		<ul id="{inputId}-list" role="listbox" aria-label={tx('Бумаги', 'Securities')}>
 			{#each shown as s, i (s.id)}
 				<li role="option" aria-selected={i === active} class:active={i === active}>
@@ -286,7 +329,7 @@
 							— {s.nameEn}{#if s.nameHe}&nbsp;<bdi class="he" lang="he">{s.nameHe}</bdi>{/if}
 						</span>
 						<span class="meta"
-							>{[s.exchangeName, unit(s), typeOf(s), s.sector ? sectorName(s.sector, tx) : '', capText(s.capUsd)].filter(Boolean).join(' · ')}{#if !s.active}&nbsp;· {tx('нет в списках', 'delisted')}{/if}</span
+							>{[s.exchangeName, unit(s), typeOf(s), s.sector ? sectorName(s.sector, tx) : '', capText(s.capUsd), browsing ? sortText(s) : ''].filter(Boolean).join(' · ')}{#if !s.active}&nbsp;· {tx('нет в списках', 'delisted')}{/if}</span
 						>
 					</button>
 				</li>
@@ -297,6 +340,30 @@
 </div>
 
 <style>
+	.sorts {
+		display: flex;
+		gap: 6px;
+		overflow-x: auto;
+		padding: 2px 0 6px;
+		margin-top: 6px;
+	}
+	.sorts button {
+		flex: none;
+		min-height: 32px;
+		padding: 0 12px;
+		border: 1px solid var(--line);
+		border-radius: var(--r-pill);
+		background: var(--surface);
+		color: var(--text);
+		font-size: var(--fs-xs);
+		white-space: nowrap;
+		cursor: pointer;
+	}
+	.sorts button.on {
+		background: var(--text);
+		border-color: var(--text);
+		color: var(--bg);
+	}
 	.label-row {
 		display: flex;
 		align-items: center;

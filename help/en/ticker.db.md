@@ -6,6 +6,8 @@
 
 **How to use it.**
 
+**Sorting the list.** Pick a kind (stocks, ETFs) or a sector — the sort buttons are under them: market cap, quant score, the return over 1 year and 3 months, P/E, P/S, dividends, revenue growth, beta. The first tap sorts the most useful way (quant score — green first, they are stronger than their sector peers and worth a look; P/E and P/S — cheap first; beta — calm first), the second the other way (↓ / ↑). Each row shows the value it is sorted by; securities without data go last. A P/E under 1 or negative (a loss) is left out of the order. The choice is remembered on the device.
+
 **Sectors, industries, indices.** Under the search — three lists: every sector of both markets (how many companies and industries are in the base, the sector's ETF and its year), every industry (with a search) and the indices (S&P 500, Nasdaq 100, Dow Jones, Russell 2000, TA-35, TA-90, TA-125) — through the ETFs that track them. A tap on a sector or an industry opens its page with the companies, on an ETF — its card. A tap on a column header sorts: the first — descending, the second — ascending, the third — the own order; every table in the app works this way.
 
 **Where the list comes from.** US — the official Nasdaq Trader Symbol Directory files (NASDAQ, NYSE, NYSE American, NYSE Arca, Cboe BZX). Israel — the list of securities from the Tel Aviv Stock Exchange site, with names in English and Hebrew. Stocks and ETFs are taken; test securities, warrants, rights and bonds are dropped.
