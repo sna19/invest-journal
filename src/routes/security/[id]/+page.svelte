@@ -67,7 +67,7 @@
 	interface Chart {
 		monthly: boolean;
 		today: { price: number; dayPct: number; date: string; live: boolean } | null;
-		profile: { sector: string | null; industry: string | null; country: string | null; capUsd: number | null; kind: string | null } | null;
+		profile: { sector: string | null; industry: string | null; country: string | null; capUsd: number | null; kind: string | null; expenseRatio?: number | null } | null;
 		security: { id: number; symbol: string; name: string; exchange: string; currency: string; priceUnit: string; type?: string };
 		benchmark: { id: number; label: string } | null;
 		points: { date: string; value: number }[];
@@ -467,9 +467,9 @@
 			{/each}
 		</div>
 	{/if}
-	{#if c.profile && (c.profile.sector || c.profile.capUsd)}
+	{#if c.profile && (c.profile.sector || c.profile.capUsd || c.profile.expenseRatio != null)}
 		<p class="muted small facts">
-			{#if c.profile.sector}<a class="seclink" href="/sector?sector={c.profile.sector}&country={c.security.exchange === 'TASE' ? 'IL' : 'US'}">{sectorName(c.profile.sector, tx)}</a>{/if}{#if c.profile.industry}{' · '}<a class="seclink" href="/sector?{c.profile.sector ? `sector=${c.profile.sector}&` : ''}industry={encodeURIComponent(c.profile.industry)}&country={c.security.exchange === 'TASE' ? 'IL' : 'US'}">{c.profile.industry}</a>{/if}{[c.profile.capUsd ? `${tx('капитализация', 'market cap')} ${capText(c.profile.capUsd)}` : '', c.profile.country ?? ''].filter(Boolean).map((x) => ` · ${x}`).join('')}
+			{#if c.profile.sector}<a class="seclink" href="/sector?sector={c.profile.sector}&country={c.security.exchange === 'TASE' ? 'IL' : 'US'}">{sectorName(c.profile.sector, tx)}</a>{/if}{#if c.profile.industry}{' · '}<a class="seclink" href="/sector?{c.profile.sector ? `sector=${c.profile.sector}&` : ''}industry={encodeURIComponent(c.profile.industry)}&country={c.security.exchange === 'TASE' ? 'IL' : 'US'}">{c.profile.industry}</a>{/if}{[c.profile.capUsd ? `${tx('капитализация', 'market cap')} ${capText(c.profile.capUsd)}` : '', c.profile.country ?? '', c.profile.expenseRatio != null ? `${tx('комиссия фонда', 'the fund\'s fee')} (ER) ${feeText(c.profile.expenseRatio)} ${tx('в год', 'a year')}` : ''].filter(Boolean).map((x, i) => (i || c?.profile?.sector || c?.profile?.industry ? ` · ${x}` : x)).join('')}
 		</p>
 	{/if}
 

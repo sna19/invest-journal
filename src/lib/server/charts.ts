@@ -176,7 +176,7 @@ export function securityChart(app: Database.Database, market: Database.Database,
 		monthly,
 		/** T-020: the price now and its day change (the quote, else the last close against the one before) */
 		today: mv ? { price: mv.now, dayPct: (mv.now / mv.prev - 1) * 100, date: mv.date, live: mv.live } : null,
-		profile: prof ? { sector: prof.sector, industry: prof.industry, country: prof.country, capUsd: prof.capUsd, kind: prof.kind } : null,
+		profile: prof ? { sector: prof.sector, industry: prof.industry, country: prof.country, capUsd: prof.capUsd, kind: prof.kind, expenseRatio: prof.expenseRatio ?? null } : null,
 		security: { id: s.id, symbol: s.symbol, name: s.name_en, exchange: s.exchange_code, currency: s.price_unit === 'USD' ? 'USD' : 'ILS', priceUnit: s.price_unit, type: s.type },
 		benchmark: benchId && benchId !== id ? { id: benchId, label: s.country === 'IL' ? 'ТА-125' : 'S&P 500' } : null,
 		period,

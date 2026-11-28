@@ -156,6 +156,8 @@ export interface ProfileView {
 	capUsd: number | null;
 	fundCategory: string | null;
 	sectorWeights: Record<string, number> | null;
+	/** a fund's yearly fee (0.0059 = 0.59%), null — not a fund or not known */
+	expenseRatio?: number | null;
 	/** T-016: a fund's countries and industries, looked through (by hand, by rule, by its top holdings) */
 	countryWeights?: Record<string, number> | null;
 	industryWeights?: Record<string, number> | null;
@@ -168,10 +170,10 @@ export function readProfiles(market: Database.Database, ids: number[], usdIls: n
 	if (!ids.length) return new Map();
 	const rows = market
 		.prepare(
-			`select s.id, s.type, p.kind, p.sector, p.industry, p.country, p.market_cap as cap, p.cap_currency as cur, p.fund_category as cat, p.sector_weights as w
+			`select s.id, s.type, p.kind, p.sector, p.industry, p.country, p.market_cap as cap, p.cap_currency as cur, p.fund_category as cat, p.sector_weights as w, p.expense_ratio as er
 			   from ref_securities s left join ref_security_profiles p on p.security_id = s.id where s.id in (${ids.map(Number).join(',')})`
 		)
-		.all() as { id: number; type: string; kind: ProfileView['kind']; sector: string | null; industry: string | null; country: string | null; cap: number | null; cur: string | null; cat: string | null; w: string | null }[];
+		.all() as { id: number; type: string; kind: ProfileView['kind']; sector: string | null; industry: string | null; country: string | null; cap: number | null; cur: string | null; cat: string | null; w: string | null; er: number | null }[];
 	const usd = (cap: number | null, cur: string | null) => {
 		if (cap === null) return null;
 		if (!cur || cur === 'USD') return cap;
@@ -180,6 +182,6 @@ export function readProfiles(market: Database.Database, ids: number[], usdIls: n
 		return cur === 'ILA' || cur === 'ILS' ? cap / usdIls : null;
 	};
 	return new Map(
-		rows.map((r) => [r.id, { type: r.type, kind: r.kind, sector: r.sector, industry: r.industry, country: r.country, capUsd: usd(r.cap, r.cur), fundCategory: r.cat, sectorWeights: r.w ? JSON.parse(r.w) : null }])
+		rows.map((r) => [r.id, { type: r.type, kind: r.kind, sector: r.sector, industry: r.industry, country: r.country, capUsd: usd(r.cap, r.cur), fundCategory: r.cat, sectorWeights: r.w ? JSON.parse(r.w) : null, expenseRatio: r.er }])
 	);
 }
