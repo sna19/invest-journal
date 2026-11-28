@@ -11,7 +11,7 @@
 
 **The idea.** A portfolio's risk is not in single securities but in how much money sits in one bet: a sector, a country, a currency.
 
-**How to use it.**
+**How to use it.** **Who is in a slice.** A tap on a bar, a piece of the pie or a legend row lists the securities in it: the amount, the share of the slice and a link to the card; a fund split by its holdings shows the part that went into this slice («60% of the fund»). **Stocks only / funds only** — a switch for sectors, industries, countries, regions and size: percents count inside the chosen ones, cash aside. **Regions** — the countries grouped by parts of the world (North America, Europe, Israel, Asia, Latin America…); country and regional funds are split by their countries.
 
 **Bars or pie** — the switch at the top right. On the pie, tap a slice or a legend row and its share appears in the centre. The measure and the view are remembered on this device.
 
